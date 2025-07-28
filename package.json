@@ -14,6 +14,8 @@
     "setup": "chmod +x setup.sh && ./setup.sh",
     "restart": "chmod +x restart.sh && ./restart.sh",
     "test-api": "node test-api.js",
+    "test-db": "node test-database.js",
+    "db-setup": "psql -h justiconecta_postgres_justiconecta -U postgres -d justiconecta -f database-setup.sql",
     "clean": "rm -rf dist node_modules package-lock.json",
     "test": "echo \"No tests yet\"",
     "lint": "echo \"No linting configured\""

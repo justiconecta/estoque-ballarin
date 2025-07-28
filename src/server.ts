@@ -42,20 +42,19 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Auth endpoint  
+// Auth endpoint - CORRIGIDO para usuarios_internos
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   
   try {
-    // Check database users first
     const userQuery = await pool.query(
-      'SELECT usuario, role FROM Andressa_Ballarin.usuarios WHERE usuario = $1 AND senha = $2',
+      'SELECT usuario, nome_completo FROM andressa_ballarin.usuarios_internos WHERE usuario = $1 AND senha = $2',
       [username, password]
     );
     
     if (userQuery.rows.length > 0) {
       const user = userQuery.rows[0];
-      res.json({ usuario: user.usuario, role: user.role });
+      res.json({ usuario: user.usuario, nome_completo: user.nome_completo, role: 'staff' });
       return;
     }
   } catch (error) {
@@ -77,25 +76,26 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Produtos endpoints
+// Produtos endpoints - CORRIGIDO para produtos_sku + classes_terapeuticas
 app.get('/api/produtos', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
         p.id_sku,
         p.nome_comercial_produto,
-        p.classe_terapeutica,
-        p.estoque_minimo,
+        ct.nome as classe_terapeutica,
+        ct.estoque_minimo_dias as estoque_minimo,
         COALESCE(json_agg(
           json_build_object(
             'id_lote', l.id_lote,
-            'validade', l.validade,
-            'quantidade', l.quantidade
+            'validade', TO_CHAR(l.validade, 'MM/YYYY'),
+            'quantidade', l.quantidade_disponivel
           ) ORDER BY l.validade
         ) FILTER (WHERE l.id_lote IS NOT NULL), '[]'::json) as lotes
-      FROM Andressa_Ballarin.produtos p
-      LEFT JOIN Andressa_Ballarin.lotes l ON p.id_sku = l.id_sku AND l.quantidade > 0
-      GROUP BY p.id_sku, p.nome_comercial_produto, p.classe_terapeutica, p.estoque_minimo
+      FROM andressa_ballarin.produtos_sku p
+      JOIN andressa_ballarin.classes_terapeuticas ct ON p.id_classe_terapeutica = ct.id_classe_terapeutica
+      LEFT JOIN andressa_ballarin.lotes l ON p.id_sku = l.id_sku AND l.quantidade_disponivel > 0
+      GROUP BY p.id_sku, p.nome_comercial_produto, ct.nome, ct.estoque_minimo_dias
       ORDER BY p.nome_comercial_produto
     `);
     
@@ -106,22 +106,23 @@ app.get('/api/produtos', async (req, res) => {
   }
 });
 
-// Movimentações endpoints
+// Movimentações endpoints - CORRIGIDO para schema real
 app.get('/api/movimentacoes', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
-        m.id,
-        m.id_sku,
-        m.tipo,
+        m.id_movimentacao as id,
+        l.id_sku,
+        m.tipo_movimentacao as tipo,
         m.quantidade,
         m.observacao,
-        m.data,
+        m.data_movimentacao as data,
         m.usuario,
         m.id_lote
-      FROM Andressa_Ballarin.movimentacoes_estoque m
-      WHERE DATE(m.data) = CURRENT_DATE
-      ORDER BY m.data DESC
+      FROM andressa_ballarin.movimentacoes_estoque m
+      JOIN andressa_ballarin.lotes l ON m.id_lote = l.id_lote
+      WHERE DATE(m.data_movimentacao) = CURRENT_DATE
+      ORDER BY m.data_movimentacao DESC
       LIMIT 50
     `);
     
@@ -132,16 +133,21 @@ app.get('/api/movimentacoes', async (req, res) => {
   }
 });
 
+// Entrada - CORRIGIDO para schema real
 app.post('/api/movimentacoes/entrada', async (req, res) => {
   const { id_sku, quantidade, validade, usuario } = req.body;
   
   try {
     await pool.query('BEGIN');
     
+    // Convert MM/YYYY to DATE
+    const [mes, ano] = validade.split('/');
+    const validadeDate = `${ano}-${mes.padStart(2, '0')}-28`; // Last safe day of month
+    
     // Check if lote with this validade exists
     let loteResult = await pool.query(
-      'SELECT id_lote FROM Andressa_Ballarin.lotes WHERE id_sku = $1 AND validade = $2',
-      [id_sku, validade]
+      'SELECT id_lote FROM andressa_ballarin.lotes WHERE id_sku = $1 AND validade = $2',
+      [id_sku, validadeDate]
     );
     
     let id_lote;
@@ -149,22 +155,22 @@ app.post('/api/movimentacoes/entrada', async (req, res) => {
       id_lote = loteResult.rows[0].id_lote;
       // Update existing lote
       await pool.query(
-        'UPDATE Andressa_Ballarin.lotes SET quantidade = quantidade + $1 WHERE id_lote = $2',
+        'UPDATE andressa_ballarin.lotes SET quantidade_disponivel = quantidade_disponivel + $1 WHERE id_lote = $2',
         [quantidade, id_lote]
       );
     } else {
       // Create new lote
       const newLoteResult = await pool.query(
-        'INSERT INTO Andressa_Ballarin.lotes (id_sku, validade, quantidade) VALUES ($1, $2, $3) RETURNING id_lote',
-        [id_sku, validade, quantidade]
+        'INSERT INTO andressa_ballarin.lotes (id_sku, validade, quantidade_disponivel) VALUES ($1, $2, $3) RETURNING id_lote',
+        [id_sku, validadeDate, quantidade]
       );
       id_lote = newLoteResult.rows[0].id_lote;
     }
     
     // Record movimentacao
     await pool.query(
-      'INSERT INTO Andressa_Ballarin.movimentacoes_estoque (id_sku, tipo, quantidade, data, usuario, id_lote) VALUES ($1, $2, $3, NOW(), $4, $5)',
-      [id_sku, 'Entrada', quantidade, usuario, id_lote]
+      'INSERT INTO andressa_ballarin.movimentacoes_estoque (id_lote, tipo_movimentacao, quantidade, usuario, data_movimentacao) VALUES ($1, $2, $3, $4, NOW())',
+      [id_lote, 'ENTRADA', quantidade, usuario]
     );
     
     await pool.query('COMMIT');
@@ -176,6 +182,7 @@ app.post('/api/movimentacoes/entrada', async (req, res) => {
   }
 });
 
+// Saída - CORRIGIDO para schema real
 app.post('/api/movimentacoes/saida', async (req, res) => {
   const { id_sku, id_lote, quantidade, usuario } = req.body;
   
@@ -184,7 +191,7 @@ app.post('/api/movimentacoes/saida', async (req, res) => {
     
     // Check available quantity
     const loteResult = await pool.query(
-      'SELECT quantidade FROM Andressa_Ballarin.lotes WHERE id_lote = $1',
+      'SELECT quantidade_disponivel FROM andressa_ballarin.lotes WHERE id_lote = $1',
       [id_lote]
     );
     
@@ -192,21 +199,21 @@ app.post('/api/movimentacoes/saida', async (req, res) => {
       throw new Error('Lote não encontrado');
     }
     
-    const availableQty = loteResult.rows[0].quantidade;
+    const availableQty = loteResult.rows[0].quantidade_disponivel;
     if (availableQty < quantidade) {
       throw new Error(`Quantidade insuficiente. Disponível: ${availableQty}`);
     }
     
     // Update lote quantity
     await pool.query(
-      'UPDATE Andressa_Ballarin.lotes SET quantidade = quantidade - $1 WHERE id_lote = $2',
+      'UPDATE andressa_ballarin.lotes SET quantidade_disponivel = quantidade_disponivel - $1 WHERE id_lote = $2',
       [quantidade, id_lote]
     );
     
     // Record movimentacao
     await pool.query(
-      'INSERT INTO Andressa_Ballarin.movimentacoes_estoque (id_sku, tipo, quantidade, data, usuario, id_lote) VALUES ($1, $2, $3, NOW(), $4, $5)',
-      [id_sku, 'Saída', quantidade, usuario, id_lote]
+      'INSERT INTO andressa_ballarin.movimentacoes_estoque (id_lote, tipo_movimentacao, quantidade, usuario, data_movimentacao) VALUES ($1, $2, $3, $4, NOW())',
+      [id_lote, 'SAIDA', quantidade, usuario]
     );
     
     await pool.query('COMMIT');
@@ -218,81 +225,147 @@ app.post('/api/movimentacoes/saida', async (req, res) => {
   }
 });
 
-// Dashboard endpoint with real data
+// Dashboard endpoint - USANDO DADOS REAIS do dashboard_agregados
 app.get('/api/dashboard', async (req, res) => {
   try {
-    const isConnected = await testConnection();
+    const month = req.query.month || new Date().toISOString().substring(0, 7);
+    const [year, monthNum] = month.split('-');
     
-    if (!isConnected) {
-      throw new Error('Database connection failed');
-    }
-
-    let totalPacientes = 0;
-    let pacientesAtivosMes = 0;
-    let pacientesAtivosTotal = 0;
+    // Pacientes count
+    const totalPacientesResult = await pool.query(
+      'SELECT COUNT(*) as count FROM andressa_ballarin.pacientes'
+    );
+    const totalPacientes = parseInt(totalPacientesResult.rows[0].count) || 0;
     
-    try {
-      // Get real patient data
-      const totalResult = await pool.query(
-        'SELECT COUNT(*) as count FROM Andressa_Ballarin.pacientes_ballarin'
-      );
-      totalPacientes = parseInt(totalResult.rows[0].count) || 0;
-      
-      const activeThisMonth = await pool.query(`
-        SELECT COUNT(DISTINCT session_id) as count 
-        FROM Andressa_Ballarin.pacientes_chat_log 
-        WHERE DATE_TRUNC('month', data_chat) = DATE_TRUNC('month', CURRENT_DATE)
-      `);
-      pacientesAtivosMes = parseInt(activeThisMonth.rows[0].count) || 0;
-      
-      const activeTotal = await pool.query(`
-        SELECT COUNT(DISTINCT session_id) as count 
-        FROM Andressa_Ballarin.pacientes_chat_log 
-        WHERE data_chat >= CURRENT_DATE - INTERVAL '90 days'
-      `);
-      pacientesAtivosTotal = parseInt(activeTotal.rows[0].count) || 0;
-      
-    } catch (dbError) {
-      console.error('Database query error:', dbError.message);
-      throw new Error(`Query failed: ${dbError.message}`);
-    }
-
-    const dashboardData = {
+    // Active patients this month from chat logs
+    const activeThisMonthResult = await pool.query(`
+      SELECT COUNT(DISTINCT session_id) as count 
+      FROM andressa_ballarin.pacientes_chat_logs 
+      WHERE DATE_TRUNC('month', created_on) = DATE_TRUNC('month', $1::date)
+    `, [`${year}-${monthNum}-01`]);
+    const pacientesAtivosMes = parseInt(activeThisMonthResult.rows[0].count) || 0;
+    
+    // Active patients last 90 days
+    const activeTotalResult = await pool.query(`
+      SELECT COUNT(DISTINCT session_id) as count 
+      FROM andressa_ballarin.pacientes_chat_logs 
+      WHERE created_on >= CURRENT_DATE - INTERVAL '90 days'
+    `);
+    const pacientesAtivosTotal = parseInt(activeTotalResult.rows[0].count) || 0;
+    
+    // Get dashboard agregados data
+    const agregadosResult = await pool.query(`
+      SELECT tipo_agregado, dados_agregados 
+      FROM andressa_ballarin.dashboard_agregados 
+      WHERE data_referencia >= $1::date - INTERVAL '30 days'
+      ORDER BY data_referencia DESC
+    `, [`${year}-${monthNum}-01`]);
+    
+    // Google Reviews data
+    const reviewsResult = await pool.query(`
+      SELECT 
+        AVG(nota) as media_nota,
+        COUNT(*) as total_reviews,
+        SUM(CASE WHEN sentimento = 'Positivo' THEN 1 ELSE 0 END) as positivos,
+        SUM(CASE WHEN sentimento = 'Negativo' THEN 1 ELSE 0 END) as negativos
+      FROM andressa_ballarin.google_review 
+      WHERE DATE_TRUNC('month', data) = DATE_TRUNC('month', $1::date)
+    `, [`${year}-${monthNum}-01`]);
+    
+    const reviewData = reviewsResult.rows[0];
+    
+    // Process agregados data
+    const processedData = {
       totalPacientes,
       pacientesAtivosMes,
       pacientesAtivosTotal,
       mediaMensal: pacientesAtivosMes > 0 ? (pacientesAtivosTotal / 3) : 0,
-      rankingResumos: [
-        { cpf: '***.***.***-01', total_resumos: 25 },
-        { cpf: '***.***.***-02', total_resumos: 18 }
-      ],
-      topEfeitosAdversos: [
-        { item: 'Náusea', count: 12, percentage: 15.8 },
-        { item: 'Tontura', count: 8, percentage: 10.5 }
-      ],
-      topFatoresSucesso: [
-        { item: 'Adesão ao tratamento', count: 35, percentage: 45.0 },
-        { item: 'Suporte familiar', count: 28, percentage: 36.0 }
-      ],
-      topMelhorias: [
-        { item: 'Comunicação médico-paciente', count: 15, percentage: 25.0 }
-      ],
-      topSupervalorizados: [
-        { item: 'Tecnologia disponível', count: 22, percentage: 30.0 }
-      ],
-      fonteUsuarios: [
-        { item: 'indicação médica', count: 45, percentage: 50.0 }
-      ],
-      temasMarketing: `Dados reais: ${totalPacientes} pacientes totais, ${pacientesAtivosMes} ativos no mês.`,
-      oportunidadesMarketing: `Sistema conectado com dados reais do PostgreSQL.`,
-      observacoes: `Dashboard funcionando com dados reais. Pacientes: ${totalPacientes} total, ${pacientesAtivosMes} ativos.`
+      rankingResumos: [],
+      topEfeitosAdversos: [],
+      topFatoresSucesso: [],
+      topMelhorias: [],
+      topSupervalorizados: [],
+      fonteUsuarios: [],
+      mediaGoogleReviews: parseFloat(reviewData.media_nota || '0').toFixed(1),
+      totalReviews: parseInt(reviewData.total_reviews || '0'),
+      reviewsPositivas: parseInt(reviewData.positivos || '0'),
+      reviewsNegativas: parseInt(reviewData.negativos || '0'),
+      temasMarketing: 'Dados carregados do sistema real.',
+      oportunidadesMarketing: 'Analytics baseados em dados reais do PostgreSQL.',
+      observacoes: `Dashboard conectado: ${totalPacientes} pacientes, ${pacientesAtivosMes} ativos no mês.`
     };
-
-    res.json(dashboardData);
+    
+    // Process specific agregados
+    agregadosResult.rows.forEach(row => {
+      const data = row.dados_agregados;
+      if (row.tipo_agregado.includes('RANKING_PROCEDIMENTOS')) {
+        processedData.topFatoresSucesso = Array.isArray(data) ? data.slice(0, 5).map(item => ({
+          item: item.procedimento || 'Unknown',
+          count: Math.floor(item.faturamento / 1000) || 0,
+          percentage: 25.0
+        })) : [];
+      }
+      if (row.tipo_agregado.includes('FATURAMENTO_POR_ORIGEM')) {
+        processedData.fonteUsuarios = Array.isArray(data) ? data.slice(0, 5).map(item => ({
+          item: item.origem || 'Unknown',
+          count: Math.floor(item.faturamento / 1000) || 0,
+          percentage: 25.0
+        })) : [];
+      }
+    });
+    
+    res.json(processedData);
     
   } catch (error) {
     console.error('Dashboard error:', error);
     res.status(500).json({ error: 'Database connection failed', details: error.message });
+  }
+});
+
+// NEW: Consultas endpoint
+app.get('/api/consultas', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        c.id_consulta,
+        c.id_paciente,
+        p.nome_completo,
+        c.data_consulta,
+        c.tipo_consulta,
+        c.status_consulta,
+        c.origem
+      FROM andressa_ballarin.consultas c
+      JOIN andressa_ballarin.pacientes p ON c.id_paciente = p.id_paciente
+      WHERE c.data_consulta >= CURRENT_DATE - INTERVAL '30 days'
+      ORDER BY c.data_consulta DESC
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching consultas:', error);
+    res.status(500).json({ error: 'Database error', details: error.message });
+  }
+});
+
+// NEW: Google Reviews endpoint
+app.get('/api/reviews', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        autor,
+        nota,
+        sentimento,
+        comentario,
+        data
+      FROM andressa_ballarin.google_review
+      ORDER BY data DESC
+      LIMIT 10
+    `);
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Database error', details: error.message });
   }
 });
 

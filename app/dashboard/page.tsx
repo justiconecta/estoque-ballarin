@@ -257,8 +257,8 @@ export default function DashboardPage() {
               <Image
                 src="/justiconecta.png"
                 alt="JustiConecta"
-                width={60}
-                height={60}
+                width={85}
+                height={85}
                 className="rounded-lg"
               />
             </div>

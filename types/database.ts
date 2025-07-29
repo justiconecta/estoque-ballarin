@@ -27,6 +27,149 @@ export interface Database {
           role?: string
         }
       }
+      pacientes: {
+        Row: {
+          id_paciente: number
+          nome: string
+          cpf: string
+          data_nascimento: string
+          sexo: string
+          telefone: string
+          email: string
+          origem_lead: string
+          data_cadastro: string
+        }
+        Insert: {
+          id_paciente?: number
+          nome: string
+          cpf: string
+          data_nascimento: string
+          sexo: string
+          telefone: string
+          email: string
+          origem_lead: string
+          data_cadastro?: string
+        }
+        Update: {
+          id_paciente?: number
+          nome?: string
+          cpf?: string
+          data_nascimento?: string
+          sexo?: string
+          telefone?: string
+          email?: string
+          origem_lead?: string
+          data_cadastro?: string
+        }
+      }
+      consultas: {
+        Row: {
+          id_consulta: number
+          id_paciente: number
+          data_agendamento: string
+          data_consulta: string | null
+          tipo_consulta: string
+          status_consulta: string
+          origem: string
+          relato_queixa_inicial: string | null
+          feedback_pos_consulta: string | null
+          status_consulta_enum: string
+          mes_ano: string | null
+          supervalorizado: boolean
+          data_cadastro: string
+        }
+        Insert: {
+          id_consulta?: number
+          id_paciente: number
+          data_agendamento: string
+          data_consulta?: string | null
+          tipo_consulta: string
+          status_consulta: string
+          origem: string
+          relato_queixa_inicial?: string | null
+          feedback_pos_consulta?: string | null
+          status_consulta_enum?: string
+          mes_ano?: string | null
+          supervalorizado?: boolean
+          data_cadastro?: string
+        }
+        Update: {
+          id_consulta?: number
+          id_paciente?: number
+          data_agendamento?: string
+          data_consulta?: string | null
+          tipo_consulta?: string
+          status_consulta?: string
+          origem?: string
+          relato_queixa_inicial?: string | null
+          feedback_pos_consulta?: string | null
+          status_consulta_enum?: string
+          mes_ano?: string | null
+          supervalorizado?: boolean
+          data_cadastro?: string
+        }
+      }
+      procedimentos: {
+        Row: {
+          id_procedimento: number
+          id_orcamento: number
+          nome_procedimento: string
+          valor_procedimento: number
+          status_procedimento: string
+          data_realizacao: string | null
+        }
+        Insert: {
+          id_procedimento?: number
+          id_orcamento: number
+          nome_procedimento: string
+          valor_procedimento: number
+          status_procedimento: string
+          data_realizacao?: string | null
+        }
+        Update: {
+          id_procedimento?: number
+          id_orcamento?: number
+          nome_procedimento?: string
+          valor_procedimento?: number
+          status_procedimento?: string
+          data_realizacao?: string | null
+        }
+      }
+      orcamentos: {
+        Row: {
+          id_orcamento: number
+          id_consulta: number
+          id_paciente: number
+          data_emissao_orcamento: string
+          valor_total_orcamento: number
+          numero_sessoes: number
+          descricao_tratamento: string
+          status_orcamento: string
+          data_aprovacao_orcamento: string | null
+        }
+        Insert: {
+          id_orcamento?: number
+          id_consulta: number
+          id_paciente: number
+          data_emissao_orcamento: string
+          valor_total_orcamento: number
+          numero_sessoes: number
+          descricao_tratamento: string
+          status_orcamento: string
+          data_aprovacao_orcamento?: string | null
+        }
+        Update: {
+          id_orcamento?: number
+          id_consulta?: number
+          id_paciente?: number
+          data_emissao_orcamento?: string
+          valor_total_orcamento?: number
+          numero_sessoes?: number
+          descricao_tratamento?: string
+          status_orcamento?: string
+          data_aprovacao_orcamento?: string | null
+        }
+      }
       skus: {
         Row: {
           id_sku: number
@@ -154,6 +297,10 @@ export interface Database {
 
 // Tipos derivados para uso na aplicação
 export type Usuario = Database['public']['Tables']['usuarios_internos']['Row']
+export type Paciente = Database['public']['Tables']['pacientes']['Row']
+export type Consulta = Database['public']['Tables']['consultas']['Row']
+export type Orcamento = Database['public']['Tables']['orcamentos']['Row']
+export type Procedimento = Database['public']['Tables']['procedimentos']['Row']
 export type Sku = Database['public']['Tables']['skus']['Row']
 export type Lote = Database['public']['Tables']['lotes']['Row']
 export type Movimentacao = Database['public']['Tables']['movimentacoes_estoque']['Row']

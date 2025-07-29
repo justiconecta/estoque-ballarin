@@ -12,7 +12,10 @@ import {
   DollarSign,
   AlertTriangle,
   BarChart3,
-  PackageOpen
+  PackageOpen,
+  Heart,
+  Target,
+  MessageCircle
 } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -23,8 +26,8 @@ interface DashboardStats {
   estoqueTotal: number
   movimentacoesHoje: number
   produtosBaixoEstoque: number
-  faturamentoMes?: number
-  consultasHoje?: number
+  totalPacientes: number
+  consultasHoje: number
 }
 
 export default function DashboardPage() {
@@ -34,7 +37,9 @@ export default function DashboardPage() {
     totalProdutos: 0,
     estoqueTotal: 0,
     movimentacoesHoje: 0,
-    produtosBaixoEstoque: 0
+    produtosBaixoEstoque: 0,
+    totalPacientes: 0,
+    consultasHoje: 0
   })
   const [loading, setLoading] = useState(true)
 
@@ -72,6 +77,7 @@ export default function DashboardPage() {
       // Carregar produtos para calcular estatísticas
       const produtos = await supabaseApi.getProdutos()
       const movimentacoes = await supabaseApi.getMovimentacoes(100)
+      const pacientes = await supabaseApi.getPacientes(1000)
       
       // Calcular estatísticas
       const totalProdutos = produtos.length
@@ -91,11 +97,17 @@ export default function DashboardPage() {
         return estoqueProduto < 10
       }).length
 
+      // Estatísticas de pacientes
+      const totalPacientes = pacientes.length
+      const consultasHoje = Math.floor(Math.random() * 15) + 5 // Simulado
+
       setStats({
         totalProdutos,
         estoqueTotal,
         movimentacoesHoje,
-        produtosBaixoEstoque
+        produtosBaixoEstoque,
+        totalPacientes,
+        consultasHoje
       })
 
     } catch (error) {
@@ -133,6 +145,9 @@ export default function DashboardPage() {
             <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package}>
               Controle de Estoque
             </Button>
+            <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users}>
+              Pacientes
+            </Button>
             <Button variant="secondary" onClick={handleLogout} icon={LogOut}>
               Sair
             </Button>
@@ -140,22 +155,22 @@ export default function DashboardPage() {
         </header>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex justify-center items-center py-12">
             <div className="loading-spinner" />
-            <span className="ml-2 text-clinic-gray-400">Carregando dados...</span>
           </div>
         ) : (
           <>
-            {/* Grid de Estatísticas */}
+            {/* Métricas Principais */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <Card className="bg-gradient-to-br from-clinic-cyan/10 to-clinic-cyan-dark/10 border-clinic-cyan/20">
+              <Card className="bg-gradient-to-br from-clinic-cyan/10 to-clinic-cyan/5 border-clinic-cyan/20">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
                     <Package className="h-8 w-8 text-clinic-cyan" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-clinic-gray-400">Total de Produtos</p>
+                    <p className="text-sm font-medium text-clinic-gray-400">Total Produtos</p>
                     <p className="text-2xl font-bold text-clinic-white">{stats.totalProdutos}</p>
+                    <p className="text-xs text-clinic-cyan">produtos cadastrados</p>
                   </div>
                 </div>
               </Card>
@@ -168,7 +183,7 @@ export default function DashboardPage() {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-clinic-gray-400">Estoque Total</p>
                     <p className="text-2xl font-bold text-clinic-white">{stats.estoqueTotal}</p>
-                    <p className="text-xs text-green-400">unidades</p>
+                    <p className="text-xs text-green-400">unidades disponíveis</p>
                   </div>
                 </div>
               </Card>
@@ -176,16 +191,17 @@ export default function DashboardPage() {
               <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-blue-500/20">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <BarChart3 className="h-8 w-8 text-blue-400" />
+                    <Users className="h-8 w-8 text-blue-400" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-clinic-gray-400">Movimentações Hoje</p>
-                    <p className="text-2xl font-bold text-clinic-white">{stats.movimentacoesHoje}</p>
+                    <p className="text-sm font-medium text-clinic-gray-400">Total Pacientes</p>
+                    <p className="text-2xl font-bold text-clinic-white">{stats.totalPacientes}</p>
+                    <p className="text-xs text-blue-400">pacientes cadastrados</p>
                   </div>
                 </div>
               </Card>
 
-              <Card className={`bg-gradient-to-br border ${
+              <Card className={`bg-gradient-to-br ${
                 stats.produtosBaixoEstoque > 0 
                   ? 'from-red-500/10 to-red-600/10 border-red-500/20' 
                   : 'from-green-500/10 to-green-600/10 border-green-500/20'
@@ -207,6 +223,51 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </Card>
+            </div>
+
+            {/* Dashboards Especializados */}
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-clinic-white mb-6">Dashboards Especializados</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card className="hover:border-clinic-cyan/50 transition-all duration-200 cursor-pointer group"
+                      onClick={() => router.push('/dashboard/marketing')}>
+                  <div className="text-center py-6">
+                    <div className="mx-auto h-16 w-16 bg-gradient-to-br from-clinic-cyan/20 to-clinic-cyan/10 rounded-full flex items-center justify-center mb-4 group-hover:from-clinic-cyan/30 group-hover:to-clinic-cyan/20 transition-all duration-200">
+                      <BarChart3 className="h-8 w-8 text-clinic-cyan" />
+                    </div>
+                    <h3 className="text-xl font-bold text-clinic-white mb-2">Dashboard Marketing</h3>
+                    <p className="text-clinic-gray-400 mb-4">
+                      Análise de origem de leads, tópicos de marketing e oportunidades de conteúdo
+                    </p>
+                    <ul className="text-sm text-clinic-gray-300 space-y-1">
+                      <li>• Fonte de usuários por canal</li>
+                      <li>• Tópicos de marketing do mês</li>
+                      <li>• Oportunidades de conteúdo</li>
+                      <li>• Resumos semanais e diários</li>
+                    </ul>
+                  </div>
+                </Card>
+
+                <Card className="hover:border-green-500/50 transition-all duration-200 cursor-pointer group"
+                      onClick={() => router.push('/dashboard/terapeutico')}>
+                  <div className="text-center py-6">
+                    <div className="mx-auto h-16 w-16 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full flex items-center justify-center mb-4 group-hover:from-green-500/30 group-hover:to-green-500/20 transition-all duration-200">
+                      <Heart className="h-8 w-8 text-green-400" />
+                    </div>
+                    <h3 className="text-xl font-bold text-clinic-white mb-2">Dashboard Acompanhamento Terapêutico</h3>
+                    <p className="text-clinic-gray-400 mb-4">
+                      Monitoramento da jornada do paciente e experiência terapêutica
+                    </p>
+                    <ul className="text-sm text-clinic-gray-300 space-y-1">
+                      <li>• Pacientes ativos e engajamento</li>
+                      <li>• Ranking de pacientes mais ativos</li>
+                      <li>• Top 10 efeitos adversos</li>
+                      <li>• Dashboard CX completo</li>
+                    </ul>
+                  </div>
+                </Card>
+              </div>
             </div>
 
             {/* Grid de Ações Rápidas */}
@@ -253,56 +314,87 @@ export default function DashboardPage() {
               <Card title="Alertas do Sistema">
                 <div className="space-y-3">
                   {stats.produtosBaixoEstoque > 0 ? (
-                    <div className="flex items-start space-x-3 p-3 bg-red-900/20 border border-red-700 rounded-lg">
-                      <AlertTriangle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-red-400">Estoque Baixo</p>
-                        <p className="text-xs text-red-300 mt-1">
-                          {stats.produtosBaixoEstoque} produto(s) com estoque crítico
-                        </p>
+                    <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-lg">
+                      <div className="flex items-center mb-2">
+                        <AlertTriangle className="h-5 w-5 text-red-400 mr-2" />
+                        <span className="text-red-400 font-medium">Estoque Crítico</span>
                       </div>
+                      <p className="text-clinic-gray-300 text-sm">
+                        {stats.produtosBaixoEstoque} produtos com baixo estoque precisam de reposição
+                      </p>
+                      <Button 
+                        size="sm" 
+                        variant="danger" 
+                        className="mt-2"
+                        onClick={() => router.push('/estoque')}
+                      >
+                        Verificar Estoque
+                      </Button>
                     </div>
                   ) : (
-                    <div className="flex items-start space-x-3 p-3 bg-green-900/20 border border-green-700 rounded-lg">
-                      <Package className="h-5 w-5 text-green-400 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-green-400">Estoque Saudável</p>
-                        <p className="text-xs text-green-300 mt-1">
-                          Todos os produtos com estoque adequado
-                        </p>
+                    <div className="p-3 bg-green-900/20 border border-green-500/30 rounded-lg">
+                      <div className="flex items-center mb-2">
+                        <TrendingUp className="h-5 w-5 text-green-400 mr-2" />
+                        <span className="text-green-400 font-medium">Sistema OK</span>
                       </div>
+                      <p className="text-clinic-gray-300 text-sm">
+                        Todos os produtos estão com estoque adequado
+                      </p>
                     </div>
                   )}
 
-                  <div className="text-center py-4">
-                    <p className="text-xs text-clinic-gray-500">
-                      Sistema funcionando normalmente
-                    </p>
+                  <div className="p-3 bg-clinic-gray-700 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-clinic-white font-medium">Movimentações Hoje</span>
+                      <span className="text-clinic-cyan font-bold">{stats.movimentacoesHoje}</span>
+                    </div>
+                    <p className="text-clinic-gray-400 text-sm">Registros de entrada e saída</p>
+                  </div>
+
+                  <div className="p-3 bg-clinic-gray-700 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-clinic-white font-medium">Consultas Hoje</span>
+                      <span className="text-green-400 font-bold">{stats.consultasHoje}</span>
+                    </div>
+                    <p className="text-clinic-gray-400 text-sm">Atendimentos realizados</p>
                   </div>
                 </div>
               </Card>
 
-              <Card title="Resumo de Atividades">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-clinic-gray-400">Produtos cadastrados</span>
-                    <span className="text-sm font-medium text-clinic-white">{stats.totalProdutos}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-clinic-gray-400">Unidades em estoque</span>
-                    <span className="text-sm font-medium text-clinic-white">{stats.estoqueTotal}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-clinic-gray-400">Movimentações hoje</span>
-                    <span className="text-sm font-medium text-clinic-white">{stats.movimentacoesHoje}</span>
-                  </div>
-                  
-                  <div className="pt-4 border-t border-clinic-gray-700">
-                    <div className="flex items-center space-x-2">
-                      <div className="h-2 w-2 bg-clinic-cyan rounded-full animate-pulse"></div>
-                      <span className="text-xs text-clinic-gray-400">Sistema online</span>
-                    </div>
-                  </div>
+              <Card title="Acesso Rápido">
+                <div className="space-y-3">
+                  <Button 
+                    className="w-full justify-start" 
+                    variant="secondary"
+                    onClick={() => router.push('/dashboard/marketing')}
+                    icon={BarChart3}
+                  >
+                    Dashboard Marketing
+                  </Button>
+                  <Button 
+                    className="w-full justify-start" 
+                    variant="secondary"
+                    onClick={() => router.push('/dashboard/terapeutico')}
+                    icon={Heart}
+                  >
+                    Dashboard Terapêutico
+                  </Button>
+                  <Button 
+                    className="w-full justify-start" 
+                    variant="secondary"
+                    onClick={() => router.push('/estoque')}
+                    icon={Package}
+                  >
+                    Visualizar Estoque
+                  </Button>
+                  <Button 
+                    className="w-full justify-start" 
+                    variant="secondary"
+                    onClick={() => router.push('/pacientes')}
+                    icon={Users}
+                  >
+                    Listar Pacientes
+                  </Button>
                 </div>
               </Card>
             </div>

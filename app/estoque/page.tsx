@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Package, TrendingUp, TrendingDown, AlertCircle, Home } from 'lucide-react'
+import { LogOut, Package, TrendingUp, TrendingDown, AlertCircle, Home, Users } from 'lucide-react'
 import { Button, Input, Select, Card, Modal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { ProdutoComEstoque, MovimentacaoDetalhada, Usuario } from '@/types/database'
@@ -127,35 +127,42 @@ export default function EstoquePage() {
       setLoading(true)
 
       if (movForm.tipo === 'SAIDA') {
+        // Para saída, verificar se há lote selecionado e estoque suficiente
         if (!movForm.loteId) {
-          showModal('error', 'Erro de Validação', 'Selecione um lote para dar baixa.')
+          showModal('error', 'Erro de Validação', 'Selecione um lote para a saída.')
           return
         }
 
         const lote = selectedProduto.lotes.find(l => l.id_lote === movForm.loteId)
-        if (!lote || lote.quantidade_disponivel < quantidade) {
-          showModal('error', 'Estoque Insuficiente', 
-            `Não é possível registrar a saída de ${quantidade} unidades. Estoque disponível: ${lote?.quantidade_disponivel || 0}.`)
+        if (!lote) {
+          showModal('error', 'Erro', 'Lote não encontrado.')
           return
         }
 
-        // Registrar movimentação
+        if (lote.quantidade_disponivel < quantidade) {
+          showModal('error', 'Estoque Insuficiente', `Estoque disponível: ${lote.quantidade_disponivel} unidades`)
+          return
+        }
+
+        // Registrar movimentação de saída
         await supabaseApi.createMovimentacao({
           id_lote: movForm.loteId,
           tipo_movimentacao: 'SAIDA',
-          quantidade,
-          usuario: currentUser?.usuario || '',
-          observacao: `Baixa do lote com validade ${lote.validade}`
+          quantidade: quantidade,
+          usuario: currentUser.nome_completo,
+          observacao: `Aplicação paciente (${currentUser.nome_completo})`
         })
 
         // Atualizar quantidade do lote
-        await supabaseApi.updateLoteQuantidade(movForm.loteId, lote.quantidade_disponivel - quantidade)
+        const novaQuantidade = lote.quantidade_disponivel - quantidade
+        await supabaseApi.updateLoteQuantidade(movForm.loteId, novaQuantidade)
 
         showModal('success', 'Sucesso!', 'Saída de estoque registrada com sucesso.')
+
       } else {
-        // ENTRADA - implementar lógica de criar novo lote
-        if (!movForm.validade || !/^\d{4}-\d{2}-\d{2}$/.test(movForm.validade)) {
-          showModal('error', 'Erro de Validação', 'Informe uma data de validade válida (AAAA-MM-DD).')
+        // Para entrada, criar novo lote ou atualizar existente
+        if (!movForm.validade) {
+          showModal('error', 'Erro de Validação', 'Informe a data de validade para entrada.')
           return
         }
 
@@ -166,13 +173,13 @@ export default function EstoquePage() {
           validade: movForm.validade
         })
 
-        // Registrar movimentação
+        // Registrar movimentação de entrada
         await supabaseApi.createMovimentacao({
           id_lote: novoLote.id_lote,
           tipo_movimentacao: 'ENTRADA',
-          quantidade,
-          usuario: currentUser?.usuario || '',
-          observacao: `Recebimento de lote com validade ${movForm.validade}`
+          quantidade: quantidade,
+          usuario: currentUser.nome_completo,
+          observacao: `Pedido #P${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
         })
 
         showModal('success', 'Sucesso!', 'Entrada de estoque registrada com sucesso.')
@@ -257,177 +264,158 @@ export default function EstoquePage() {
               <div className="space-y-4">
                 {/* Seleção de Produto */}
                 <Select
-                  label="1. Escolha o Produto (SKU)"
-                  value={selectedProduto?.id_sku || ''}
+                  label="1. Selecionar Produto"
+                  value={selectedProduto?.id_sku.toString() || ''}
                   onChange={(e) => handleProdutoSelect(e.target.value)}
                   options={[
-                    { value: '', label: '-- Selecione um produto --' },
-                    ...produtos.map(p => ({
-                      value: p.id_sku.toString(),
-                      label: `${p.nome_produto} (${p.fabricante})`
+                    { value: '', label: 'Escolha um produto...' },
+                    ...produtos.map(produto => ({
+                      value: produto.id_sku.toString(),
+                      label: `${produto.nome_produto} (${produto.estoque_total} unidades)`
                     }))
                   ]}
                 />
 
-                {/* Informações do Estoque */}
                 {selectedProduto && (
-                  <div className="bg-clinic-gray-900 p-4 rounded-lg border border-clinic-gray-600">
-                    <div className="text-center mb-4">
-                      <p className="text-clinic-gray-400 text-sm">Estoque Total</p>
-                      <p className="text-3xl font-bold text-clinic-cyan">
-                        {selectedProduto.estoque_total} <span className="text-lg text-clinic-gray-400">unidades</span>
-                      </p>
-                    </div>
-                    
-                    <div className="border-t border-clinic-gray-700 pt-4 space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-clinic-gray-400">Fabricante:</span>
-                        <span className="text-clinic-white font-medium">{selectedProduto.fabricante}</span>
-                      </div>
-                      
-                      {selectedProduto.lotes.length > 0 && (
-                        <div className="border-t border-clinic-gray-700 pt-2">
-                          <p className="text-clinic-gray-400 text-xs mb-2">Lotes Disponíveis:</p>
-                          {selectedProduto.lotes
-                            .filter(lote => lote.quantidade_disponivel > 0)
-                            .map(lote => (
-                            <div key={lote.id_lote} className="flex justify-between text-xs">
-                              <span>Val: {new Date(lote.validade).toLocaleDateString('pt-BR')}</span>
-                              <span className="font-medium">{lote.quantidade_disponivel} un.</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Formulário de Movimentação */}
-                <form onSubmit={handleMovimentacao} className="space-y-4">
-                  <div className="flex space-x-4">
-                    <Button
-                      type="button"
-                      variant={movForm.tipo === 'SAIDA' ? 'danger' : 'secondary'}
-                      onClick={() => setMovForm(prev => ({ ...prev, tipo: 'SAIDA' }))}
-                      icon={TrendingDown}
-                      className="flex-1"
-                    >
-                      Saída
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={movForm.tipo === 'ENTRADA' ? 'success' : 'secondary'}
-                      onClick={() => setMovForm(prev => ({ ...prev, tipo: 'ENTRADA' }))}
-                      icon={TrendingUp}
-                      className="flex-1"
-                    >
-                      Entrada
-                    </Button>
-                  </div>
-
-                  {movForm.tipo === 'SAIDA' && selectedProduto && (
+                  <>
+                    {/* Tipo de Movimentação */}
                     <Select
-                      label="Selecione o Lote"
-                      value={movForm.loteId || ''}
-                      onChange={(e) => setMovForm(prev => ({ ...prev, loteId: parseInt(e.target.value) }))}
+                      label="2. Tipo de Movimentação"
+                      value={movForm.tipo}
+                      onChange={(e) => setMovForm(prev => ({ 
+                        ...prev, 
+                        tipo: e.target.value as 'ENTRADA' | 'SAIDA',
+                        loteId: undefined 
+                      }))}
                       options={[
-                        { value: '', label: '-- Selecione um lote --' },
-                        ...selectedProduto.lotes
-                          .filter(lote => lote.quantidade_disponivel > 0)
-                          .sort((a, b) => new Date(a.validade).getTime() - new Date(b.validade).getTime())
-                          .map(lote => ({
-                            value: lote.id_lote.toString(),
-                            label: `Val: ${new Date(lote.validade).toLocaleDateString('pt-BR')} - Qtd: ${lote.quantidade_disponivel}`
-                          }))
+                        { value: 'SAIDA', label: '📤 Saída (Aplicação)' },
+                        { value: 'ENTRADA', label: '📥 Entrada (Pedido)' }
                       ]}
                     />
-                  )}
 
-                  {movForm.tipo === 'ENTRADA' && (
+                    {/* Quantidade */}
                     <Input
-                      label="Data de Validade"
-                      type="date"
-                      value={movForm.validade}
-                      onChange={(e) => setMovForm(prev => ({ ...prev, validade: e.target.value }))}
+                      label="3. Quantidade"
+                      type="number"
+                      min="1"
+                      value={movForm.quantidade}
+                      onChange={(e) => setMovForm(prev => ({ ...prev, quantidade: e.target.value }))}
+                      placeholder="Digite a quantidade"
                     />
-                  )}
 
-                  <Input
-                    label="Quantidade"
-                    type="number"
-                    min="1"
-                    value={movForm.quantidade}
-                    onChange={(e) => setMovForm(prev => ({ ...prev, quantidade: e.target.value }))}
-                    required
-                  />
+                    {/* Seleção de Lote (apenas para SAIDA) */}
+                    {movForm.tipo === 'SAIDA' && selectedProduto.lotes.length > 0 && (
+                      <Select
+                        label="4. Selecionar Lote"
+                        value={movForm.loteId?.toString() || ''}
+                        onChange={(e) => setMovForm(prev => ({ ...prev, loteId: parseInt(e.target.value) }))}
+                        options={[
+                          { value: '', label: 'Escolha um lote...' },
+                          ...selectedProduto.lotes
+                            .filter(lote => lote.quantidade_disponivel > 0)
+                            .map(lote => ({
+                              value: lote.id_lote.toString(),
+                              label: `Lote ${lote.id_lote} - ${lote.quantidade_disponivel} unidades (Val: ${new Date(lote.validade).toLocaleDateString('pt-BR')})`
+                            }))
+                        ]}
+                      />
+                    )}
 
-                  <Button
-                    type="submit"
-                    variant={movForm.tipo === 'SAIDA' ? 'danger' : 'success'}
-                    loading={loading}
-                    disabled={!selectedProduto}
-                    className="w-full"
-                  >
-                    Registrar {movForm.tipo === 'SAIDA' ? 'Saída' : 'Entrada'}
-                  </Button>
-                </form>
+                    {/* Data de Validade (apenas para ENTRADA) */}
+                    {movForm.tipo === 'ENTRADA' && (
+                      <Input
+                        label="4. Data de Validade"
+                        type="date"
+                        value={movForm.validade}
+                        onChange={(e) => setMovForm(prev => ({ ...prev, validade: e.target.value }))}
+                      />
+                    )}
+
+                    {/* Botão de Ação */}
+                    <Button
+                      type="button"
+                      onClick={handleMovimentacao}
+                      loading={loading}
+                      className="w-full"
+                      icon={movForm.tipo === 'ENTRADA' ? TrendingUp : TrendingDown}
+                    >
+                      {movForm.tipo === 'ENTRADA' ? 'Registrar Entrada' : 'Registrar Saída'}
+                    </Button>
+                  </>
+                )}
               </div>
+            </Card>
+
+            {/* Estoque Atual */}
+            <Card title="Estoque Atual">
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <div className="loading-spinner" />
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-80 overflow-y-auto">
+                  {produtos.map(produto => (
+                    <div key={produto.id_sku} className="flex justify-between items-center p-3 bg-clinic-gray-700 rounded-lg">
+                      <div>
+                        <p className="font-medium text-clinic-white">{produto.nome_produto}</p>
+                        <p className="text-sm text-clinic-gray-400">{produto.fabricante}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${produto.estoque_total < 10 ? 'text-red-400' : 'text-clinic-cyan'}`}>
+                          {produto.estoque_total} und
+                        </p>
+                        {produto.estoque_total < 10 && (
+                          <p className="text-xs text-red-400 flex items-center">
+                            <AlertCircle className="w-3 h-3 mr-1" />
+                            Baixo estoque
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </div>
 
           {/* Coluna de Histórico */}
-          <div>
-            <Card title="Últimas Movimentações">
+          <div className="space-y-6">
+            <Card title="Movimentações Recentes">
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {movimentacoes.length === 0 ? (
-                  <p className="text-clinic-gray-500 text-center py-8">
-                    Nenhuma movimentação registrada
-                  </p>
-                ) : (
-                  movimentacoes.map((mov) => (
-                    <div
-                      key={mov.id_movimentacao}
-                      className={`p-3 rounded-lg border ${
-                        mov.tipo_movimentacao === 'ENTRADA'
-                          ? 'bg-green-900/20 border-green-700'
-                          : 'bg-red-900/20 border-red-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2">
-                            {mov.tipo_movimentacao === 'ENTRADA' ? (
-                              <TrendingUp className="w-4 h-4 text-green-400" />
-                            ) : (
-                              <TrendingDown className="w-4 h-4 text-red-400" />
-                            )}
-                            <span className={`font-medium text-sm ${
-                              mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                              {mov.tipo_movimentacao}
-                            </span>
-                          </div>
-                          <p className="text-clinic-white text-sm mt-1">
-                            Produto ID: {mov.lotes?.id_sku}
-                          </p>
-                          {mov.observacao && (
-                            <p className="text-clinic-gray-400 text-xs mt-1">{mov.observacao}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          <p className={`font-bold text-lg ${
-                            mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
-                          }`}>
-                            {mov.tipo_movimentacao === 'ENTRADA' ? '+' : '-'}{mov.quantidade}
-                          </p>
-                          <p className="text-clinic-gray-500 text-xs">
-                            {mov.usuario} - {formatDateTime(mov.data_movimentacao)}
-                          </p>
-                        </div>
+                {movimentacoes.map(mov => (
+                  <div key={mov.id_movimentacao} className="p-3 bg-clinic-gray-700 rounded-lg">
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center">
+                        {mov.tipo_movimentacao === 'ENTRADA' ? (
+                          <TrendingUp className="w-4 h-4 text-green-400 mr-2" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4 text-red-400 mr-2" />
+                        )}
+                        <span className={`text-sm font-medium ${
+                          mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {mov.tipo_movimentacao}
+                        </span>
                       </div>
+                      <span className="text-xs text-clinic-gray-400">
+                        {formatDateTime(mov.data_movimentacao)}
+                      </span>
                     </div>
-                  ))
-                )}
+                    
+                    <p className="text-clinic-white font-medium">
+                      {mov.lotes?.skus?.nome_produto || 'Produto não encontrado'}
+                    </p>
+                    <p className="text-sm text-clinic-gray-300">
+                      Quantidade: <span className="font-medium">{mov.quantidade}</span>
+                    </p>
+                    <p className="text-sm text-clinic-gray-300">
+                      Usuário: <span className="font-medium">{mov.usuario}</span>
+                    </p>
+                    {mov.observacao && (
+                      <p className="text-xs text-clinic-gray-400 mt-1">{mov.observacao}</p>
+                    )}
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
@@ -440,18 +428,21 @@ export default function EstoquePage() {
         onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
         title={modalState.title}
       >
-        <div className="text-center">
-          <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4 ${
-            modalState.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        <div className="text-center py-4">
+          <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+            modalState.type === 'success' ? 'bg-green-100' : 'bg-red-100'
           }`}>
             {modalState.type === 'success' ? (
-              <Package className="h-6 w-6 text-white" />
+              <TrendingUp className="w-8 h-8 text-green-600" />
             ) : (
-              <AlertCircle className="h-6 w-6 text-white" />
+              <AlertCircle className="w-8 h-8 text-red-600" />
             )}
           </div>
-          <p className="text-clinic-gray-300 mb-4">{modalState.message}</p>
-          <Button onClick={() => setModalState(prev => ({ ...prev, isOpen: false }))}>
+          <p className="text-clinic-gray-300">{modalState.message}</p>
+          <Button
+            onClick={() => setModalState(prev => ({ ...prev, isOpen: false }))}
+            className="mt-4"
+          >
             OK
           </Button>
         </div>

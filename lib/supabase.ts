@@ -17,6 +17,9 @@ export const supabase = createClient<Database>(config.supabase.url, config.supab
 
 // Helper functions for common operations
 export const supabaseApi = {
+  // Disponibilizar supabase client para queries customizadas
+  supabase,
+
   // Autenticação
   async authenticateUser(username: string, password: string) {
     const { data, error } = await supabase
@@ -76,7 +79,13 @@ export const supabaseApi = {
       const { data, error } = await supabase
         .from('pacientes')
         .insert({
-          ...paciente,
+          nome: paciente.nome,
+          cpf: paciente.cpf,
+          data_nascimento: paciente.data_nascimento,
+          sexo: paciente.sexo,
+          telefone: paciente.telefone,
+          email: paciente.email,
+          origem_lead: paciente.origem_lead,
           data_cadastro: new Date().toISOString()
         })
         .select()
@@ -90,7 +99,7 @@ export const supabaseApi = {
     }
   },
 
-  async updatePaciente(id: number, updates: Partial<{
+  async updatePaciente(id: number, paciente: Partial<{
     nome: string
     cpf: string
     data_nascimento: string
@@ -102,7 +111,7 @@ export const supabaseApi = {
     try {
       const { data, error } = await supabase
         .from('pacientes')
-        .update(updates)
+        .update(paciente)
         .eq('id_paciente', id)
         .select()
         .single()
@@ -126,23 +135,6 @@ export const supabaseApi = {
       return true
     } catch (error) {
       console.error('Erro ao deletar paciente:', error)
-      throw error
-    }
-  },
-
-  async searchPacientes(searchTerm: string) {
-    try {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('*')
-        .or(`nome.ilike.%${searchTerm}%,cpf.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%,telefone.ilike.%${searchTerm}%`)
-        .order('data_cadastro', { ascending: false })
-        .limit(50)
-      
-      if (error) throw error
-      return data || []
-    } catch (error) {
-      console.error('Erro ao buscar pacientes:', error)
       throw error
     }
   },
@@ -320,5 +312,147 @@ export const supabaseApi = {
     
     if (error) throw error
     return data || []
+  },
+
+  // DASHBOARD AGREGADOS - Métodos específicos para os dashboards
+  async getDashboardAgregados(tipo?: string, limit = 50) {
+    try {
+      let query = supabase
+        .from('dashboard_agregados')
+        .select('*')
+        .order('data_geracao', { ascending: false })
+        .limit(limit)
+      
+      if (tipo) {
+        query = query.ilike('tipo_agregado', `%${tipo}%`)
+      }
+      
+      const { data, error } = await query
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar dados agregados:', error)
+      throw error
+    }
+  },
+
+  async getDashboardAgregadoByTipo(tipo: string) {
+    try {
+      const { data, error } = await supabase
+        .from('dashboard_agregados')
+        .select('*')
+        .ilike('tipo_agregado', `%${tipo}%`)
+        .order('data_geracao', { ascending: false })
+        .limit(1)
+        .single()
+      
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Erro ao buscar dado agregado específico:', error)
+      return null
+    }
+  },
+
+  // CHAT LOGS - Para análise de interação com IA
+  async getChatLogs(limit = 100) {
+    try {
+      const { data, error } = await supabase
+        .from('fornecedores_chat_logs')
+        .select('*')
+        .order('data_envio', { ascending: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar chat logs:', error)
+      throw error
+    }
+  },
+
+  // GOOGLE REVIEWS - Para análise de feedback
+  async getGoogleReviews(limit = 50) {
+    try {
+      const { data, error } = await supabase
+        .from('google_review')
+        .select('*')
+        .order('data_review', { ascending: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar reviews:', error)
+      throw error
+    }
+  },
+
+  // PROCEDIMENTOS - Para análise terapêutica
+  async getProcedimentos(limit = 100) {
+    try {
+      const { data, error } = await supabase
+        .from('procedimentos')
+        .select('*')
+        .order('data_realizacao', { ascending: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar procedimentos:', error)
+      throw error
+    }
+  },
+
+  // ANÁLISES CUSTOMIZADAS PARA DASHBOARDS
+  
+  // Análise de origem de leads
+  async getOrigemLeadStats() {
+    try {
+      const pacientes = await this.getPacientes(1000)
+      
+      const origemCount: Record<string, number> = {}
+      pacientes.forEach(paciente => {
+        const origem = paciente.origem_lead || 'Não informado'
+        origemCount[origem] = (origemCount[origem] || 0) + 1
+      })
+      
+      const total = pacientes.length
+      return Object.entries(origemCount).map(([origem, count]) => ({
+        origem,
+        total: count,
+        percentual: Math.round((count / total) * 100)
+      })).sort((a, b) => b.total - a.total)
+      
+    } catch (error) {
+      console.error('Erro ao analisar origem de leads:', error)
+      throw error
+    }
+  },
+
+  // Análise de pacientes ativos
+  async getPacientesAtivosStats(diasAtivos = 30) {
+    try {
+      const pacientes = await this.getPacientes(1000)
+      const dataLimite = new Date()
+      dataLimite.setDate(dataLimite.getDate() - diasAtivos)
+      
+      const pacientesAtivos = pacientes.filter(paciente => {
+        const dataUltimaInteracao = new Date(paciente.data_cadastro)
+        return dataUltimaInteracao >= dataLimite
+      })
+      
+      return {
+        total: pacientes.length,
+        ativos: pacientesAtivos.length,
+        percentualAtivo: Math.round((pacientesAtivos.length / pacientes.length) * 100)
+      }
+      
+    } catch (error) {
+      console.error('Erro ao analisar pacientes ativos:', error)
+      throw error
+    }
   }
 }

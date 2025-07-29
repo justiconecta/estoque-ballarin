@@ -15,7 +15,7 @@ export const supabase = createClient<Database>(config.supabase.url, config.supab
   }
 })
 
-// Helper functions for common operations
+// Helper functions for common operations - APENAS DADOS REAIS
 export const supabaseApi = {
   // Disponibilizar supabase client para queries customizadas
   supabase,
@@ -46,7 +46,7 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar pacientes:', error)
-      throw error
+      return []
     }
   },
 
@@ -66,28 +66,11 @@ export const supabaseApi = {
     }
   },
 
-  async createPaciente(paciente: {
-    nome: string
-    cpf: string
-    data_nascimento: string
-    sexo: string
-    telefone: string
-    email: string
-    origem_lead: string
-  }) {
+  async createPaciente(paciente: any) {
     try {
       const { data, error } = await supabase
         .from('pacientes')
-        .insert({
-          nome: paciente.nome,
-          cpf: paciente.cpf,
-          data_nascimento: paciente.data_nascimento,
-          sexo: paciente.sexo,
-          telefone: paciente.telefone,
-          email: paciente.email,
-          origem_lead: paciente.origem_lead,
-          data_cadastro: new Date().toISOString()
-        })
+        .insert(paciente)
         .select()
         .single()
       
@@ -99,19 +82,11 @@ export const supabaseApi = {
     }
   },
 
-  async updatePaciente(id: number, paciente: Partial<{
-    nome: string
-    cpf: string
-    data_nascimento: string
-    sexo: string
-    telefone: string
-    email: string
-    origem_lead: string
-  }>) {
+  async updatePaciente(id: number, updates: any) {
     try {
       const { data, error } = await supabase
         .from('pacientes')
-        .update(paciente)
+        .update(updates)
         .eq('id_paciente', id)
         .select()
         .single()
@@ -132,7 +107,6 @@ export const supabaseApi = {
         .eq('id_paciente', id)
       
       if (error) throw error
-      return true
     } catch (error) {
       console.error('Erro ao deletar paciente:', error)
       throw error
@@ -152,11 +126,11 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar consultas do paciente:', error)
-      throw error
+      return []
     }
   },
 
-  // Produtos (SKUs) - Query simplificada sem joins complexos
+  // Produtos (SKUs) - Query otimizada
   async getProdutos() {
     try {
       // Primeiro buscar todos os SKUs
@@ -169,7 +143,7 @@ export const supabaseApi = {
 
       // Para cada SKU, buscar seus lotes
       const produtosComLotes = await Promise.all(
-        skus.map(async (sku) => {
+        (skus || []).map(async (sku) => {
           const { data: lotes, error: lotesError } = await supabase
             .from('lotes')
             .select('*')
@@ -188,11 +162,11 @@ export const supabaseApi = {
       return produtosComLotes
     } catch (error) {
       console.error('Erro na query getProdutos:', error)
-      throw error
+      return []
     }
   },
 
-  // Movimentações de estoque - Query simplificada
+  // Movimentações de estoque
   async createMovimentacao(movimentacao: {
     id_lote: number
     tipo_movimentacao: 'ENTRADA' | 'SAIDA'
@@ -251,7 +225,7 @@ export const supabaseApi = {
     return data
   },
 
-  // Buscar histórico de movimentações - Query simplificada
+  // Buscar histórico de movimentações
   async getMovimentacoes(limit = 50) {
     try {
       const { data: movimentacoes, error } = await supabase
@@ -300,21 +274,26 @@ export const supabaseApi = {
       return movimentacoesDetalhadas
     } catch (error) {
       console.error('Erro na query getMovimentacoes:', error)
-      throw error
+      return []
     }
   },
 
   // Classes terapêuticas
   async getClassesTerapeuticas() {
-    const { data, error } = await supabase
-      .from('classes_terapeuticas')
-      .select('*')
-    
-    if (error) throw error
-    return data || []
+    try {
+      const { data, error } = await supabase
+        .from('classes_terapeuticas')
+        .select('*')
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar classes terapêuticas:', error)
+      return []
+    }
   },
 
-  // DASHBOARD AGREGADOS - Métodos específicos para os dashboards
+  // DASHBOARD AGREGADOS - Dados reais de analytics
   async getDashboardAgregados(tipo?: string, limit = 50) {
     try {
       let query = supabase
@@ -333,7 +312,7 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar dados agregados:', error)
-      throw error
+      return []
     }
   },
 
@@ -347,7 +326,10 @@ export const supabaseApi = {
         .limit(1)
         .single()
       
-      if (error) throw error
+      if (error) {
+        console.warn(`Nenhum dado agregado encontrado para tipo: ${tipo}`)
+        return null
+      }
       return data
     } catch (error) {
       console.error('Erro ao buscar dado agregado específico:', error)
@@ -368,7 +350,7 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar chat logs:', error)
-      throw error
+      return []
     }
   },
 
@@ -385,7 +367,7 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar reviews:', error)
-      throw error
+      return []
     }
   },
 
@@ -402,13 +384,28 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('Erro ao buscar procedimentos:', error)
-      throw error
+      return []
     }
   },
 
-  // ANÁLISES CUSTOMIZADAS PARA DASHBOARDS
-  
-  // Análise de origem de leads
+  // ORÇAMENTOS - Para análise financeira
+  async getOrcamentos(limit = 100) {
+    try {
+      const { data, error } = await supabase
+        .from('orcamentos')
+        .select('*')
+        .order('data_emissao_orcamento', { ascending: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Erro ao buscar orçamentos:', error)
+      return []
+    }
+  },
+
+  // ANÁLISES DE ORIGEM DE LEADS - Dados reais
   async getOrigemLeadStats() {
     try {
       const pacientes = await this.getPacientes(1000)
@@ -420,39 +417,53 @@ export const supabaseApi = {
       })
       
       const total = pacientes.length
-      return Object.entries(origemCount).map(([origem, count]) => ({
+      const stats = Object.entries(origemCount).map(([origem, count]) => ({
         origem,
         total: count,
-        percentual: Math.round((count / total) * 100)
+        percentual: total > 0 ? Math.round((count / total) * 100) : 0
       })).sort((a, b) => b.total - a.total)
       
+      return stats
     } catch (error) {
-      console.error('Erro ao analisar origem de leads:', error)
-      throw error
+      console.error('Erro ao calcular estatísticas de origem:', error)
+      return []
     }
   },
 
-  // Análise de pacientes ativos
-  async getPacientesAtivosStats(diasAtivos = 30) {
+  // ESTATÍSTICAS DE SATISFAÇÃO - Dados reais
+  async getSatisfactionStats() {
     try {
-      const pacientes = await this.getPacientes(1000)
-      const dataLimite = new Date()
-      dataLimite.setDate(dataLimite.getDate() - diasAtivos)
+      const reviews = await this.getGoogleReviews(200)
       
-      const pacientesAtivos = pacientes.filter(paciente => {
-        const dataUltimaInteracao = new Date(paciente.data_cadastro)
-        return dataUltimaInteracao >= dataLimite
-      })
-      
-      return {
-        total: pacientes.length,
-        ativos: pacientesAtivos.length,
-        percentualAtivo: Math.round((pacientesAtivos.length / pacientes.length) * 100)
+      if (reviews.length === 0) {
+        return {
+          satisfacaoGeral: 0,
+          reviewsPositivos: 0,
+          reviewsNegativos: 0,
+          totalReviews: 0
+        }
       }
-      
+
+      const reviewsPositivos = reviews.filter(r => r.nota >= 4).length
+      const reviewsNegativos = reviews.filter(r => r.nota <= 2).length
+      const satisfacaoGeral = Math.round(
+        (reviews.reduce((sum, r) => sum + r.nota, 0) / reviews.length) * 20
+      )
+
+      return {
+        satisfacaoGeral,
+        reviewsPositivos,
+        reviewsNegativos,
+        totalReviews: reviews.length
+      }
     } catch (error) {
-      console.error('Erro ao analisar pacientes ativos:', error)
-      throw error
+      console.error('Erro ao calcular estatísticas de satisfação:', error)
+      return {
+        satisfacaoGeral: 0,
+        reviewsPositivos: 0,
+        reviewsNegativos: 0,
+        totalReviews: 0
+      }
     }
   }
 }

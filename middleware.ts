@@ -4,11 +4,13 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Lista de rotas válidas da aplicação
+  // Lista de rotas válidas da aplicação - INCLUINDO DASHBOARDS ESPECIALIZADOS
   const validRoutes = [
     '/',
     '/login',
-    '/dashboard', 
+    '/dashboard',
+    '/dashboard/marketing', 
+    '/dashboard/terapeutico',
     '/estoque',
     '/pacientes'
   ]

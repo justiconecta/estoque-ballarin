@@ -1,76 +1,107 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
-import { LogOut, Home, Package, Users, Calendar, DollarSign, ArrowLeft } from 'lucide-react'
+import { Home, Package, Users, LogOut, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui'
-import { Usuario } from '@/types/database'
 
 interface NavbarProps {
-  currentUser: Usuario
-  title: string
-  showBackButton?: boolean
+  currentUser?: {
+    nome: string
+    role: string
+  } | null
+  onLogout?: () => void
 }
 
-export const Navbar: React.FC<NavbarProps> = ({
-  currentUser,
-  title,
-  showBackButton = false
-}) => {
+export const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const router = useRouter()
 
   const handleLogout = () => {
-    localStorage.removeItem('ballarin_user')
-    router.push('/login')
+    if (onLogout) {
+      onLogout()
+    } else {
+      localStorage.removeItem('ballarin_user')
+      router.push('/login')
+    }
   }
 
+  const navItems = [
+    {
+      label: 'Dashboard',
+      icon: Home,
+      path: '/dashboard',
+      adminOnly: true
+    },
+    {
+      label: 'Estoque',
+      icon: Package,
+      path: '/estoque',
+      adminOnly: false
+    },
+    {
+      label: 'Pacientes',
+      icon: Users,
+      path: '/pacientes',
+      adminOnly: false
+    }
+  ]
+
+  const visibleItems = navItems.filter(item => 
+    !item.adminOnly || (currentUser?.role === 'admin')
+  )
+
   return (
-    <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-      <div className="flex items-center space-x-4">
-        {showBackButton && (
-          <Button 
-            variant="secondary" 
-            onClick={() => router.back()} 
-            icon={ArrowLeft}
+    <nav className="bg-clinic-gray-800 border-b border-clinic-gray-700 px-4 py-3">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Logo/Title */}
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <div className="h-8 w-8 bg-clinic-cyan rounded-full flex items-center justify-center">
+              <BarChart3 className="h-5 w-5 text-clinic-black" />
+            </div>
+            <span className="text-xl font-bold text-clinic-white">
+              Clínica Ballarin
+            </span>
+          </div>
+        </div>
+
+        {/* Navigation Items */}
+        <div className="flex items-center space-x-2">
+          {visibleItems.map((item) => (
+            <Button
+              key={item.path}
+              variant="secondary"
+              size="sm"
+              icon={item.icon}
+              onClick={() => router.push(item.path)}
+              className="hover:bg-clinic-gray-600"
+            >
+              {item.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* User Info & Logout */}
+        <div className="flex items-center space-x-3">
+          {currentUser && (
+            <div className="text-right">
+              <p className="text-clinic-white text-sm font-medium">
+                {currentUser.nome}
+              </p>
+              <p className="text-clinic-gray-400 text-xs capitalize">
+                {currentUser.role}
+              </p>
+            </div>
+          )}
+          <Button
+            variant="secondary"
             size="sm"
+            icon={LogOut}
+            onClick={handleLogout}
+            className="hover:bg-red-600"
           >
-            Voltar
+            Sair
           </Button>
-        )}
-        <div>
-          <h1 className="text-3xl font-bold text-clinic-white">{title}</h1>
-          <p className="text-clinic-gray-400 mt-1">
-            Usuário: <span className="font-semibold text-clinic-cyan">{currentUser.nome_completo}</span>
-            <span className="text-xs ml-2 text-clinic-gray-500">({currentUser.role})</span>
-          </p>
         </div>
       </div>
-      
-      <div className="flex space-x-2">
-        {/* Menu de navegação para admin */}
-        {currentUser.role === 'admin' && (
-          <>
-            <Button variant="secondary" onClick={() => router.push('/dashboard')} icon={Home} size="sm">
-              Dashboard
-            </Button>
-            <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
-              Estoque
-            </Button>
-            <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users} size="sm">
-              Pacientes
-            </Button>
-          </>
-        )}
-        
-        {/* Para staff, apenas dashboard se existir */}
-        {currentUser.role === 'staff' && title !== 'Dashboard Administrativo' && (
-          <Button variant="secondary" onClick={() => router.push('/dashboard')} icon={Home} size="sm">
-            Dashboard
-          </Button>
-        )}
-        
-        <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
-          Sair
-        </Button>
-      </div>
-    </header>
+    </nav>
   )
 }

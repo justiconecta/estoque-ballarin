@@ -36,6 +36,12 @@ interface EstoqueControlProps {
   user: User | null;
 }
 
+// Enhanced error interface for proper typing
+interface ApiError extends Error {
+  status?: number;
+  code?: string;
+}
+
 const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [selectedSku, setSelectedSku] = useState<string>('');
@@ -68,8 +74,9 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
       const data = await response.json();
       console.log('✅ Produtos loaded:', data.length, 'items');
       setProdutos(data);
-    } catch (error) {
-      console.error('❌ Error loading produtos:', error);
+    } catch (err) {
+      const error = err as ApiError;
+      console.error('❌ Error loading produtos:', error.message);
       showModal('error', 'Erro', `Erro ao carregar produtos: ${error.message}`);
     } finally {
       setLoading(false);
@@ -88,8 +95,10 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
       const data = await response.json();
       console.log('✅ Movimentacoes loaded:', data.length, 'items');
       setMovimentacoes(data);
-    } catch (error) {
-      console.error('❌ Error loading movimentacoes:', error);
+    } catch (err) {
+      const error = err as ApiError;
+      console.error('❌ Error loading movimentacoes:', error.message);
+      // Don't show modal for movimentacoes error, just log it
     }
   };
 
@@ -147,8 +156,9 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
       setSelectedSku('');
       setSelectedLote('');
       showModal('success', 'Sucesso!', 'Saída de estoque registrada com sucesso.');
-    } catch (error) {
-      console.error('❌ Error recording saida:', error);
+    } catch (err) {
+      const error = err as ApiError;
+      console.error('❌ Error recording saida:', error.message);
       showModal('error', 'Erro', `Erro ao registrar saída: ${error.message}`);
     } finally {
       setLoading(false);
@@ -208,8 +218,9 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
       setValidadeLote('');
       setSelectedSku('');
       showModal('success', 'Sucesso!', 'Entrada de estoque registrada com sucesso.');
-    } catch (error) {
-      console.error('❌ Error recording entrada:', error);
+    } catch (err) {
+      const error = err as ApiError;
+      console.error('❌ Error recording entrada:', error.message);
       showModal('error', 'Erro', `Erro ao registrar entrada: ${error.message}`);
     } finally {
       setLoading(false);
@@ -240,108 +251,135 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
     return tipo === 'ENTRADA' ? '+' : '-';
   };
 
-  if (loading && produtos.length === 0) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-600 border-t-amber-400 rounded-full animate-spin mx-auto mb-4"></div>
-          <div className="text-amber-400 text-lg">Carregando sistema de estoque...</div>
-          <div className="text-gray-500 text-sm mt-2">Conectando com schema PostgreSQL real...</div>
-        </div>
-      </div>
-    );
-  }
+  const formatDateTime = (dateString: string | Date): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('pt-BR');
+    } catch {
+      return 'Data inválida';
+    }
+  };
 
   return (
-    <div className="space-y-8">
-      <div className="bg-gray-800 bg-opacity-90 p-8 rounded-xl shadow-2xl">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Coluna de Registro */}
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold text-gray-50">Registrar Movimentação</h2>
-              <div className="text-xs text-blue-400 bg-blue-900/20 px-2 py-1 rounded">
-                Schema Real PostgreSQL
-              </div>
-            </div>
-            
-            <div>
-              <label htmlFor="sku-select" className="block text-sm font-medium text-gray-300">
-                1. Escolha o Produto (SKU)
-              </label>
-              <select
-                id="sku-select"
-                value={selectedSku}
-                onChange={(e) => setSelectedSku(e.target.value)}
-                disabled={loading}
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-900 text-gray-50 border border-gray-600 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md disabled:opacity-50"
-              >
-                <option value="">-- Selecione um produto --</option>
-                {produtos.map(produto => (
-                  <option key={produto.id_sku} value={produto.id_sku}>
-                    {produto.nome_comercial_produto} ({produto.classe_terapeutica})
-                  </option>
-                ))}
-              </select>
-            </div>
+    <div className="min-h-screen bg-gray-900 text-gray-300">
+      <div className="max-w-6xl mx-auto p-6">
+        <h1 className="text-3xl font-bold text-amber-400 mb-8">Controle de Estoque</h1>
 
-            {selectedProduto && (
-              <div className="p-4 bg-gray-900 rounded-lg text-center">
-                <p className="text-sm text-gray-400">Estoque Total</p>
-                <p className="text-3xl font-bold text-amber-400">
-                  {totalEstoque} <span className="text-lg font-medium text-gray-300">unidades</span>
-                </p>
-                <div className="border-t border-gray-600 mt-4 pt-2 space-y-1 text-xs text-gray-400">
-                  <div className="flex justify-between items-center">
-                    <span>Estoque Mínimo:</span>
-                    <span className="font-semibold">{selectedProduto.estoque_minimo} dias</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Status:</span>
-                    <span className={`font-semibold ${statusColor}`}>{estoqueStatus}</span>
-                  </div>
-                  <div className="border-t border-gray-600 mt-2 pt-2">
-                    <p className="text-sm font-semibold text-left mb-1">Lotes Disponíveis:</p>
-                    {selectedProduto.lotes.filter(l => l.quantidade > 0).map(lote => (
-                      <div key={lote.id_lote} className="flex justify-between items-center">
-                        <span>Lote (Val: {lote.validade})</span>
-                        <span className="font-semibold">{lote.quantidade} un.</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+        {/* Status do Sistema */}
+        <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-400">Status:</span>
+              <span className="text-green-400">✅ Sistema Operacional</span>
+              <span className="text-sm text-gray-400">|</span>
+              <span className="text-sm text-gray-400">Produtos carregados: {produtos.length}</span>
+              <span className="text-sm text-gray-400">|</span>
+              <span className="text-sm text-gray-400">Usuário: {user?.usuario || 'Sistema'}</span>
+            </div>
+            {loading && (
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-gray-600 border-t-amber-400 rounded-full animate-spin"></div>
+                <span className="text-sm text-gray-400">Processando...</span>
               </div>
             )}
+          </div>
+        </div>
 
-            <hr className="border-gray-600" />
-
-            {/* Saída */}
+        {/* Formulários de Entrada e Saída */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Entrada de Estoque */}
+          <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <h2 className="text-xl font-semibold text-green-400 mb-4">➕ Entrada de Estoque</h2>
+            
             <div className="space-y-4">
-              <p className="font-medium text-gray-50">Registrar Saída (Uso Diário)</p>
-              
-              {selectedProduto && selectedProduto.lotes.filter(l => l.quantidade > 0).length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Produto</label>
+                <select
+                  value={selectedSku}
+                  onChange={(e) => setSelectedSku(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Selecione um produto</option>
+                  {produtos.map((produto) => (
+                    <option key={produto.id_sku} value={produto.id_sku}>
+                      {produto.nome_comercial_produto} - {produto.classe_terapeutica}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Quantidade</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={quantidadeAdicionada}
+                  onChange={(e) => setQuantidadeAdicionada(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Digite a quantidade"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Validade (MM/AAAA)</label>
+                <input
+                  type="text"
+                  value={validadeLote}
+                  onChange={(e) => setValidadeLote(formatValidade(e.target.value))}
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="12/2025"
+                  maxLength={7}
+                />
+              </div>
+
+              <button
+                onClick={handleEntrada}
+                disabled={loading || !selectedSku || !quantidadeAdicionada || !validadeLote}
+                className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium transition-colors"
+              >
+                {loading ? 'Processando...' : 'Registrar Entrada'}
+              </button>
+            </div>
+          </div>
+
+          {/* Saída de Estoque */}
+          <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+            <h2 className="text-xl font-semibold text-red-400 mb-4">➖ Saída de Estoque</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Produto</label>
+                <select
+                  value={selectedSku}
+                  onChange={(e) => {
+                    setSelectedSku(e.target.value);
+                    setSelectedLote(''); // Reset lote selection
+                  }}
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="">Selecione um produto</option>
+                  {produtos.map((produto) => (
+                    <option key={produto.id_sku} value={produto.id_sku}>
+                      {produto.nome_comercial_produto} - {produto.classe_terapeutica}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedProduto && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">
-                    Selecione o Lote para dar baixa
-                  </label>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Lote</label>
                   <select
                     value={selectedLote}
                     onChange={(e) => setSelectedLote(e.target.value)}
-                    disabled={loading}
-                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-900 text-gray-50 border border-gray-600 focus:outline-none focus:ring-amber-500 focus:border-amber-500 sm:text-sm rounded-md disabled:opacity-50"
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500"
                   >
-                    <option value="">-- Selecione um lote --</option>
+                    <option value="">Selecione um lote</option>
                     {selectedProduto.lotes
-                      .filter(l => l.quantidade > 0)
-                      .sort((a, b) => {
-                        const [mesA, anoA] = a.validade.split('/');
-                        const [mesB, anoB] = b.validade.split('/');
-                        return new Date(parseInt(anoA), parseInt(mesA) - 1).getTime() - 
-                               new Date(parseInt(anoB), parseInt(mesB) - 1).getTime();
-                      })
-                      .map(lote => (
+                      .filter(lote => lote.quantidade > 0)
+                      .map((lote) => (
                         <option key={lote.id_lote} value={lote.id_lote}>
-                          Lote (Val: {lote.validade}) - Disponível: {lote.quantidade}
+                          Validade: {lote.validade} - Disponível: {lote.quantidade}
                         </option>
                       ))}
                   </select>
@@ -349,155 +387,185 @@ const EstoqueControl: React.FC<EstoqueControlProps> = ({ user }) => {
               )}
 
               <div>
-                <label className="block text-sm font-medium text-gray-300">
-                  2. Quantidade Utilizada
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Quantidade</label>
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
+                  type="number"
+                  min="1"
                   value={quantidadeUtilizada}
-                  onChange={(e) => setQuantidadeUtilizada(e.target.value.replace(/\D/g, ''))}
-                  disabled={loading}
+                  onChange={(e) => setQuantidadeUtilizada(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-md text-gray-300 focus:outline-none focus:ring-2 focus:ring-red-500"
                   placeholder="Digite a quantidade"
-                  className="mt-1 block w-full px-3 py-2 bg-gray-900 text-gray-50 border border-gray-600 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 sm:text-sm disabled:opacity-50"
                 />
               </div>
 
               <button
                 onClick={handleSaida}
                 disabled={loading || !selectedSku || !selectedLote || !quantidadeUtilizada}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-md font-medium transition-colors"
               >
                 {loading ? 'Processando...' : 'Registrar Saída'}
               </button>
             </div>
-
-            <hr className="border-gray-600" />
-
-            {/* Entrada */}
-            <div className="space-y-4">
-              <p className="font-medium text-gray-50">Registrar Entrada (Recebimento)</p>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300">
-                  3. Quantidade de Unidades para Adicionar
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={quantidadeAdicionada}
-                  onChange={(e) => setQuantidadeAdicionada(e.target.value.replace(/\D/g, ''))}
-                  disabled={loading}
-                  placeholder="Digite a quantidade"
-                  className="mt-1 block w-full px-3 py-2 bg-gray-900 text-gray-50 border border-gray-600 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 sm:text-sm disabled:opacity-50"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300">
-                  4. Validade do Lote Recebido (MM/AAAA)
-                </label>
-                <input
-                  type="text"
-                  placeholder="MM/AAAA"
-                  value={validadeLote}
-                  onChange={(e) => setValidadeLote(formatValidade(e.target.value))}
-                  disabled={loading}
-                  className="mt-1 block w-full px-3 py-2 bg-gray-900 text-gray-50 border border-gray-600 rounded-md shadow-sm focus:ring-amber-500 focus:border-amber-500 sm:text-sm disabled:opacity-50"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Será convertido para data no banco PostgreSQL
-                </p>
-              </div>
-
-              <button
-                onClick={handleEntrada}
-                disabled={loading || !selectedSku || !quantidadeAdicionada || !validadeLote}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-gray-900 bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Processando...' : 'Registrar Entrada'}
-              </button>
-            </div>
-          </div>
-
-          {/* Coluna de Histórico */}
-          <div className="border-l border-gray-600 pl-8">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-semibold text-gray-50">Últimas Movimentações</h2>
-              <button
-                onClick={loadMovimentacoes}
-                disabled={loading}
-                className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded hover:bg-gray-600 disabled:opacity-50"
-              >
-                🔄 Atualizar
-              </button>
-            </div>
-            <div className="space-y-4 max-h-[30rem] overflow-y-auto pr-2">
-              {movimentacoes.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center">Nenhuma movimentação registrada hoje.</p>
-              ) : (
-                movimentacoes.slice().reverse().map((mov, index) => {
-                  const produto = produtos.find(p => p.id_sku === mov.id_sku);
-                  const bgColor = getMovimentacaoColor(mov.tipo_movimentacao);
-                  const textColor = getMovimentacaoTextColor(mov.tipo_movimentacao);
-                  const sign = getMovimentacaoSign(mov.tipo_movimentacao);
-
-                  return (
-                    <div key={index} className={`${bgColor} p-3 rounded-lg border`}>
-                      <div className="flex justify-between items-center">
-                        <p className={`font-medium text-sm ${textColor}`}>{mov.tipo_movimentacao}</p>
-                        <p className={`font-bold text-lg ${textColor}`}>{sign}{mov.quantidade}</p>
-                      </div>
-                      <p className="text-sm text-gray-50">{produto?.nome_comercial_produto || 'Produto não encontrado'}</p>
-                      <p className="text-xs text-gray-400">{mov.observacao || 'Sem observações'}</p>
-                      <div className="text-xs text-gray-500 text-right mt-1">
-                        <span>{mov.usuario} - {new Date(mov.data_movimentacao).toLocaleString('pt-BR')}</span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
           </div>
         </div>
-      </div>
 
-      {/* Modal */}
-      {modalVisible && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="relative mx-auto p-5 border border-gray-600 shadow-lg rounded-md bg-gray-800 w-full max-w-sm">
-            <div className="mt-3 text-center">
-              <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full ${
-                modalData.type === 'success' ? 'bg-green-500' : 'bg-red-500'
-              }`}>
-                {modalData.type === 'success' ? (
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                  </svg>
-                ) : (
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                )}
+        {/* Informações do Produto Selecionado */}
+        {selectedProduto && (
+          <div className="mb-8 p-6 bg-gray-800 rounded-lg border border-gray-700">
+            <h3 className="text-lg font-semibold text-amber-400 mb-4">📊 Informações do Produto</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <span className="text-sm text-gray-400">Produto:</span>
+                <p className="font-medium text-gray-300">{selectedProduto.nome_comercial_produto}</p>
               </div>
-              <h3 className="text-lg leading-6 font-medium text-gray-50">{modalData.title}</h3>
-              <div className="mt-2 px-7 py-3">
-                <p className="text-sm text-gray-300">{modalData.message}</p>
+              <div>
+                <span className="text-sm text-gray-400">Classe:</span>
+                <p className="font-medium text-gray-300">{selectedProduto.classe_terapeutica}</p>
               </div>
-              <div className="items-center px-4 py-3">
+              <div>
+                <span className="text-sm text-gray-400">Estoque Total:</span>
+                <p className={`font-medium ${statusColor}`}>{totalEstoque} unidades</p>
+              </div>
+              <div>
+                <span className="text-sm text-gray-400">Status:</span>
+                <p className={`font-medium ${statusColor}`}>
+                  {estoqueStatus} ({selectedProduto.estoque_minimo} mín.)
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Lista de Produtos com Estoque */}
+        <div className="mb-8 bg-gray-800 p-6 rounded-lg border border-gray-700">
+          <h3 className="text-lg font-semibold text-amber-400 mb-4">📦 Produtos em Estoque</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left py-2 text-gray-300">Produto</th>
+                  <th className="text-left py-2 text-gray-300">Classe</th>
+                  <th className="text-center py-2 text-gray-300">Total</th>
+                  <th className="text-center py-2 text-gray-300">Mínimo</th>
+                  <th className="text-center py-2 text-gray-300">Status</th>
+                  <th className="text-left py-2 text-gray-300">Lotes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {produtos.map((produto) => {
+                  const total = produto.lotes.reduce((sum, lote) => sum + lote.quantidade, 0);
+                  const status = total < produto.estoque_minimo ? 'CRÍTICO' : 'OK';
+                  const statusColorClass = status === 'CRÍTICO' ? 'text-red-400' : 'text-green-400';
+                  
+                  return (
+                    <tr key={produto.id_sku} className="border-b border-gray-700 hover:bg-gray-750">
+                      <td className="py-2 text-gray-300">{produto.nome_comercial_produto}</td>
+                      <td className="py-2 text-gray-400">{produto.classe_terapeutica}</td>
+                      <td className="py-2 text-center text-gray-300">{total}</td>
+                      <td className="py-2 text-center text-gray-400">{produto.estoque_minimo}</td>
+                      <td className={`py-2 text-center font-medium ${statusColorClass}`}>{status}</td>
+                      <td className="py-2 text-gray-400">
+                        {produto.lotes.length > 0 ? (
+                          <div className="space-y-1">
+                            {produto.lotes.slice(0, 2).map((lote) => (
+                              <div key={lote.id_lote} className="text-xs">
+                                {lote.validade}: {lote.quantidade}
+                              </div>
+                            ))}
+                            {produto.lotes.length > 2 && (
+                              <div className="text-xs text-gray-500">
+                                +{produto.lotes.length - 2} lotes
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-500">Sem lotes</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Movimentações Recentes */}
+        <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+          <h3 className="text-lg font-semibold text-amber-400 mb-4">📋 Movimentações Recentes</h3>
+          
+          {movimentacoes.length > 0 ? (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {movimentacoes.map((mov) => (
+                <div key={mov.id_movimentacao || mov.id_lote} className={`p-3 rounded border-l-4 ${getMovimentacaoColor(mov.tipo_movimentacao)}`}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-3">
+                        <span className={`font-medium ${getMovimentacaoTextColor(mov.tipo_movimentacao)}`}>
+                          {getMovimentacaoSign(mov.tipo_movimentacao)}{mov.quantidade} unidades
+                        </span>
+                        <span className="text-gray-400">•</span>
+                        <span className="text-gray-300">
+                          {produtos.find(p => p.id_sku === mov.id_sku)?.nome_comercial_produto || `SKU ${mov.id_sku}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-4 mt-1 text-sm text-gray-400">
+                        <span>Lote: {mov.id_lote}</span>
+                        <span>Usuário: {mov.usuario}</span>
+                        <span>{formatDateTime(mov.data_movimentacao)}</span>
+                      </div>
+                      {mov.observacao && (
+                        <p className="mt-1 text-sm text-gray-500">{mov.observacao}</p>
+                      )}
+                    </div>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      mov.tipo_movimentacao === 'ENTRADA' 
+                        ? 'bg-green-900 text-green-300'
+                        : 'bg-red-900 text-red-300'
+                    }`}>
+                      {mov.tipo_movimentacao}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>Nenhuma movimentação registrada hoje</p>
+            </div>
+          )}
+        </div>
+
+        {/* Modal */}
+        {modalVisible && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 border border-gray-600">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className={`text-lg font-semibold ${
+                  modalData.type === 'success' ? 'text-green-400' : 'text-red-400'
+                }`}>
+                  {modalData.title}
+                </h3>
                 <button
                   onClick={closeModal}
-                  className="px-4 py-2 bg-amber-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="text-gray-400 hover:text-gray-300"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-gray-300 mb-6">{modalData.message}</p>
+              <div className="flex justify-end">
+                <button
+                  onClick={closeModal}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 rounded-md font-medium transition-colors"
                 >
                   OK
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

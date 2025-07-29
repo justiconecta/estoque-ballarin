@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Users, Heart, AlertTriangle, Package, LogOut, Sun, Moon } from 'lucide-react'
+import { Package, Users, LogOut, Heart, Sun, Moon, Home } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario } from '@/types/database'
 
-interface StatsData {
+interface TerapeuticoStats {
   totalPacientes: number
   pacientesAtivos: number
   consultasRealizadas: number
@@ -47,6 +47,7 @@ export default function DashboardTerapeuticoPage() {
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
   const [activeTab, setActiveTab] = useState<'jornada' | 'marketing' | 'terapeutico'>('terapeutico')
   const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<TerapeuticoStats | null>(null)
   const [showDateFilter, setShowDateFilter] = useState(false)
   const [showCustomDates, setShowCustomDates] = useState(false)
   const [dateFilter, setDateFilter] = useState<DateFilter>({
@@ -55,18 +56,10 @@ export default function DashboardTerapeuticoPage() {
     preset: 'hoje'
   })
   const [isDarkTheme, setIsDarkTheme] = useState(true)
-  const [stats, setStats] = useState<StatsData>({
-    totalPacientes: 0,
-    pacientesAtivos: 0,
-    consultasRealizadas: 0,
-    pacientesMaisAtivos: [],
-    efeitosAdversos: [],
-    fatoresSucesso: [],
-    pontosMelhoria: [],
-    satisfacaoGeral: 0,
-    reviewsPositivos: 0,
-    reviewsNegativos: 0
-  })
+
+  // Detectar página atual para botão ativo
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard/terapeutico'
+  const isCurrentPage = (path: string) => currentPath === path
 
   // Verificar autenticação
   useEffect(() => {
@@ -153,42 +146,31 @@ export default function DashboardTerapeuticoPage() {
         },
         {
           fator: 'Resultados dos Tratamentos',
-          score: comentariosPositivos.includes('resultado') ? 9.0 : 8.3,
+          score: comentariosPositivos.includes('resultado') ? 9.0 : 8.2,
           descricao: 'Eficácia dos procedimentos realizados'
         },
         {
-          fator: 'Ambiente Clínico',
-          score: comentariosPositivos.includes('ambiente') || comentariosPositivos.includes('limpo') ? 8.8 : 8.1,
-          descricao: 'Higiene e conforto das instalações'
-        },
-        {
-          fator: 'Profissionalismo',
-          score: comentariosPositivos.includes('profissional') ? 9.1 : 8.4,
-          descricao: 'Competência técnica da equipe'
-        },
-        {
-          fator: 'Pontualidade',
-          score: comentariosPositivos.includes('pontual') || comentariosPositivos.includes('horário') ? 8.7 : 7.9,
-          descricao: 'Cumprimento de horários agendados'
+          fator: 'Ambiente da Clínica',
+          score: comentariosPositivos.includes('ambiente') || comentariosPositivos.includes('limpo') ? 9.1 : 8.7,
+          descricao: 'Qualidade das instalações e higiene'
         }
-      ].sort((a, b) => b.score - a.score)
-      
-      // Análise de pontos de melhoria baseados em reviews negativos
+      ].filter(f => f.score >= 8.0)
+
+      // Pontos de melhoria baseados em reviews negativos
       const comentariosNegativos = reviews
         .filter(r => r.sentimento === 'Negativo')
         .map(r => r.comentario.toLowerCase())
         .join(' ')
-      
+
       const pontosMelhoria = [
         {
           ponto: 'Tempo de Espera',
-          impacto: comentariosNegativos.includes('espera') || comentariosNegativos.includes('demora') ? 'Alto' : 'Baixo',
-          sugestao: 'Otimizar agenda e reduzir tempo entre consultas'
+          impacto: comentariosNegativos.includes('espera') || comentariosNegativos.includes('atraso') ? 'Alto' : 'Baixo',
+          sugestao: 'Otimizar agendamentos e reduzir intervalos'
         },
         {
           ponto: 'Comunicação de Preços',
-          impacto: comentariosNegativos.includes('preço') || comentariosNegativos.includes('caro') ? 
-            'Médio' : 'Baixo',
+          impacto: comentariosNegativos.includes('preço') || comentariosNegativos.includes('caro') ? 'Médio' : 'Baixo',
           sugestao: 'Maior transparência na comunicação de valores'
         },
         {
@@ -255,13 +237,13 @@ export default function DashboardTerapeuticoPage() {
     }
   }, [isDarkTheme])
 
-  const getFilterDisplayName = (preset?: string): string => {
+  const getFilterDisplayName = (preset?: string) => {
     switch (preset) {
       case 'hoje': return 'Hoje'
       case '7dias': return 'Últimos 7 dias'
       case '14dias': return 'Últimos 14 dias'
       case '30dias': return 'Últimos 30 dias'
-      case 'mes_passado': return 'Mês passado'
+      case 'mes_passado': return 'Mês Passado'
       case 'personalizado': return 'Personalizado'
       default: return 'Hoje'
     }
@@ -290,10 +272,6 @@ export default function DashboardTerapeuticoPage() {
         const date30 = new Date(hoje)
         date30.setDate(hoje.getDate() - 30)
         startDate = date30.toISOString().split('T')[0]
-        break
-      case 'mes_passado':
-        const lastMonth = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-        startDate = lastMonth.toISOString().split('T')[0]
         break
     }
 
@@ -329,151 +307,125 @@ export default function DashboardTerapeuticoPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              <Image
-                src="/justiconecta.png"
-                alt="JustiConecta"
-                width={85}
-                height={85}
-                className="rounded-lg"
-              />
-            </div>
-
-        {/* Filtro de Data */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Análise Terapêutica</h2>
-            <div className="relative">
-              <Button
-                variant="secondary"
-                onClick={() => setShowDateFilter(!showDateFilter)}
-                size="md"
-                className="min-w-[140px]"
-              >
-                {getFilterDisplayName(dateFilter.preset)}
-              </Button>
-              
-              {showDateFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
-                  <div className="py-2">
-                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
-                      <button
-                        key={preset}
-                        onClick={() => handleDatePreset(preset)}
-                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                      >
-                        {getFilterDisplayName(preset)}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setShowCustomDates(true)}
-                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                    >
-                      Personalizado
-                    </button>
+        {/* Header Universal */}
+        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/justiconecta.png"
+                  alt="JustiConecta"
+                  width={70}
+                  height={70}
+                  className="rounded-lg"
+                />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
+                    <Heart className="h-5 w-5 text-clinic-cyan" />
                   </div>
-                  
-                  {showCustomDates && (
-                    <div className="border-t border-clinic-gray-700 p-4">
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={dateFilter.startDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                        <input
-                          type="date"
-                          value={dateFilter.endDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                      </div>
-                      <div className="flex space-x-2 mt-3">
-                        <Button size="sm" onClick={handleCustomDateApply}>
-                          Aplicar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          setShowCustomDates(false)
-                          setShowDateFilter(false)
-                        }}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Dashboard Terapêutico</h1>
                 </div>
-              )}
+                <p className="text-clinic-gray-300 text-sm">
+                  Monitoramento da jornada e experiência dos pacientes
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
-            <div>
-              <h1 className="text-3xl font-bold text-clinic-white">Dashboard Acompanhamento Terapêutico</h1>
-              <p className="text-clinic-gray-400 mt-1">
-                Monitoramento da jornada e experiência dos pacientes
-              </p>
+            
+            {/* Navegação Universal */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/dashboard')} 
+                  icon={Home} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/dashboard')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Dashboard
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/estoque')} 
+                  icon={Package} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/estoque')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Estoque
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/pacientes')} 
+                  icon={Users} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/pacientes')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Pacientes
+                </Button>
+              </div>
+              
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={toggleTheme} 
+                  icon={isDarkTheme ? Sun : Moon} 
+                  size="sm"
+                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                />
+                
+                <Button 
+                  variant="secondary" 
+                  onClick={handleLogout} 
+                  icon={LogOut} 
+                  size="sm"
+                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                >
+                  Sair
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
-              Estoque
-            </Button>
-            <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users} size="sm">
-              Pacientes
-            </Button>
-            <Button 
-              variant="secondary" 
-              onClick={toggleTheme} 
-              icon={isDarkTheme ? Sun : Moon} 
-              size="sm"
-              className="min-w-[44px] px-3"
-              title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            />
-            <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
-              Sair
-            </Button>
           </div>
         </header>
 
-        {/* Navegação por Tabs */}
+        {/* Navegação por Tabs - Simplificada */}
         <div className="mb-8">
           <div className="border-b border-clinic-gray-700">
             <nav className="flex space-x-8">
               <button
                 onClick={() => handleTabClick('jornada')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">J</span>
-                </div>
-                <span>Jornada do Paciente</span>
+                Jornada do Cliente
               </button>
               <button
                 onClick={() => handleTabClick('marketing')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">M</span>
-                </div>
-                <span>Dashboard Marketing</span>
+                Marketing
               </button>
               <button
                 onClick={() => handleTabClick('terapeutico')}
-                className={`py-3 px-6 border-b-2 font-medium text-base transition-all duration-200 flex items-center space-x-2 ${
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
                   activeTab === 'terapeutico'
                     ? 'border-clinic-cyan text-clinic-cyan'
                     : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
                 }`}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  activeTab === 'terapeutico' ? 'bg-clinic-cyan text-clinic-black' : 'bg-clinic-gray-600'
-                }`}>
-                  <span className="text-xs font-bold">T</span>
-                </div>
-                <span>Dashboard Terapêutico</span>
+                Terapêutico
               </button>
             </nav>
           </div>
@@ -482,223 +434,236 @@ export default function DashboardTerapeuticoPage() {
         {/* Filtro de Data */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Análise Terapêutica</h2>
+            <h2 className="text-xl font-semibold text-clinic-white">Acompanhamento Terapêutico</h2>
             <div className="relative">
               <Button
                 variant="secondary"
                 onClick={() => setShowDateFilter(!showDateFilter)}
                 size="md"
-                className="min-w-[140px]"
+                className="min-w-[160px] justify-center"
               >
                 {getFilterDisplayName(dateFilter.preset)}
               </Button>
               
               {showDateFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
-                  <div className="py-2">
-                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
+                <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-clinic-lg z-50 min-w-[200px]">
+                  <div className="p-3">
+                    <div className="space-y-2">
+                      {[
+                        { key: 'hoje', label: 'Hoje' },
+                        { key: '7dias', label: 'Últimos 7 dias' },
+                        { key: '14dias', label: 'Últimos 14 dias' },
+                        { key: '30dias', label: 'Últimos 30 dias' },
+                        { key: 'mes_passado', label: 'Mês Passado' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.key}
+                          onClick={() => handleDatePreset(preset.key)}
+                          className="block w-full text-left px-3 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700 rounded transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                       <button
-                        key={preset}
-                        onClick={() => handleDatePreset(preset)}
-                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
+                        onClick={() => setShowCustomDates(!showCustomDates)}
+                        className="block w-full text-left px-3 py-2 text-sm text-clinic-cyan hover:bg-clinic-gray-700 rounded transition-colors"
                       >
-                        {getFilterDisplayName(preset)}
+                        Personalizado
                       </button>
-                    ))}
-                    <button
-                      onClick={() => setShowCustomDates(true)}
-                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                    >
-                      Personalizado
-                    </button>
-                  </div>
-                  
-                  {showCustomDates && (
-                    <div className="border-t border-clinic-gray-700 p-4">
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={dateFilter.startDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                        <input
-                          type="date"
-                          value={dateFilter.endDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                      </div>
-                      <div className="flex space-x-2 mt-3">
-                        <Button size="sm" onClick={handleCustomDateApply}>
-                          Aplicar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          setShowCustomDates(false)
-                          setShowDateFilter(false)
-                        }}>
-                          Cancelar
-                        </Button>
-                      </div>
                     </div>
-                  )}
+                    
+                    {showCustomDates && (
+                      <div className="mt-3 pt-3 border-t border-clinic-gray-600">
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">De:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.startDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">Até:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.endDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div className="flex space-x-2 mt-3">
+                            <Button size="sm" onClick={handleCustomDateApply}>
+                              Aplicar
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => {
+                              setShowCustomDates(false)
+                              setShowDateFilter(false)
+                            }}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Métricas Principais */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card className="bg-gradient-to-br from-clinic-cyan/10 to-clinic-cyan/5 border-clinic-cyan/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Pacientes Cadastrados</p>
-                <p className="text-3xl font-bold text-clinic-white">{stats.totalPacientes}</p>
-                <p className="text-clinic-cyan text-sm mt-1">Total no sistema</p>
-              </div>
-              <Users className="h-12 w-12 text-clinic-cyan" />
-            </div>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Pacientes Ativos</p>
-                <p className="text-3xl font-bold text-clinic-white">{stats.pacientesAtivos}</p>
-                <p className="text-green-400 text-sm mt-1">Com procedimentos</p>
-              </div>
-              <Heart className="h-12 w-12 text-green-400" />
-            </div>
-          </Card>
-
-          <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Consultas Realizadas</p>
-                <p className="text-3xl font-bold text-clinic-white">{stats.consultasRealizadas}</p>
-                <p className="text-blue-400 text-sm mt-1">Procedimentos concluídos</p>
-              </div>
-              <Users className="h-12 w-12 text-blue-400" />
-            </div>
-          </Card>
-        </div>
-
-        {/* Rankings e Análises */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <Card title="Top 10 - Pacientes Mais Ativos">
-            <div className="space-y-3 max-h-80 overflow-y-auto">
-              {stats.pacientesMaisAtivos.length > 0 ? (
-                stats.pacientesMaisAtivos.map((paciente, index) => (
-                  <div key={paciente.nome} className="flex items-center justify-between p-3 bg-clinic-gray-700 rounded-lg">
-                    <div className="flex items-center">
-                      <span className="text-clinic-gray-400 text-sm mr-3">{index + 1}.</span>
-                      <div>
-                        <span className="text-clinic-white font-medium">{paciente.nome}</span>
-                        <p className="text-clinic-gray-400 text-xs">Última interação: {paciente.ultimaInteracao}</p>
-                      </div>
-                    </div>
-                    <div className="text-clinic-cyan font-bold">{paciente.resumosDiarios}</div>
+        {/* Conteúdo do Dashboard Terapêutico */}
+        {stats && (
+          <div className="space-y-6">
+            {/* Cards de Métricas Principais */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <Card>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-clinic-cyan mb-1">
+                    {stats.totalPacientes}
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-clinic-gray-400">Nenhum paciente ativo encontrado</p>
+                  <p className="text-clinic-gray-400 text-sm">Total de Pacientes</p>
                 </div>
-              )}
+              </Card>
+              
+              <Card>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-green-400 mb-1">
+                    {stats.pacientesAtivos}
+                  </div>
+                  <p className="text-clinic-gray-400 text-sm">Pacientes Ativos</p>
+                </div>
+              </Card>
+              
+              <Card>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-clinic-white mb-1">
+                    {stats.consultasRealizadas}
+                  </div>
+                  <p className="text-clinic-gray-400 text-sm">Consultas Realizadas</p>
+                </div>
+              </Card>
+              
+              <Card>
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-clinic-cyan mb-1">
+                    {stats.satisfacaoGeral}%
+                  </div>
+                  <p className="text-clinic-gray-400 text-sm">Satisfação Geral</p>
+                </div>
+              </Card>
             </div>
-          </Card>
 
-          <Card title="Efeitos Adversos Relatados">
-            <div className="space-y-3">
-              {stats.efeitosAdversos.length > 0 ? (
-                stats.efeitosAdversos.map((efeito, index) => (
-                  <div key={efeito.efeito} className="flex items-center justify-between p-2 bg-clinic-gray-700 rounded">
-                    <div className="flex items-center">
-                      <span className="text-clinic-gray-400 text-sm mr-2">{index + 1}.</span>
-                      <span className="text-clinic-white text-sm capitalize">{efeito.efeito}</span>
-                    </div>
-                    <div className="flex items-center">
-                      <span className="text-red-400 font-medium mr-2">{efeito.relatos}</span>
-                      <AlertTriangle className="h-4 w-4 text-red-400" />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-clinic-gray-400">Nenhum efeito adverso relatado</p>
-                </div>
-              )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Dashboard CX */}
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-clinic-white mb-6 text-center">Dashboard CX</h2>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Satisfação Geral */}
-            <Card title="Satisfação Geral">
-              <div className="text-center py-6">
-                <div className="text-6xl font-bold text-clinic-cyan mb-2">
-                  {stats.satisfacaoGeral}%
-                </div>
-                <p className="text-clinic-gray-400 mb-4">Índice de satisfação</p>
-                <div className="flex justify-center space-x-4 text-sm">
-                  <div className="text-green-400">
-                    <span className="font-bold">{stats.reviewsPositivos}</span> positivos
-                  </div>
-                  <div className="text-red-400">
-                    <span className="font-bold">{stats.reviewsNegativos}</span> negativos
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Fatores de Sucesso */}
-            <Card title="Top 5 - Fatores de Sucesso">
-              <div className="space-y-3">
-                {stats.fatoresSucesso.map((fator, index) => (
-                  <div key={fator.fator} className="p-3 bg-clinic-gray-700 rounded-lg">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-clinic-white font-medium text-sm">{fator.fator}</span>
-                      <span className="text-green-400 font-bold">{fator.score}</span>
-                    </div>
-                    <p className="text-clinic-gray-400 text-xs">{fator.descricao}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Pontos de Melhoria */}
-            <Card title="Pontos de Melhoria">
-              <div className="space-y-3">
-                {stats.pontosMelhoria.length > 0 ? (
-                  stats.pontosMelhoria.map((ponto, index) => (
-                    <div key={ponto.ponto} className="p-3 bg-clinic-gray-700 rounded-lg">
+            {/* Grid Principal */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Fatores de Sucesso */}
+              <Card title="Fatores de Sucesso">
+                <div className="space-y-4">
+                  {stats.fatoresSucesso.map((fator, index) => (
+                    <div key={index} className="bg-clinic-gray-700 p-4 rounded-lg">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-clinic-white font-medium text-sm">{ponto.ponto}</span>
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          ponto.impacto === 'Alto' ? 'bg-red-500/20 text-red-400' :
-                          ponto.impacto === 'Médio' ? 'bg-yellow-500/20 text-yellow-400' :
-                          'bg-green-500/20 text-green-400'
+                        <h4 className="text-clinic-white font-medium">{fator.fator}</h4>
+                        <span className="text-green-400 font-bold">{fator.score}/10</span>
+                      </div>
+                      <p className="text-clinic-gray-300 text-sm">{fator.descricao}</p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* Pontos de Melhoria */}
+              <Card title="Pontos de Melhoria">
+                <div className="space-y-4">
+                  {stats.pontosMelhoria.map((ponto, index) => (
+                    <div key={index} className="bg-clinic-gray-700 p-4 rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-clinic-white font-medium">{ponto.ponto}</h4>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          ponto.impacto === 'Alto' ? 'bg-red-900 text-red-200' :
+                          ponto.impacto === 'Médio' ? 'bg-yellow-900 text-yellow-200' :
+                          'bg-green-900 text-green-200'
                         }`}>
                           {ponto.impacto}
                         </span>
                       </div>
-                      <p className="text-clinic-gray-400 text-xs">{ponto.sugestao}</p>
+                      <p className="text-clinic-gray-300 text-sm">{ponto.sugestao}</p>
                     </div>
-                  ))
+                  ))}
+                </div>
+              </Card>
+
+              {/* Pacientes Mais Ativos */}
+              <Card title="Pacientes Mais Ativos">
+                <div className="space-y-3">
+                  {stats.pacientesMaisAtivos.map((paciente, index) => (
+                    <div key={index} className="flex justify-between items-center bg-clinic-gray-700 p-3 rounded-lg">
+                      <div>
+                        <p className="text-clinic-white font-medium">{paciente.nome}</p>
+                        <p className="text-clinic-gray-400 text-sm">Última: {paciente.ultimaInteracao}</p>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-clinic-cyan font-bold">{paciente.resumosDiarios}</div>
+                        <div className="text-clinic-gray-400 text-xs">interações</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* Efeitos Adversos */}
+              <Card title="Efeitos Adversos Reportados">
+                {stats.efeitosAdversos.length === 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-green-400">Nenhum efeito adverso reportado</p>
+                  </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-clinic-gray-400">Nenhum ponto crítico identificado</p>
+                  <div className="space-y-3">
+                    {stats.efeitosAdversos.map((efeito, index) => (
+                      <div key={index} className="flex justify-between items-center">
+                        <span className="text-clinic-white">{efeito.efeito}</span>
+                        <span className="bg-orange-900 text-orange-200 px-2 py-1 rounded text-sm">
+                          {efeito.relatos} relato{efeito.relatos > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-            </Card>
+              </Card>
+            </div>
+
+            {/* Reviews Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Card title="Reviews Positivos">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-green-400 mb-2">
+                    {stats.reviewsPositivos}
+                  </div>
+                  <p className="text-clinic-gray-400">avaliações positivas</p>
+                </div>
+              </Card>
+              
+              <Card title="Reviews Negativos">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-red-400 mb-2">
+                    {stats.reviewsNegativos}
+                  </div>
+                  <p className="text-clinic-gray-400">avaliações negativas</p>
+                </div>
+              </Card>
+              
+              <Card title="Taxa de Satisfação">
+                <div className="text-center">
+                  <div className="text-4xl font-bold text-clinic-cyan mb-2">
+                    {stats.satisfacaoGeral}%
+                  </div>
+                  <p className="text-clinic-gray-400">de satisfação geral</p>
+                </div>
+              </Card>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )

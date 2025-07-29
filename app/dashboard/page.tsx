@@ -8,9 +8,12 @@ import {
   Package, 
   Users, 
   BarChart3,
-  Heart,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
   Sun,
-  Moon
+  Moon,
+  Home
 } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -53,19 +56,11 @@ export default function DashboardPage() {
   })
   const [isDarkTheme, setIsDarkTheme] = useState(true)
 
-  const getFilterDisplayName = (preset?: string): string => {
-    switch (preset) {
-      case 'hoje': return 'Hoje'
-      case '7dias': return 'Últimos 7 dias'
-      case '14dias': return 'Últimos 14 dias'
-      case '30dias': return 'Últimos 30 dias'
-      case 'mes_passado': return 'Mês passado'
-      case 'personalizado': return 'Personalizado'
-      default: return 'Hoje'
-    }
-  }
+  // Detectar página atual para botão ativo
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard'
+  const isCurrentPage = (path: string) => currentPath === path
 
-  // Verificar autenticação e permissão
+  // Verificar autenticação
   useEffect(() => {
     const userData = localStorage.getItem('ballarin_user')
     if (!userData) {
@@ -75,10 +70,6 @@ export default function DashboardPage() {
     
     try {
       const user = JSON.parse(userData) as Usuario
-      if (user.role !== 'admin') {
-        router.push('/estoque')
-        return
-      }
       setCurrentUser(user)
     } catch {
       router.push('/login')
@@ -96,20 +87,23 @@ export default function DashboardPage() {
     try {
       setLoading(true)
       
-      // Carregar produtos para calcular estatísticas
-      const produtos = await supabaseApi.getProdutos()
-      const movimentacoes = await supabaseApi.getMovimentacoes(100)
-      const pacientes = await supabaseApi.getPacientes(1000)
-      
-      // Calcular estatísticas
+      // Carregar dados dos diferentes módulos
+      const [produtos, movimentacoes, pacientes, procedimentos] = await Promise.all([
+        supabaseApi.getProdutos().catch(() => []),
+        supabaseApi.getMovimentacoes(100).catch(() => []),
+        supabaseApi.getPacientes(1000).catch(() => []),
+        supabaseApi.getProcedimentos(100).catch(() => [])
+      ])
+
+      // Calcular estatísticas de produtos
       const totalProdutos = produtos.length
-      const estoqueTotal = produtos.reduce((sum, produto) => 
-        sum + produto.lotes.reduce((loteSum, lote) => loteSum + lote.quantidade_disponivel, 0), 0
-      )
-      
-      // Filtrar movimentações por data se filtro ativo
+      const estoqueTotal = produtos.reduce((sum, produto) => {
+        return sum + produto.lotes.reduce((loteSum, lote) => loteSum + lote.quantidade_disponivel, 0)
+      }, 0)
+
+      // Movimentações filtradas por data
       let movimentacoesFiltradas = movimentacoes
-      if (dateFilter.startDate || dateFilter.endDate) {
+      if (dateFilter.preset !== 'hoje' || dateFilter.startDate !== dateFilter.endDate) {
         movimentacoesFiltradas = movimentacoes.filter(mov => {
           const movDate = new Date(mov.data_movimentacao).toDateString()
           const startDate = dateFilter.startDate ? new Date(dateFilter.startDate).toDateString() : null
@@ -138,7 +132,6 @@ export default function DashboardPage() {
       const totalPacientes = pacientes.length
       
       // Consultas baseadas em dados reais
-      const procedimentos = await supabaseApi.getProcedimentos(100)
       const consultasHoje = procedimentos.filter(proc => {
         const procDate = new Date(proc.data_realizacao || '').toDateString()
         const hoje = new Date().toDateString()
@@ -185,6 +178,18 @@ export default function DashboardPage() {
       document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
     }
   }, [isDarkTheme])
+
+  const getFilterDisplayName = (preset?: string) => {
+    switch (preset) {
+      case 'hoje': return 'Hoje'
+      case '7dias': return 'Últimos 7 dias'
+      case '14dias': return 'Últimos 14 dias'
+      case '30dias': return 'Últimos 30 dias'
+      case 'mes_passado': return 'Mês Passado'
+      case 'personalizado': return 'Personalizado'
+      default: return 'Hoje'
+    }
+  }
 
   const handleDatePreset = (preset: string) => {
     const hoje = new Date()
@@ -250,82 +255,125 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              <Image
-                src="/justiconecta.png"
-                alt="JustiConecta"
-                width={85}
-                height={85}
-                className="rounded-lg"
-              />
+        {/* Header Universal */}
+        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/justiconecta.png"
+                  alt="JustiConecta"
+                  width={70}
+                  height={70}
+                  className="rounded-lg"
+                />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
+                    <Home className="h-5 w-5 text-clinic-cyan" />
+                  </div>
+                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Dashboard Geral</h1>
+                </div>
+                <p className="text-clinic-gray-300 text-sm">
+                  Visão completa das operações e métricas da clínica
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-clinic-white">Dashboard Geral da Clínica</h1>
-              <p className="text-clinic-gray-400 mt-1">
-                Visão completa das operações e métricas
-              </p>
+            
+            {/* Navegação Universal */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/dashboard')} 
+                  icon={Home} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/dashboard')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Dashboard
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/estoque')} 
+                  icon={Package} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/estoque')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Estoque
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/pacientes')} 
+                  icon={Users} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/pacientes')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Pacientes
+                </Button>
+              </div>
+              
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={toggleTheme} 
+                  icon={isDarkTheme ? Sun : Moon} 
+                  size="sm"
+                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                />
+                
+                <Button 
+                  variant="secondary" 
+                  onClick={handleLogout} 
+                  icon={LogOut} 
+                  size="sm"
+                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                >
+                  Sair
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
-              Estoque
-            </Button>
-            <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users} size="sm">
-              Pacientes
-            </Button>
-            <Button 
-              variant="secondary" 
-              onClick={toggleTheme} 
-              icon={isDarkTheme ? Sun : Moon} 
-              size="sm"
-              className="min-w-[44px] px-3"
-              title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            />
-            <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
-              Sair
-            </Button>
           </div>
         </header>
 
-        {/* Navegação por Tabs */}
+        {/* Navegação por Tabs - Simplificada */}
         <div className="mb-8">
           <div className="border-b border-clinic-gray-700">
             <nav className="flex space-x-8">
               <button
                 onClick={() => handleTabClick('jornada')}
-                className={`py-3 px-6 border-b-2 font-medium text-base transition-all duration-200 flex items-center space-x-2 ${
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
                   activeTab === 'jornada'
                     ? 'border-clinic-cyan text-clinic-cyan'
                     : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
                 }`}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  activeTab === 'jornada' ? 'bg-clinic-cyan text-clinic-black' : 'bg-clinic-gray-600'
-                }`}>
-                  <span className="text-xs font-bold">J</span>
-                </div>
-                <span>Jornada do Paciente</span>
+                Jornada do Cliente
               </button>
               <button
                 onClick={() => handleTabClick('marketing')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">M</span>
-                </div>
-                <span>Dashboard Marketing</span>
+                Marketing
               </button>
               <button
                 onClick={() => handleTabClick('terapeutico')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">T</span>
-                </div>
-                <span>Dashboard Terapêutico</span>
+                Terapêutico
               </button>
             </nav>
           </div>
@@ -334,91 +382,107 @@ export default function DashboardPage() {
         {/* Filtro de Data */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Métricas Operacionais</h2>
+            <h2 className="text-xl font-semibold text-clinic-white">Jornada do Cliente</h2>
             <div className="relative">
               <Button
                 variant="secondary"
                 onClick={() => setShowDateFilter(!showDateFilter)}
                 size="md"
-                className="min-w-[140px]"
+                className="min-w-[160px] justify-center"
               >
                 {getFilterDisplayName(dateFilter.preset)}
               </Button>
               
               {showDateFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
-                  <div className="py-2">
-                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
+                <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-clinic-lg z-50 min-w-[200px]">
+                  <div className="p-3">
+                    <div className="space-y-2">
+                      {[
+                        { key: 'hoje', label: 'Hoje' },
+                        { key: '7dias', label: 'Últimos 7 dias' },
+                        { key: '14dias', label: 'Últimos 14 dias' },
+                        { key: '30dias', label: 'Últimos 30 dias' },
+                        { key: 'mes_passado', label: 'Mês Passado' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.key}
+                          onClick={() => handleDatePreset(preset.key)}
+                          className="block w-full text-left px-3 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700 rounded transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                       <button
-                        key={preset}
-                        onClick={() => handleDatePreset(preset)}
-                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
+                        onClick={() => setShowCustomDates(!showCustomDates)}
+                        className="block w-full text-left px-3 py-2 text-sm text-clinic-cyan hover:bg-clinic-gray-700 rounded transition-colors"
                       >
-                        {getFilterDisplayName(preset)}
+                        Personalizado
                       </button>
-                    ))}
-                    <button
-                      onClick={() => setShowCustomDates(true)}
-                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                    >
-                      Personalizado
-                    </button>
-                  </div>
-                  
-                  {showCustomDates && (
-                    <div className="border-t border-clinic-gray-700 p-4">
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={dateFilter.startDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                        <input
-                          type="date"
-                          value={dateFilter.endDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                      </div>
-                      <div className="flex space-x-2 mt-3">
-                        <Button size="sm" onClick={handleCustomDateApply}>
-                          Aplicar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          setShowCustomDates(false)
-                          setShowDateFilter(false)
-                        }}>
-                          Cancelar
-                        </Button>
-                      </div>
                     </div>
-                  )}
+                    
+                    {showCustomDates && (
+                      <div className="mt-3 pt-3 border-t border-clinic-gray-600">
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">De:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.startDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">Até:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.endDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div className="flex space-x-2 mt-3">
+                            <Button size="sm" onClick={handleCustomDateApply}>
+                              Aplicar
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => {
+                              setShowCustomDates(false)
+                              setShowDateFilter(false)
+                            }}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Métricas Principais */}
+        {/* Cards de Métricas Principais */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="bg-gradient-to-br from-clinic-gray-800 to-clinic-gray-700 border-clinic-gray-600">
+          <Card>
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Package className="h-8 w-8 text-clinic-cyan" />
+              <div className="p-2 bg-clinic-cyan/20 rounded-lg">
+                <Package className={`h-6 w-6 ${
+                  stats.totalProdutos > 0 ? 'text-clinic-cyan' : 'text-gray-400'
+                }`} />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-clinic-gray-400">Total Produtos</p>
                 <p className="text-2xl font-bold text-clinic-white">{stats.totalProdutos}</p>
-                <p className="text-xs text-clinic-cyan">produtos cadastrados</p>
+                <p className="text-xs text-clinic-gray-400">produtos ativos</p>
               </div>
             </div>
           </Card>
 
-          <Card className="bg-gradient-to-br from-clinic-gray-800 to-clinic-gray-700 border-clinic-gray-600">
+          <Card>
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Package className="h-8 w-8 text-green-400" />
+              <div className="p-2 bg-green-500/20 rounded-lg">
+                <TrendingUp className="h-6 w-6 text-green-400" />
               </div>
               <div className="ml-4">
                 <p className="text-sm font-medium text-clinic-gray-400">Estoque Total</p>
@@ -428,28 +492,23 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          <Card className="bg-gradient-to-br from-clinic-gray-800 to-clinic-gray-700 border-clinic-gray-600">
+          <Card>
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Users className="h-8 w-8 text-blue-400" />
+              <div className="p-2 bg-blue-500/20 rounded-lg">
+                <BarChart3 className="h-6 w-6 text-blue-400" />
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-clinic-gray-400">Total Pacientes</p>
-                <p className="text-2xl font-bold text-clinic-white">{stats.totalPacientes}</p>
-                <p className="text-xs text-blue-400">pacientes cadastrados</p>
+                <p className="text-sm font-medium text-clinic-gray-400">Movimentações</p>
+                <p className="text-2xl font-bold text-clinic-white">{stats.movimentacoesHoje}</p>
+                <p className="text-xs text-blue-400">no período selecionado</p>
               </div>
             </div>
           </Card>
 
-          <Card className={`
-            bg-gradient-to-br border 
-            ${stats.produtosBaixoEstoque > 0 
-              ? 'from-red-500/10 to-red-600/10 border-red-500/20' 
-              : 'from-green-500/10 to-green-600/10 border-green-500/20'
-            }`}>
+          <Card>
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <Package className={`h-8 w-8 ${
+              <div className="p-2 bg-red-500/20 rounded-lg">
+                <AlertCircle className={`h-6 w-6 ${
                   stats.produtosBaixoEstoque > 0 ? 'text-red-400' : 'text-green-400'
                 }`} />
               </div>
@@ -468,21 +527,21 @@ export default function DashboardPage() {
 
         {/* Conteúdo da Jornada do Paciente */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card title="Movimentações Recentes">
+          <Card title="Pacientes Cadastrados">
             <div className="text-center py-6">
-              <div className="text-4xl font-bold text-clinic-white mb-2">
-                {stats.movimentacoesHoje}
+              <div className="text-4xl font-bold text-clinic-cyan mb-2">
+                {stats.totalPacientes}
               </div>
-              <p className="text-clinic-gray-400">movimentações no período</p>
+              <p className="text-clinic-gray-400">pacientes no sistema</p>
             </div>
           </Card>
           
           <Card title="Consultas do Dia">
             <div className="text-center py-6">
-              <div className="text-4xl font-bold text-clinic-cyan mb-2">
+              <div className="text-4xl font-bold text-green-400 mb-2">
                 {stats.consultasHoje}
               </div>
-              <p className="text-clinic-gray-400">procedimentos realizados</p>
+              <p className="text-clinic-gray-400">procedimentos realizados hoje</p>
             </div>
           </Card>
         </div>

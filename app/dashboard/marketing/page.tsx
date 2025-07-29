@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeft, Package, Users, LogOut, BarChart3, TrendingUp, Sun, Moon } from 'lucide-react'
+import { ArrowLeft, Package, Users, LogOut, BarChart3, TrendingUp, Sun, Moon, Home } from 'lucide-react'
 import { Button, Card, Select } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario } from '@/types/database'
@@ -39,6 +39,10 @@ export default function DashboardMarketingPage() {
     preset: 'hoje'
   })
   const [isDarkTheme, setIsDarkTheme] = useState(true)
+
+  // Detectar página atual para botão ativo
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard/marketing'
+  const isCurrentPage = (path: string) => currentPath === path
 
   // Verificar autenticação
   useEffect(() => {
@@ -161,59 +165,6 @@ export default function DashboardMarketingPage() {
     }
   }
 
-  const getFilterDisplayName = (preset?: string): string => {
-    switch (preset) {
-      case 'hoje': return 'Hoje'
-      case '7dias': return 'Últimos 7 dias'
-      case '14dias': return 'Últimos 14 dias'
-      case '30dias': return 'Últimos 30 dias'
-      case 'mes_passado': return 'Mês passado'
-      case 'personalizado': return 'Personalizado'
-      default: return 'Hoje'
-    }
-  }
-
-  const handleDatePreset = (preset: string) => {
-    const hoje = new Date()
-    const endDate = hoje.toISOString().split('T')[0]
-    let startDate = endDate
-
-    switch (preset) {
-      case 'hoje':
-        startDate = endDate
-        break
-      case '7dias':
-        const date7 = new Date(hoje)
-        date7.setDate(hoje.getDate() - 7)
-        startDate = date7.toISOString().split('T')[0]
-        break
-      case '14dias':
-        const date14 = new Date(hoje)
-        date14.setDate(hoje.getDate() - 14)
-        startDate = date14.toISOString().split('T')[0]
-        break
-      case '30dias':
-        const date30 = new Date(hoje)
-        date30.setDate(hoje.getDate() - 30)
-        startDate = date30.toISOString().split('T')[0]
-        break
-      case 'mes_passado':
-        const lastMonth = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-        startDate = lastMonth.toISOString().split('T')[0]
-        break
-    }
-
-    setDateFilter({ startDate, endDate, preset })
-    setShowDateFilter(false)
-    setShowCustomDates(false)
-  }
-
-  const handleCustomDateApply = () => {
-    setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
-    setShowCustomDates(false)
-    setShowDateFilter(false)
-  }
-
   const handleLogout = () => {
     localStorage.removeItem('ballarin_user')
     router.push('/login')
@@ -249,6 +200,55 @@ export default function DashboardMarketingPage() {
     }
   }
 
+  const getFilterDisplayName = (preset?: string) => {
+    switch (preset) {
+      case 'hoje': return 'Hoje'
+      case '7dias': return 'Últimos 7 dias'
+      case '14dias': return 'Últimos 14 dias'
+      case '30dias': return 'Últimos 30 dias'
+      case 'mes_passado': return 'Mês Passado'
+      case 'personalizado': return 'Personalizado'
+      default: return 'Hoje'
+    }
+  }
+
+  const handleDatePreset = (preset: string) => {
+    const hoje = new Date()
+    const endDate = hoje.toISOString().split('T')[0]
+    let startDate = endDate
+
+    switch (preset) {
+      case 'hoje':
+        startDate = endDate
+        break
+      case '7dias':
+        const date7 = new Date(hoje)
+        date7.setDate(hoje.getDate() - 7)
+        startDate = date7.toISOString().split('T')[0]
+        break
+      case '14dias':
+        const date14 = new Date(hoje)
+        date14.setDate(hoje.getDate() - 14)
+        startDate = date14.toISOString().split('T')[0]
+        break
+      case '30dias':
+        const date30 = new Date(hoje)
+        date30.setDate(hoje.getDate() - 30)
+        startDate = date30.toISOString().split('T')[0]
+        break
+    }
+
+    setDateFilter({ startDate, endDate, preset })
+    setShowDateFilter(false)
+    setShowCustomDates(false)
+  }
+
+  const handleCustomDateApply = () => {
+    setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
+    setShowCustomDates(false)
+    setShowDateFilter(false)
+  }
+
   if (!currentUser || loading) {
     return (
       <div className="min-h-screen bg-clinic-black flex items-center justify-center">
@@ -260,151 +260,125 @@ export default function DashboardMarketingPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-          <div className="flex items-center space-x-4">
-            <div className="flex-shrink-0">
-              <Image
-                src="/justiconecta.png"
-                alt="JustiConecta"
-                width={85}
-                height={85}
-                className="rounded-lg"
-              />
-            </div>
-
-        {/* Filtro de Data */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Análise de Marketing</h2>
-            <div className="relative">
-              <Button
-                variant="secondary"
-                onClick={() => setShowDateFilter(!showDateFilter)}
-                size="md"
-                className="min-w-[140px]"
-              >
-                {getFilterDisplayName(dateFilter.preset)}
-              </Button>
-              
-              {showDateFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
-                  <div className="py-2">
-                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
-                      <button
-                        key={preset}
-                        onClick={() => handleDatePreset(preset)}
-                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                      >
-                        {getFilterDisplayName(preset)}
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => setShowCustomDates(true)}
-                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                    >
-                      Personalizado
-                    </button>
+        {/* Header Universal */}
+        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/justiconecta.png"
+                  alt="JustiConecta"
+                  width={70}
+                  height={70}
+                  className="rounded-lg"
+                />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
+                    <BarChart3 className="h-5 w-5 text-clinic-cyan" />
                   </div>
-                  
-                  {showCustomDates && (
-                    <div className="border-t border-clinic-gray-700 p-4">
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={dateFilter.startDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                        <input
-                          type="date"
-                          value={dateFilter.endDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                      </div>
-                      <div className="flex space-x-2 mt-3">
-                        <Button size="sm" onClick={handleCustomDateApply}>
-                          Aplicar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          setShowCustomDates(false)
-                          setShowDateFilter(false)
-                        }}>
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Dashboard Marketing</h1>
                 </div>
-              )}
+                <p className="text-clinic-gray-300 text-sm">
+                  Análise de performance e oportunidades de marketing
+                </p>
+              </div>
             </div>
-          </div>
-        </div>
-            <div>
-              <h1 className="text-3xl font-bold text-clinic-white">Dashboard Marketing</h1>
-              <p className="text-clinic-gray-400 mt-1">
-                Análise de performance e oportunidades de marketing
-              </p>
+            
+            {/* Navegação Universal */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/dashboard')} 
+                  icon={Home} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/dashboard')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Dashboard
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/estoque')} 
+                  icon={Package} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/estoque')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Estoque
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/pacientes')} 
+                  icon={Users} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/pacientes')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Pacientes
+                </Button>
+              </div>
+              
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={toggleTheme} 
+                  icon={isDarkTheme ? Sun : Moon} 
+                  size="sm"
+                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                />
+                
+                <Button 
+                  variant="secondary" 
+                  onClick={handleLogout} 
+                  icon={LogOut} 
+                  size="sm"
+                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                >
+                  Sair
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
-              Estoque
-            </Button>
-            <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users} size="sm">
-              Pacientes
-            </Button>
-            <Button 
-              variant="secondary" 
-              onClick={toggleTheme} 
-              icon={isDarkTheme ? Sun : Moon} 
-              size="sm"
-              className="min-w-[44px] px-3"
-              title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-            />
-            <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
-              Sair
-            </Button>
           </div>
         </header>
 
-        {/* Navegação por Tabs */}
+        {/* Navegação por Tabs - Simplificada */}
         <div className="mb-8">
           <div className="border-b border-clinic-gray-700">
             <nav className="flex space-x-8">
               <button
                 onClick={() => handleTabClick('jornada')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">J</span>
-                </div>
-                <span>Jornada do Paciente</span>
+                Jornada do Cliente
               </button>
               <button
                 onClick={() => handleTabClick('marketing')}
-                className={`py-3 px-6 border-b-2 font-medium text-base transition-all duration-200 flex items-center space-x-2 ${
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
                   activeTab === 'marketing'
                     ? 'border-clinic-cyan text-clinic-cyan'
                     : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
                 }`}
               >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                  activeTab === 'marketing' ? 'bg-clinic-cyan text-clinic-black' : 'bg-clinic-gray-600'
-                }`}>
-                  <span className="text-xs font-bold">M</span>
-                </div>
-                <span>Dashboard Marketing</span>
+                Marketing
               </button>
               <button
                 onClick={() => handleTabClick('terapeutico')}
-                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
-                  <span className="text-xs font-bold">T</span>
-                </div>
-                <span>Dashboard Terapêutico</span>
+                Terapêutico
               </button>
             </nav>
           </div>
@@ -419,173 +393,176 @@ export default function DashboardMarketingPage() {
                 variant="secondary"
                 onClick={() => setShowDateFilter(!showDateFilter)}
                 size="md"
-                className="min-w-[140px]"
+                className="min-w-[160px] justify-center"
               >
                 {getFilterDisplayName(dateFilter.preset)}
               </Button>
               
               {showDateFilter && (
-                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
-                  <div className="py-2">
-                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
+                <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-clinic-lg z-50 min-w-[200px]">
+                  <div className="p-3">
+                    <div className="space-y-2">
+                      {[
+                        { key: 'hoje', label: 'Hoje' },
+                        { key: '7dias', label: 'Últimos 7 dias' },
+                        { key: '14dias', label: 'Últimos 14 dias' },
+                        { key: '30dias', label: 'Últimos 30 dias' },
+                        { key: 'mes_passado', label: 'Mês Passado' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.key}
+                          onClick={() => handleDatePreset(preset.key)}
+                          className="block w-full text-left px-3 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700 rounded transition-colors"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
                       <button
-                        key={preset}
-                        onClick={() => handleDatePreset(preset)}
-                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
+                        onClick={() => setShowCustomDates(!showCustomDates)}
+                        className="block w-full text-left px-3 py-2 text-sm text-clinic-cyan hover:bg-clinic-gray-700 rounded transition-colors"
                       >
-                        {getFilterDisplayName(preset)}
+                        Personalizado
                       </button>
-                    ))}
-                    <button
-                      onClick={() => setShowCustomDates(true)}
-                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
-                    >
-                      Personalizado
-                    </button>
-                  </div>
-                  
-                  {showCustomDates && (
-                    <div className="border-t border-clinic-gray-700 p-4">
-                      <div className="space-y-3">
-                        <input
-                          type="date"
-                          value={dateFilter.startDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                        <input
-                          type="date"
-                          value={dateFilter.endDate}
-                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                        />
-                      </div>
-                      <div className="flex space-x-2 mt-3">
-                        <Button size="sm" onClick={handleCustomDateApply}>
-                          Aplicar
-                        </Button>
-                        <Button size="sm" variant="secondary" onClick={() => {
-                          setShowCustomDates(false)
-                          setShowDateFilter(false)
-                        }}>
-                          Cancelar
-                        </Button>
-                      </div>
                     </div>
-                  )}
+                    
+                    {showCustomDates && (
+                      <div className="mt-3 pt-3 border-t border-clinic-gray-600">
+                        <div className="space-y-2">
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">De:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.startDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-clinic-gray-400 mb-1">Até:</label>
+                            <input
+                              type="date"
+                              value={dateFilter.endDate}
+                              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                            />
+                          </div>
+                          <div className="flex space-x-2 mt-3">
+                            <Button size="sm" onClick={handleCustomDateApply}>
+                              Aplicar
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => {
+                              setShowCustomDates(false)
+                              setShowDateFilter(false)
+                            }}>
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Métricas Principais */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {/* Fonte de Usuários */}
-          <Card title="Fonte de Usuários" className="md:col-span-1">
-            <div className="space-y-3">
-              {origemLeadStats.length > 0 ? (
-                origemLeadStats.map((stat, index) => (
-                  <div key={stat.origem} className="flex justify-between items-center p-3 bg-clinic-gray-700 rounded-lg">
-                    <div className="flex items-center">
-                      <div className={`w-3 h-3 rounded-full mr-3 ${
-                        index === 0 ? 'bg-clinic-cyan' :
-                        index === 1 ? 'bg-green-400' :
-                        index === 2 ? 'bg-blue-400' :
-                        index === 3 ? 'bg-yellow-400' :
-                        'bg-purple-400'
+        {/* Conteúdo do Dashboard Marketing */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Estatísticas de Origem de Leads */}
+          <Card title="Origem de Leads">
+            {origemLeadStats.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-clinic-gray-400">Nenhum dado de origem encontrado</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {origemLeadStats.map((stat, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className={`w-3 h-3 rounded-full ${
+                        stat.origem === 'Instagram' ? 'bg-pink-500' :
+                        stat.origem === 'Google' ? 'bg-blue-500' :
+                        stat.origem === 'Indicação' ? 'bg-green-500' :
+                        'bg-clinic-gray-400'
                       }`} />
-                      <span className="text-clinic-white text-sm">{stat.origem}</span>
+                      <span className="text-clinic-white font-medium">{stat.origem}</span>
                     </div>
                     <div className="text-right">
                       <div className="text-clinic-white font-bold">{stat.total}</div>
-                      <div className="text-clinic-gray-400 text-xs">{stat.percentual}%</div>
+                      <div className="text-clinic-gray-400 text-sm">{stat.percentual}%</div>
                     </div>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <BarChart3 className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                  <p className="text-clinic-gray-400">Nenhum dado de origem disponível</p>
-                </div>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
 
-          {/* Tópicos de Marketing do Mês */}
-          <Card title="Tópicos de Marketing do Mês" className="md:col-span-2">
-            <div className="space-y-3">
-              {topicosMarketing ? (
-                <div className="bg-clinic-gray-700 p-4 rounded-lg">
-                  <pre className="text-clinic-white text-sm whitespace-pre-wrap">
-                    {typeof topicosMarketing === 'string' 
-                      ? topicosMarketing 
-                      : JSON.stringify(topicosMarketing, null, 2)
-                    }
-                  </pre>
+          {/* Tópicos de Marketing */}
+          <Card title="Insights de Marketing">
+            {topicosMarketing ? (
+              <div className="space-y-3">
+                <div className="text-clinic-white">
+                  {typeof topicosMarketing === 'string' 
+                    ? topicosMarketing 
+                    : JSON.stringify(topicosMarketing, null, 2)
+                  }
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <TrendingUp className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                  <p className="text-clinic-gray-400">Nenhum tópico de marketing disponível</p>
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-clinic-gray-400">Nenhum insight disponível</p>
+              </div>
+            )}
           </Card>
-        </div>
 
-        {/* Oportunidades de Conteúdo */}
-        <div className="mb-8">
+          {/* Oportunidades de Conteúdo */}
           <Card title="Oportunidades de Conteúdo">
-            <div className="space-y-3">
-              {oportunidadesConteudo.length > 0 ? (
-                oportunidadesConteudo.map((oportunidade, index) => (
-                  <div key={index} className="p-4 bg-gradient-to-r from-clinic-cyan/10 to-transparent border-l-4 border-clinic-cyan rounded-lg">
+            {oportunidadesConteudo.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-clinic-gray-400">Nenhuma oportunidade identificada</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {oportunidadesConteudo.slice(0, 3).map((oportunidade, index) => (
+                  <div key={index} className="bg-clinic-gray-700 p-3 rounded-lg">
                     <p className="text-clinic-white text-sm">{oportunidade}</p>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-clinic-gray-400">Nenhuma oportunidade de conteúdo identificada</p>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Resumos de Interação */}
+          <Card title="Resumos de Interação">
+            <div className="space-y-4">
+              {resumosDisponiveis.length > 0 && (
+                <Select
+                  label="Selecionar dia"
+                  value={selectedDia}
+                  onChange={(e) => {
+                    setSelectedDia(e.target.value)
+                    if (e.target.value) {
+                      buscarConversaDoDia(e.target.value)
+                    }
+                  }}
+                  options={[
+                    { value: '', label: 'Selecione um dia...' },
+                    ...resumosDisponiveis.map(dia => ({ value: dia, label: dia }))
+                  ]}
+                />
+              )}
+              
+              {conversaResumo && (
+                <div className="bg-clinic-gray-700 p-4 rounded-lg max-h-60 overflow-y-auto">
+                  <pre className="text-clinic-white text-sm whitespace-pre-wrap">
+                    {conversaResumo}
+                  </pre>
                 </div>
               )}
-            </div>
-          </Card>
-        </div>
-
-        {/* Resumos Semanais e Diários */}
-        <div className="mb-8">
-          <Card title="Resumos Semanais e Diários">
-            <div className="space-y-4">
-              {resumosDisponiveis.length > 0 ? (
-                <>
-                  <div className="flex items-center space-x-4">
-                    <Select
-                      value={selectedDia}
-                      onChange={(e) => {
-                        setSelectedDia(e.target.value)
-                        if (e.target.value) {
-                          buscarConversaDoDia(e.target.value)
-                        }
-                      }}
-                      className="min-w-[200px]"
-                      options={[
-                        { value: '', label: 'Selecione um dia...' },
-                        ...resumosDisponiveis.map(dia => ({ value: dia, label: dia }))
-                      ]}
-                    />
-                  </div>
-                  
-                  {conversaResumo && (
-                    <div className="bg-clinic-gray-700 p-4 rounded-lg max-h-96 overflow-y-auto">
-                      <pre className="text-clinic-white text-sm whitespace-pre-wrap">
-                        {conversaResumo}
-                      </pre>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="text-center py-8">
+              
+              {resumosDisponiveis.length === 0 && (
+                <div className="text-center py-6">
                   <p className="text-clinic-gray-400">Nenhum resumo disponível</p>
                 </div>
               )}

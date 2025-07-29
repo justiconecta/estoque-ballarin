@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { 
   LogOut, 
   Users, 
@@ -16,7 +17,9 @@ import {
   Mail,
   User,
   ArrowLeft,
-  Package
+  Package,
+  Sun,
+  Moon
 } from 'lucide-react'
 import { Button, Input, Select, Card, Modal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -50,6 +53,7 @@ export default function PacientesPage() {
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [isDarkTheme, setIsDarkTheme] = useState(true)
   
   // Estados de modal/form
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -71,6 +75,40 @@ export default function PacientesPage() {
     message: ''
   })
 
+  // Detectar página atual para botão ativo
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+  const isCurrentPage = (path: string) => {
+    if (path === '/dashboard') {
+      return currentPath === '/dashboard' || currentPath.startsWith('/dashboard/')
+    }
+    return currentPath === path
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem('ballarin_user')
+    router.push('/login')
+  }
+
+  const toggleTheme = () => {
+    setIsDarkTheme(!isDarkTheme)
+    localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
+  }
+
+  // Carregar tema salvo
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('ballarin_theme')
+    if (savedTheme) {
+      setIsDarkTheme(savedTheme === 'dark')
+    }
+  }, [])
+
+  // Aplicar tema no documento
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
+    }
+  }, [isDarkTheme])
+
   // Verificar autenticação
   useEffect(() => {
     const userData = localStorage.getItem('ballarin_user')
@@ -87,7 +125,7 @@ export default function PacientesPage() {
     }
   }, [router])
 
-  // Carregar pacientes
+  // Carregar dados iniciais
   useEffect(() => {
     if (currentUser) {
       loadPacientes()
@@ -107,22 +145,23 @@ export default function PacientesPage() {
     }
   }
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!searchTerm.trim()) {
       loadPacientes()
       return
     }
     
-    try {
-      setLoading(true)
-      const data = await supabaseApi.searchPacientes(searchTerm)
-      setPacientes(data)
-    } catch (error) {
-      showFeedback('error', 'Erro', 'Falha na pesquisa')
-      console.error('Erro na pesquisa:', error)
-    } finally {
-      setLoading(false)
-    }
+    const filteredPacientes = pacientes.filter(paciente =>
+      paciente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.cpf.includes(searchTerm) ||
+      paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.telefone.includes(searchTerm)
+    )
+    setPacientes(filteredPacientes)
+  }
+
+  const showFeedback = (type: 'success' | 'error', title: string, message: string) => {
+    setFeedbackModal({ isOpen: true, type, title, message })
   }
 
   const openModal = (type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
@@ -133,18 +172,14 @@ export default function PacientesPage() {
       setPacienteForm({
         nome: paciente.nome,
         cpf: paciente.cpf,
-        data_nascimento: paciente.data_nascimento.split('T')[0],
-        sexo: paciente.sexo,
-        telefone: paciente.telefone,
-        email: paciente.email,
-        origem_lead: paciente.origem_lead
+        data_nascimento: paciente.data_nascimento || '',
+        sexo: paciente.sexo || '',
+        telefone: paciente.telefone || '',
+        email: paciente.email || '',
+        origem_lead: paciente.origem_lead || ''
       })
     } else if (type === 'create') {
       setPacienteForm(pacienteFormInitial)
-    }
-    
-    if (type === 'view' && paciente) {
-      loadConsultasPaciente(paciente.id_paciente)
     }
     
     setIsModalOpen(true)
@@ -154,79 +189,6 @@ export default function PacientesPage() {
     setIsModalOpen(false)
     setSelectedPaciente(null)
     setPacienteForm(pacienteFormInitial)
-    setConsultas([])
-  }
-
-  const loadConsultasPaciente = async (pacienteId: number) => {
-    try {
-      const data = await supabaseApi.getConsultasByPaciente(pacienteId)
-      setConsultas(data)
-    } catch (error) {
-      console.error('Erro ao carregar consultas:', error)
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!pacienteForm.nome || !pacienteForm.cpf || !pacienteForm.email) {
-      showFeedback('error', 'Erro de Validação', 'Preencha todos os campos obrigatórios')
-      return
-    }
-    
-    try {
-      setLoading(true)
-      
-      if (modalType === 'create') {
-        await supabaseApi.createPaciente(pacienteForm)
-        showFeedback('success', 'Sucesso!', 'Paciente cadastrado com sucesso')
-      } else if (modalType === 'edit' && selectedPaciente) {
-        await supabaseApi.updatePaciente(selectedPaciente.id_paciente, pacienteForm)
-        showFeedback('success', 'Sucesso!', 'Paciente atualizado com sucesso')
-      }
-      
-      closeModal()
-      loadPacientes()
-    } catch (error) {
-      showFeedback('error', 'Erro', 'Falha ao salvar paciente')
-      console.error('Erro ao salvar paciente:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!selectedPaciente) return
-    
-    try {
-      setLoading(true)
-      await supabaseApi.deletePaciente(selectedPaciente.id_paciente)
-      showFeedback('success', 'Sucesso!', 'Paciente removido com sucesso')
-      closeModal()
-      loadPacientes()
-    } catch (error) {
-      showFeedback('error', 'Erro', 'Falha ao remover paciente')
-      console.error('Erro ao deletar paciente:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const showFeedback = (type: 'success' | 'error', title: string, message: string) => {
-    setFeedbackModal({ isOpen: true, type, title, message })
-  }
-
-  const handleLogout = () => {
-    localStorage.removeItem('ballarin_user')
-    router.push('/login')
-  }
-
-  const formatCPF = (cpf: string) => {
-    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
-  }
-
-  const formatTelefone = (telefone: string) => {
-    return telefone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3')
   }
 
   if (!currentUser) {
@@ -240,39 +202,97 @@ export default function PacientesPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-          <div className="flex items-center space-x-4">
-            <Button 
-              variant="secondary" 
-              onClick={() => router.back()} 
-              icon={ArrowLeft}
-              size="sm"
-            >
-              Voltar
-            </Button>
-            <div>
-              <h1 className="text-3xl font-bold text-clinic-white">Gestão de Pacientes</h1>
-              <p className="text-clinic-gray-400 mt-1">
-                Usuário: <span className="font-semibold text-clinic-cyan">{currentUser.nome_completo}</span>
-                <span className="text-xs ml-2 text-clinic-gray-500">({currentUser.role})</span>
-              </p>
+        {/* Header Universal */}
+        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-4">
+              <div className="flex-shrink-0">
+                <Image
+                  src="/justiconecta.png"
+                  alt="JustiConecta"
+                  width={70}
+                  height={70}
+                  className="rounded-lg"
+                />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
+                    <Users className="h-5 w-5 text-clinic-cyan" />
+                  </div>
+                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Gestão de Pacientes</h1>
+                </div>
+                <p className="text-clinic-gray-300 text-sm">
+                  Cadastro e acompanhamento de pacientes
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex space-x-2">
-            {currentUser.role === 'admin' && (
-              <>
-                <Button variant="secondary" onClick={() => router.push('/dashboard')} icon={Home} size="sm">
+            
+            {/* Navegação Universal */}
+            <div className="flex items-center space-x-3">
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/dashboard')} 
+                  icon={Home} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/dashboard')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
                   Dashboard
                 </Button>
-                <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/estoque')} 
+                  icon={Package} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/estoque')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
                   Estoque
                 </Button>
-              </>
-            )}
-            <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
-              Sair
-            </Button>
+                <Button 
+                  variant="secondary" 
+                  onClick={() => router.push('/pacientes')} 
+                  icon={Users} 
+                  size="sm"
+                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                    isCurrentPage('/pacientes')
+                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                  }`}
+                >
+                  Pacientes
+                </Button>
+              </div>
+              
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+                <Button 
+                  variant="secondary" 
+                  onClick={toggleTheme} 
+                  icon={isDarkTheme ? Sun : Moon} 
+                  size="sm"
+                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                />
+                
+                <Button 
+                  variant="secondary" 
+                  onClick={handleLogout} 
+                  icon={LogOut} 
+                  size="sm"
+                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
+                >
+                  Sair
+                </Button>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -306,7 +326,7 @@ export default function PacientesPage() {
             <div className="text-center py-12">
               <Users className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
               <p className="text-clinic-gray-400">
-                {searchTerm ? 'Nenhum paciente encontrado' : 'Nenhum paciente cadastrado'}
+                {searchTerm ? 'Nenhum paciente encontrado com os critérios de busca' : 'Nenhum paciente cadastrado'}
               </p>
             </div>
           ) : (
@@ -317,6 +337,7 @@ export default function PacientesPage() {
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Nome</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">CPF</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Telefone</th>
+                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Email</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Origem</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Cadastro</th>
                     <th className="text-center py-3 px-4 text-clinic-gray-400 font-medium">Ações</th>
@@ -324,15 +345,13 @@ export default function PacientesPage() {
                 </thead>
                 <tbody>
                   {pacientes.map((paciente) => (
-                    <tr key={paciente.id_paciente} className="border-b border-clinic-gray-800 hover:bg-clinic-gray-800/50">
+                    <tr key={paciente.id_paciente} className="border-b border-clinic-gray-700 hover:bg-clinic-gray-750">
+                      <td className="py-3 px-4 text-clinic-white font-medium">{paciente.nome}</td>
+                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.cpf}</td>
+                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.telefone}</td>
+                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.email}</td>
                       <td className="py-3 px-4">
-                        <div className="font-medium text-clinic-white">{paciente.nome}</div>
-                        <div className="text-sm text-clinic-gray-400">{paciente.email}</div>
-                      </td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{formatCPF(paciente.cpf)}</td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{formatTelefone(paciente.telefone)}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
                           paciente.origem_lead === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
                           paciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
                           'bg-green-900/20 text-green-400'
@@ -379,203 +398,6 @@ export default function PacientesPage() {
           )}
         </Card>
       </div>
-
-      {/* Modal CRUD */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        title={
-          modalType === 'create' ? 'Novo Paciente' :
-          modalType === 'edit' ? 'Editar Paciente' :
-          modalType === 'view' ? 'Detalhes do Paciente' :
-          'Confirmar Exclusão'
-        }
-      >
-        {modalType === 'view' && selectedPaciente ? (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Nome</label>
-                <p className="text-clinic-white">{selectedPaciente.nome}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">CPF</label>
-                <p className="text-clinic-white">{formatCPF(selectedPaciente.cpf)}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Data de Nascimento</label>
-                <p className="text-clinic-white">{new Date(selectedPaciente.data_nascimento).toLocaleDateString('pt-BR')}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Sexo</label>
-                <p className="text-clinic-white">{selectedPaciente.sexo}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Telefone</label>
-                <p className="text-clinic-white">{formatTelefone(selectedPaciente.telefone)}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Email</label>
-                <p className="text-clinic-white">{selectedPaciente.email}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Origem do Lead</label>
-                <p className="text-clinic-white">{selectedPaciente.origem_lead}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-clinic-gray-400 mb-1">Data de Cadastro</label>
-                <p className="text-clinic-white">{new Date(selectedPaciente.data_cadastro).toLocaleDateString('pt-BR')}</p>
-              </div>
-            </div>
-            
-            <div className="border-t border-clinic-gray-700 pt-4">
-              <h4 className="text-lg font-medium text-clinic-white mb-3">Histórico de Consultas</h4>
-              {consultas.length === 0 ? (
-                <p className="text-clinic-gray-400 text-center py-4">Nenhuma consulta registrada</p>
-              ) : (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
-                  {consultas.map((consulta) => (
-                    <div key={consulta.id_consulta} className="flex justify-between items-center p-3 bg-clinic-gray-900 rounded-lg">
-                      <div>
-                        <p className="text-clinic-white font-medium">{consulta.tipo_consulta}</p>
-                        <p className="text-clinic-gray-400 text-sm">
-                          {new Date(consulta.data_agendamento).toLocaleDateString('pt-BR')}
-                        </p>
-                      </div>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        consulta.status_consulta === 'Realizada' ? 'bg-green-900/20 text-green-400' :
-                        consulta.status_consulta === 'Agendada' ? 'bg-blue-900/20 text-blue-400' :
-                        'bg-red-900/20 text-red-400'
-                      }`}>
-                        {consulta.status_consulta}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        ) : modalType === 'delete' && selectedPaciente ? (
-          <div className="text-center">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-600 mb-4">
-              <Trash2 className="h-6 w-6 text-white" />
-            </div>
-            <p className="text-clinic-gray-300 mb-4">
-              Tem certeza que deseja excluir o paciente <strong>{selectedPaciente.nome}</strong>?
-            </p>
-            <p className="text-clinic-gray-400 text-sm mb-6">
-              Esta ação não pode ser desfeita.
-            </p>
-            <div className="flex space-x-3 justify-center">
-              <Button variant="secondary" onClick={closeModal}>
-                Cancelar
-              </Button>
-              <Button variant="danger" onClick={handleDelete} loading={loading}>
-                Confirmar Exclusão
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Nome *"
-                value={pacienteForm.nome}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, nome: e.target.value }))}
-                required
-              />
-              <Input
-                label="CPF *"
-                value={pacienteForm.cpf}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, cpf: e.target.value.replace(/\D/g, '') }))}
-                placeholder="00000000000"
-                maxLength={11}
-                required
-              />
-              <Input
-                label="Data de Nascimento *"
-                type="date"
-                value={pacienteForm.data_nascimento}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, data_nascimento: e.target.value }))}
-                required
-              />
-              <Select
-                label="Sexo *"
-                value={pacienteForm.sexo}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, sexo: e.target.value }))}
-                options={[
-                  { value: '', label: 'Selecione...' },
-                  { value: 'Masculino', label: 'Masculino' },
-                  { value: 'Feminino', label: 'Feminino' },
-                  { value: 'Outro', label: 'Outro' }
-                ]}
-                required
-              />
-              <Input
-                label="Telefone *"
-                value={pacienteForm.telefone}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, telefone: e.target.value.replace(/\D/g, '') }))}
-                placeholder="11999999999"
-                maxLength={11}
-                required
-              />
-              <Input
-                label="Email *"
-                type="email"
-                value={pacienteForm.email}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, email: e.target.value }))}
-                required
-              />
-            </div>
-            <Select
-              label="Origem do Lead *"
-              value={pacienteForm.origem_lead}
-              onChange={(e) => setPacienteForm(prev => ({ ...prev, origem_lead: e.target.value }))}
-              options={[
-                { value: '', label: 'Selecione...' },
-                { value: 'Instagram', label: 'Instagram' },
-                { value: 'Google', label: 'Google' },
-                { value: 'Indicação', label: 'Indicação' },
-                { value: 'Whatsapp', label: 'WhatsApp' },
-                { value: 'Facebook', label: 'Facebook' },
-                { value: 'Site', label: 'Site' }
-              ]}
-              required
-            />
-            <div className="flex space-x-3 pt-4">
-              <Button type="button" variant="secondary" onClick={closeModal} className="flex-1">
-                Cancelar
-              </Button>
-              <Button type="submit" loading={loading} className="flex-1">
-                {modalType === 'create' ? 'Cadastrar' : 'Salvar'}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
-
-      {/* Modal de Feedback */}
-      <Modal
-        isOpen={feedbackModal.isOpen}
-        onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
-        title={feedbackModal.title}
-      >
-        <div className="text-center">
-          <div className={`mx-auto flex items-center justify-center h-12 w-12 rounded-full mb-4 ${
-            feedbackModal.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-          }`}>
-            {feedbackModal.type === 'success' ? (
-              <Users className="h-6 w-6 text-white" />
-            ) : (
-              <User className="h-6 w-6 text-white" />
-            )}
-          </div>
-          <p className="text-clinic-gray-300 mb-4">{feedbackModal.message}</p>
-          <Button onClick={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}>
-            OK
-          </Button>
-        </div>
-      </Modal>
     </div>
   )
 }

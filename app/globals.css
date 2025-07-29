@@ -3,6 +3,50 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Tema Escuro (padrão) */
+  --bg-primary: #000000;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --border-primary: #475569;
+  --accent-cyan: #12f6ff;
+}
+
+[data-theme="light"] {
+  /* Tema Claro */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8fafc;
+  --bg-tertiary: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --border-primary: #cbd5e1;
+  --accent-cyan: #06b6d4;
+}
+
+/* Atualizar as classes existentes para usar as variáveis */
+.bg-clinic-black { background-color: var(--bg-primary); }
+.bg-clinic-gray-800 { background-color: var(--bg-secondary); }
+.bg-clinic-gray-700 { background-color: var(--bg-tertiary); }
+.text-clinic-white { color: var(--text-primary); }
+.text-clinic-gray-400 { color: var(--text-secondary); }
+.border-clinic-gray-700 { border-color: var(--border-primary); }
+.text-clinic-cyan { color: var(--accent-cyan); }
+.bg-clinic-cyan { background-color: var(--accent-cyan); }
+.border-clinic-cyan { border-color: var(--accent-cyan); }
+
+/* Transições suaves para mudança de tema */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Aplicar tema ao body */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
 * {
   box-sizing: border-box;
   padding: 0;

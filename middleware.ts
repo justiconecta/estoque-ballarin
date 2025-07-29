@@ -4,17 +4,6 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Lista de rotas válidas da aplicação - INCLUINDO DASHBOARDS ESPECIALIZADOS
-  const validRoutes = [
-    '/',
-    '/login',
-    '/dashboard',
-    '/dashboard/marketing', 
-    '/dashboard/terapeutico',
-    '/estoque',
-    '/pacientes'
-  ]
-
   // Rotas que não precisam de verificação (assets, api, etc)
   const excludedPaths = [
     '/api',
@@ -30,12 +19,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Se não é uma rota válida, redirecionar para página raiz
-  // que irá fazer o redirecionamento correto baseado na autenticação
-  if (!validRoutes.includes(pathname)) {
-    return NextResponse.redirect(new URL('/', request.url))
+  // Lista de rotas válidas da aplicação
+  const validRoutes = [
+    '/',
+    '/login',
+    '/dashboard',
+    '/dashboard/marketing', 
+    '/dashboard/terapeutico',
+    '/estoque',
+    '/pacientes'
+  ]
+
+  // Se é uma rota válida, permitir
+  if (validRoutes.includes(pathname)) {
+    return NextResponse.next()
   }
 
+  // Para qualquer outra rota, permitir que o Next.js handle (vai cair no not-found.tsx)
   return NextResponse.next()
 }
 

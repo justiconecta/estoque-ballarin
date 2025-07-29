@@ -2,12 +2,15 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { 
   LogOut, 
   Package, 
   Users, 
   BarChart3,
-  Heart
+  Heart,
+  Sun,
+  Moon
 } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -31,6 +34,7 @@ interface DateFilter {
 export default function DashboardPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
+  const [activeTab, setActiveTab] = useState<'jornada' | 'marketing' | 'terapeutico'>('jornada')
   const [stats, setStats] = useState<DashboardStats>({
     totalProdutos: 0,
     estoqueTotal: 0,
@@ -47,6 +51,7 @@ export default function DashboardPage() {
     endDate: new Date().toISOString().split('T')[0],
     preset: 'hoje'
   })
+  const [isDarkTheme, setIsDarkTheme] = useState(true)
 
   const getFilterDisplayName = (preset?: string): string => {
     switch (preset) {
@@ -161,6 +166,26 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
+  const toggleTheme = () => {
+    setIsDarkTheme(!isDarkTheme)
+    localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
+  }
+
+  // Carregar tema salvo
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('ballarin_theme')
+    if (savedTheme) {
+      setIsDarkTheme(savedTheme === 'dark')
+    }
+  }, [])
+
+  // Aplicar tema no documento
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
+    }
+  }, [isDarkTheme])
+
   const handleDatePreset = (preset: string) => {
     const hoje = new Date()
     const endDate = hoje.toISOString().split('T')[0]
@@ -168,7 +193,7 @@ export default function DashboardPage() {
 
     switch (preset) {
       case 'hoje':
-        startDate = endDate // Mesmo dia
+        startDate = endDate
         break
       case '7dias':
         const date7 = new Date(hoje)
@@ -186,22 +211,10 @@ export default function DashboardPage() {
         startDate = date30.toISOString().split('T')[0]
         break
       case 'mes_passado':
-        const mesPassado = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-        const ultimoDiaMesPassado = new Date(hoje.getFullYear(), hoje.getMonth(), 0)
-        startDate = mesPassado.toISOString().split('T')[0]
-        setDateFilter({
-          startDate,
-          endDate: ultimoDiaMesPassado.toISOString().split('T')[0],
-          preset
-        })
-        setShowDateFilter(false)
-        setShowCustomDates(false)
-        return
-      case 'personalizado':
-        setShowCustomDates(true)
-        return
-      default:
-        startDate = endDate
+        const lastMonth = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
+        const lastMonthEnd = new Date(hoje.getFullYear(), hoje.getMonth(), 0)
+        startDate = lastMonth.toISOString().split('T')[0]
+        break
     }
 
     setDateFilter({ startDate, endDate, preset })
@@ -211,18 +224,19 @@ export default function DashboardPage() {
 
   const handleCustomDateApply = () => {
     setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
-    setShowDateFilter(false)
     setShowCustomDates(false)
+    setShowDateFilter(false)
   }
 
-  const navigateToMarketing = () => {
-    console.log('Navegando para marketing...')
-    router.push('/dashboard/marketing')
-  }
-
-  const navigateToTerapeutico = () => {
-    console.log('Navegando para terapêutico...')
-    router.push('/dashboard/terapeutico')
+  const handleTabClick = (tab: 'jornada' | 'marketing' | 'terapeutico') => {
+    setActiveTab(tab)
+    
+    if (tab === 'marketing') {
+      router.push('/dashboard/marketing')
+    } else if (tab === 'terapeutico') {
+      router.push('/dashboard/terapeutico')
+    }
+    // Para 'jornada', mantém na mesma página
   }
 
   if (!currentUser || loading) {
@@ -238,129 +252,151 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <header className="flex justify-between items-center mb-8 pb-4 border-b border-clinic-gray-700">
-          <div>
-            <h1 className="text-3xl font-bold text-clinic-white">Dashboard Administrativo</h1>
-            <p className="text-clinic-gray-400 mt-1">
-              Bem-vindo, <span className="text-clinic-cyan">{currentUser.nome}</span>
-            </p>
+          <div className="flex items-center space-x-4">
+            <div className="flex-shrink-0">
+              <Image
+                src="/justiconecta.png"
+                alt="JustiConecta"
+                width={60}
+                height={60}
+                className="rounded-lg"
+              />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-clinic-white">Dashboard Geral da Clínica</h1>
+              <p className="text-clinic-gray-400 mt-1">
+                Visão completa das operações e métricas
+              </p>
+            </div>
           </div>
           <div className="flex items-center space-x-3">
             <Button variant="secondary" onClick={() => router.push('/estoque')} icon={Package} size="sm">
-              Controle de Estoque
+              Estoque
             </Button>
             <Button variant="secondary" onClick={() => router.push('/pacientes')} icon={Users} size="sm">
               Pacientes
             </Button>
+            <Button 
+              variant="secondary" 
+              onClick={toggleTheme} 
+              icon={isDarkTheme ? Sun : Moon} 
+              size="sm"
+              className="min-w-[44px] px-3"
+              title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            />
             <Button variant="secondary" onClick={handleLogout} icon={LogOut} size="sm">
               Sair
             </Button>
           </div>
         </header>
 
-        {/* Filtro por Data - Mostra nome do filtro ativo */}
-        <div className="flex justify-end mb-6">
-          <div className="relative">
-            <Button 
-              variant="secondary" 
-              onClick={() => setShowDateFilter(!showDateFilter)} 
-              size="sm"
-              className="px-4 py-2 bg-clinic-gray-700 border border-clinic-gray-600 hover:bg-clinic-gray-600 text-clinic-white"
-            >
-              {getFilterDisplayName(dateFilter.preset)}
-            </Button>
-            {showDateFilter && (
-              <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg p-4 shadow-clinic-lg z-10 w-64">
-                <div className="space-y-2">
-                  <button
-                    onClick={() => handleDatePreset('hoje')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === 'hoje' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Hoje
-                  </button>
-                  <button
-                    onClick={() => handleDatePreset('7dias')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === '7dias' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Últimos 7 dias
-                  </button>
-                  <button
-                    onClick={() => handleDatePreset('14dias')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === '14dias' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Últimos 14 dias
-                  </button>
-                  <button
-                    onClick={() => handleDatePreset('30dias')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === '30dias' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Últimos 30 dias
-                  </button>
-                  <button
-                    onClick={() => handleDatePreset('mes_passado')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === 'mes_passado' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Mês passado
-                  </button>
-                  <hr className="border-clinic-gray-600 my-2" />
-                  <button
-                    onClick={() => handleDatePreset('personalizado')}
-                    className={`w-full text-left p-2 hover:bg-clinic-gray-700 rounded text-clinic-white text-sm transition-colors ${
-                      dateFilter.preset === 'personalizado' ? 'bg-clinic-cyan/20 border border-clinic-cyan/50' : ''
-                    }`}
-                  >
-                    Personalizado
-                  </button>
+        {/* Navegação por Tabs */}
+        <div className="mb-8">
+          <div className="border-b border-clinic-gray-700">
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => handleTabClick('jornada')}
+                className={`py-3 px-6 border-b-2 font-medium text-base transition-all duration-200 flex items-center space-x-2 ${
+                  activeTab === 'jornada'
+                    ? 'border-clinic-cyan text-clinic-cyan'
+                    : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
+                }`}
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  activeTab === 'jornada' ? 'bg-clinic-cyan text-clinic-black' : 'bg-clinic-gray-600'
+                }`}>
+                  <span className="text-xs font-bold">J</span>
                 </div>
-                
-                {showCustomDates && (
-                  <div className="mt-4 pt-4 border-t border-clinic-gray-600 space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-clinic-white mb-1">
-                        Data Início
-                      </label>
-                      <input
-                        type="date"
-                        value={dateFilter.startDate}
-                        onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                        className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded-md text-clinic-white text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-clinic-white mb-1">
-                        Data Fim
-                      </label>
-                      <input
-                        type="date"
-                        value={dateFilter.endDate}
-                        onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                        className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded-md text-clinic-white text-sm"
-                      />
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button size="sm" onClick={handleCustomDateApply}>
-                        Aplicar
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => {
-                        setShowCustomDates(false)
-                        setShowDateFilter(false)
-                      }}>
-                        Cancelar
-                      </Button>
-                    </div>
+                <span>Jornada do Paciente</span>
+              </button>
+              <button
+                onClick={() => handleTabClick('marketing')}
+                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+              >
+                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
+                  <span className="text-xs font-bold">M</span>
+                </div>
+                <span>Dashboard Marketing</span>
+              </button>
+              <button
+                onClick={() => handleTabClick('terapeutico')}
+                className="py-3 px-6 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-base transition-all duration-200 flex items-center space-x-2"
+              >
+                <div className="w-6 h-6 rounded-full bg-clinic-gray-600 flex items-center justify-center">
+                  <span className="text-xs font-bold">T</span>
+                </div>
+                <span>Dashboard Terapêutico</span>
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {/* Filtro de Data */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-clinic-white">Métricas Operacionais</h2>
+            <div className="relative">
+              <Button
+                variant="secondary"
+                onClick={() => setShowDateFilter(!showDateFilter)}
+                size="md"
+                className="min-w-[140px]"
+              >
+                {getFilterDisplayName(dateFilter.preset)}
+              </Button>
+              
+              {showDateFilter && (
+                <div className="absolute right-0 mt-2 w-56 bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 z-10">
+                  <div className="py-2">
+                    {['hoje', '7dias', '14dias', '30dias', 'mes_passado'].map((preset) => (
+                      <button
+                        key={preset}
+                        onClick={() => handleDatePreset(preset)}
+                        className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
+                      >
+                        {getFilterDisplayName(preset)}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setShowCustomDates(true)}
+                      className="block w-full text-left px-4 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700"
+                    >
+                      Personalizado
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                  
+                  {showCustomDates && (
+                    <div className="border-t border-clinic-gray-700 p-4">
+                      <div className="space-y-3">
+                        <input
+                          type="date"
+                          value={dateFilter.startDate}
+                          onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                        />
+                        <input
+                          type="date"
+                          value={dateFilter.endDate}
+                          onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                          className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
+                        />
+                      </div>
+                      <div className="flex space-x-2 mt-3">
+                        <Button size="sm" onClick={handleCustomDateApply}>
+                          Aplicar
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => {
+                          setShowCustomDates(false)
+                          setShowDateFilter(false)
+                        }}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -430,62 +466,25 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Dashboards Especializados */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-clinic-white mb-6">Dashboards Especializados</h2>
+        {/* Conteúdo da Jornada do Paciente */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card title="Movimentações Recentes">
+            <div className="text-center py-6">
+              <div className="text-4xl font-bold text-clinic-white mb-2">
+                {stats.movimentacoesHoje}
+              </div>
+              <p className="text-clinic-gray-400">movimentações no período</p>
+            </div>
+          </Card>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="hover:border-clinic-cyan/50 transition-all duration-200">
-              <div className="text-center py-6">
-                <div className="mx-auto h-16 w-16 bg-gradient-to-br from-clinic-cyan/20 to-clinic-cyan/10 rounded-full flex items-center justify-center mb-4 transition-all duration-200">
-                  <BarChart3 className="h-8 w-8 text-clinic-cyan" />
-                </div>
-                <h3 className="text-xl font-bold text-clinic-white mb-2">Dashboard Marketing</h3>
-                <p className="text-clinic-gray-400 mb-4">
-                  Análise de origem de leads, tópicos de marketing e oportunidades de conteúdo
-                </p>
-                <ul className="text-sm text-clinic-gray-300 space-y-1 mb-4">
-                  <li>• Fonte de usuários por canal</li>
-                  <li>• Tópicos de marketing do mês</li>
-                  <li>• Oportunidades de conteúdo</li>
-                  <li>• Resumos semanais e diários</li>
-                </ul>
-                <Button 
-                  onClick={navigateToMarketing}
-                  className="w-full"
-                  icon={BarChart3}
-                >
-                  Acessar Dashboard
-                </Button>
+          <Card title="Consultas do Dia">
+            <div className="text-center py-6">
+              <div className="text-4xl font-bold text-clinic-cyan mb-2">
+                {stats.consultasHoje}
               </div>
-            </Card>
-
-            <Card className="hover:border-green-500/50 transition-all duration-200">
-              <div className="text-center py-6">
-                <div className="mx-auto h-16 w-16 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full flex items-center justify-center mb-4 transition-all duration-200">
-                  <Heart className="h-8 w-8 text-green-400" />
-                </div>
-                <h3 className="text-xl font-bold text-clinic-white mb-2">Dashboard Acompanhamento Terapêutico</h3>
-                <p className="text-clinic-gray-400 mb-4">
-                  Monitoramento da jornada do paciente e experiência terapêutica
-                </p>
-                <ul className="text-sm text-clinic-gray-300 space-y-1 mb-4">
-                  <li>• Pacientes ativos e engajamento</li>
-                  <li>• Ranking de pacientes mais ativos</li>
-                  <li>• Top 10 efeitos adversos</li>
-                  <li>• Dashboard CX completo</li>
-                </ul>
-                <Button 
-                  onClick={navigateToTerapeutico}
-                  className="w-full"
-                  variant="success"
-                  icon={Heart}
-                >
-                  Acessar Dashboard
-                </Button>
-              </div>
-            </Card>
-          </div>
+              <p className="text-clinic-gray-400">procedimentos realizados</p>
+            </div>
+          </Card>
         </div>
       </div>
     </div>

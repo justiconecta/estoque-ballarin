@@ -3,7 +3,18 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Sparkles, Heart, Flower, Lock, Eye, EyeOff } from 'lucide-react'
+import { 
+  Eye, 
+  EyeOff, 
+  Sparkles, 
+  Heart, 
+  Star, 
+  Droplet,
+  Zap,
+  Crown,
+  Activity,
+  Plus
+} from 'lucide-react'
 import { Button, Input } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario } from '@/types/database'
@@ -13,19 +24,91 @@ interface LoginForm {
   password: string
 }
 
-// Componente de partículas flutuantes para efeito estético com cores da marca
-const FloatingParticle = ({ delay = 0, duration = 20 }: { delay?: number; duration?: number }) => {
+// Ícones estéticos médicos para animação de fundo
+const aestheticIcons = [
+  Droplet,    // Ampola/soro
+  Plus,       // Cruz médica
+  Activity,   // Batimento/saúde
+  Heart,      // Coração/bem-estar
+  Sparkles,   // Resultado estético
+  Star,       // Avaliação/qualidade
+  Zap,        // Energia/tratamento
+  Crown       // Premium/excelência
+]
+
+// Componente customizado para ícone de seringa
+const SyringeIcon = ({ size = 16, className = "" }: { size?: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <path d="M4 12h16M12 4v16M8 8l8 8M16 8l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="12" cy="12" r="2" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.3"/>
+  </svg>
+)
+
+// Componente customizado para ícone de ampola
+const AmpouleIcon = ({ size = 16, className = "" }: { size?: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+    <path d="M8 2h8v4l-2 2v12a2 2 0 01-2 2h-4a2 2 0 01-2-2V8l-2-2V2z" stroke="currentColor" strokeWidth="1.5" fill="currentColor" opacity="0.2"/>
+    <path d="M8 6h8M10 10h4M10 14h4" stroke="currentColor" strokeWidth="1" opacity="0.6"/>
+  </svg>
+)
+
+// Array expandido com ícones médicos customizados
+const medicalAestheticIcons = [
+  ...aestheticIcons,
+  SyringeIcon,   // Seringa customizada
+  AmpouleIcon    // Ampola customizada
+]
+
+// Componente de ícone flutuante para efeito estético premium - mais visível
+const FloatingAestheticIcon = ({ 
+  delay = 0, 
+  duration = 15, 
+  IconComponent = Sparkles,
+  size = 16 
+}: { 
+  delay?: number
+  duration?: number
+  IconComponent?: any
+  size?: number
+}) => {
+  const [position] = useState({
+    left: Math.random() * 100,
+    top: Math.random() * 100,
+    rotation: Math.random() * 360
+  })
+
   return (
     <div 
-      className="absolute opacity-15 animate-pulse"
+      className="absolute opacity-40 animate-float"
+      style={{
+        left: `${position.left}%`,
+        top: `${position.top}%`,
+        animationDelay: `${delay}s`,
+        animationDuration: `${duration}s`,
+        transform: `rotate(${position.rotation}deg)`
+      }}
+    >
+      <IconComponent 
+        size={size} 
+        className="text-[#12f6ff] drop-shadow-lg filter blur-[0.2px]" 
+      />
+    </div>
+  )
+}
+
+// Componente de partícula cintilante mais sutil
+const SparkleParticle = ({ delay = 0 }: { delay?: number }) => {
+  return (
+    <div 
+      className="absolute opacity-25 animate-pulse"
       style={{
         left: `${Math.random() * 100}%`,
         top: `${Math.random() * 100}%`,
         animationDelay: `${delay}s`,
-        animationDuration: `${duration}s`
+        animationDuration: `${3 + Math.random() * 2}s`
       }}
     >
-      <div className="w-1.5 h-1.5 bg-clinic-cyan/60 rounded-full blur-sm"></div>
+      <div className="w-1 h-1 bg-[#12f6ff] rounded-full shadow-[0_0_4px_#12f6ff]"></div>
     </div>
   )
 }
@@ -38,9 +121,10 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
 
-  // Animação de entrada
+  // Animação de entrada suave
   useEffect(() => {
-    setIsLoaded(true)
+    const timer = setTimeout(() => setIsLoaded(true), 100)
+    return () => clearTimeout(timer)
   }, [])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -63,83 +147,96 @@ export default function LoginPage() {
       }
     } catch (error) {
       setLoginError('Usuário ou senha incorreta. Tente novamente.')
-      console.error('Erro na autenticação:', error)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Background Principal com Gradientes Premium */}
-      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900"></div>
+    <div className="min-h-screen relative overflow-hidden" style={{ backgroundColor: '#000000' }}>
       
-      {/* Overlay de gradientes estéticos */}
-      <div className="absolute inset-0">
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-pink-500/10 via-purple-500/5 to-blue-500/10"></div>
-        <div className="absolute top-0 right-0 w-3/4 h-3/4 bg-gradient-to-bl from-rose-300/10 via-transparent to-transparent rounded-full blur-3xl"></div>
-        <div className="absolute bottom-0 left-0 w-3/4 h-3/4 bg-gradient-to-tr from-violet-300/10 via-transparent to-transparent rounded-full blur-3xl"></div>
-      </div>
-
-      {/* Partículas Flutuantes */}
+      {/* Background com ícones estéticos flutuantes */}
       <div className="absolute inset-0 overflow-hidden">
-        {Array.from({ length: 50 }, (_, i) => (
-          <FloatingParticle key={i} delay={i * 0.5} duration={15 + Math.random() * 10} />
+        {/* Gradiente de fundo mais sutil */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[#12f6ff]/3 via-transparent to-[#03c8d9]/3"></div>
+        
+        {/* Ícones estéticos médicos flutuantes - múltiplas camadas mais visíveis */}
+        {Array.from({ length: 30 }, (_, i) => (
+          <FloatingAestheticIcon
+            key={`aesthetic-${i}`}
+            delay={i * 0.6}
+            duration={10 + (i % 6)}
+            IconComponent={medicalAestheticIcons[i % medicalAestheticIcons.length]}
+            size={14 + (i % 4) * 3}
+          />
+        ))}
+        
+        {/* Partículas cintilantes menores */}
+        {Array.from({ length: 20 }, (_, i) => (
+          <SparkleParticle key={`sparkle-${i}`} delay={i * 0.5} />
         ))}
       </div>
 
-      {/* Elementos Decorativos Estéticos */}
-      <div className="absolute inset-0 pointer-events-none">
-        {/* Círculos decorativos */}
-        <div className="absolute top-20 left-10 w-32 h-32 bg-gradient-to-r from-pink-400/10 to-purple-400/10 rounded-full blur-xl animate-pulse"></div>
-        <div className="absolute top-1/3 right-20 w-24 h-24 bg-gradient-to-r from-blue-400/10 to-teal-400/10 rounded-full blur-lg animate-pulse" style={{animationDelay: '2s'}}></div>
-        <div className="absolute bottom-1/4 left-20 w-20 h-20 bg-gradient-to-r from-rose-400/10 to-pink-400/10 rounded-full blur-lg animate-pulse" style={{animationDelay: '4s'}}></div>
-        
-        {/* Ícones flutuantes de estética */}
-        <div className="absolute top-1/4 left-1/4 opacity-5 animate-bounce" style={{animationDelay: '1s', animationDuration: '3s'}}>
-          <Sparkles className="w-8 h-8 text-pink-300" />
-        </div>
-        <div className="absolute top-3/4 right-1/3 opacity-5 animate-bounce" style={{animationDelay: '3s', animationDuration: '4s'}}>
-          <Heart className="w-6 h-6 text-rose-300" />
-        </div>
-        <div className="absolute top-1/2 right-1/4 opacity-5 animate-bounce" style={{animationDelay: '5s', animationDuration: '3.5s'}}>
-          <Flower className="w-7 h-7 text-purple-300" />
-        </div>
-      </div>
-
-      {/* Container Principal */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
-        <div className={`w-full max-w-md transition-all duration-1000 transform ${
-          isLoaded ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0'
-        }`}>
+      {/* Container principal centralizado */}
+      <div className="flex items-center justify-center min-h-screen p-4 relative z-10">
+        <div className={`
+          w-full max-w-md transition-all duration-1000 ease-out transform
+          ${isLoaded ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}
+        `}>
           
-          {/* Card Principal */}
-          <div className="bg-clinic-gray-800/30 backdrop-blur-xl rounded-3xl p-8 border border-clinic-cyan/10 shadow-2xl">
+          {/* Card Principal com efeito de vidro */}
+          <div 
+            className="relative rounded-3xl p-8 border shadow-2xl backdrop-blur-xl"
+            style={{
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              borderColor: 'rgba(18, 246, 255, 0.2)',
+              boxShadow: '0 25px 50px -12px rgba(18, 246, 255, 0.15), 0 0 0 1px rgba(18, 246, 255, 0.1)'
+            }}
+          >
+            
+            {/* Brilho sutil no topo do card */}
+            <div 
+              className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-1 rounded-full opacity-60"
+              style={{ backgroundColor: '#12f6ff', filter: 'blur(1px)' }}
+            ></div>
             
             {/* Logo e Branding */}
             <div className="text-center mb-8">
-              <div className="relative inline-block mb-6">
+              <div className="relative inline-block mb-1">
                 <Image
                   src="/justiconecta.png"
-                  alt="JustiConecta"
-                  width={80}
-                  height={80}
+                  alt="Clínica Ballarin"
+                  width={120}
+                  height={120}
                   className="rounded-2xl shadow-lg"
                 />
               </div>
               
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-clinic-white via-clinic-cyan/80 to-clinic-cyan bg-clip-text text-transparent mb-2">
-                Clínica Ballarin
+              <h1 
+                className="text-3xl font-bold mb-2 bg-gradient-to-r bg-clip-text text-transparent"
+                style={{ 
+                  backgroundImage: `linear-gradient(135deg, #ffffff 0%, #12f6ff 50%, #03c8d9 100%)` 
+                }}
+              >
+                Método 545
               </h1>
-              <p className="text-clinic-gray-300 text-sm font-light tracking-wide">
-                Sistema Premium de Gestão Estética
+              <p style={{ color: 'rgba(255, 255, 255, 0.8)' }} className="text-sm font-light tracking-wide">
+                Sistema Premium de Gestão de Clínicas
               </p>
               
-              {/* Linha decorativa */}
-              <div className="flex items-center justify-center mt-4 mb-6">
-                <div className="w-12 h-px bg-gradient-to-r from-transparent via-clinic-cyan/50 to-transparent"></div>
-                <Sparkles className="w-4 h-4 text-clinic-cyan/70 mx-3" />
-                <div className="w-12 h-px bg-gradient-to-r from-transparent via-clinic-cyan/50 to-transparent"></div>
+              {/* Linha decorativa estética */}
+              <div className="flex items-center justify-center mt-6 mb-8">
+                <div 
+                  className="w-16 h-px opacity-50"
+                  style={{ backgroundColor: '#12f6ff' }}
+                ></div>
+                <div className="mx-4 p-2 rounded-full" style={{ backgroundColor: 'rgba(18, 246, 255, 0.1)' }}>
+                  <Plus className="w-4 h-4" style={{ color: '#12f6ff' }} />
+                </div>
+                <div 
+                  className="w-16 h-px opacity-50"
+                  style={{ backgroundColor: '#12f6ff' }}
+                ></div>
               </div>
             </div>
 
@@ -148,7 +245,10 @@ export default function LoginPage() {
               
               {/* Campo Usuário */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-clinic-gray-300 block">
+                <label 
+                  className="text-sm font-medium block"
+                  style={{ color: 'rgba(255, 255, 255, 0.9)' }}
+                >
                   Usuário
                 </label>
                 <div className="relative">
@@ -157,7 +257,13 @@ export default function LoginPage() {
                     value={loginForm.username}
                     onChange={(e) => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
                     placeholder="Digite seu usuário"
-                    className="w-full px-4 py-3 bg-clinic-gray-700/30 border border-clinic-gray-600/50 rounded-xl text-clinic-white placeholder-clinic-gray-400 focus:outline-none focus:ring-2 focus:ring-clinic-cyan/50 focus:border-clinic-cyan/50 transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 backdrop-blur-sm"
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                      borderWidth: '1px',
+                      borderColor: 'rgba(18, 246, 255, 0.3)',
+                      color: '#ffffff',                      
+                    }}
                     required
                   />
                 </div>
@@ -165,7 +271,10 @@ export default function LoginPage() {
 
               {/* Campo Senha */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-clinic-gray-300 block">
+                <label 
+                  className="text-sm font-medium block"
+                  style={{ color: 'rgba(255, 255, 255, 0.9)' }}
+                >
                   Senha
                 </label>
                 <div className="relative">
@@ -174,13 +283,20 @@ export default function LoginPage() {
                     value={loginForm.password}
                     onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
                     placeholder="Digite sua senha"
-                    className="w-full px-4 py-3 pr-12 bg-clinic-gray-700/30 border border-clinic-gray-600/50 rounded-xl text-clinic-white placeholder-clinic-gray-400 focus:outline-none focus:ring-2 focus:ring-clinic-cyan/50 focus:border-clinic-cyan/50 transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 pr-12 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 backdrop-blur-sm"
+                    style={{
+                      backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                      borderWidth: '1px',
+                      borderColor: 'rgba(18, 246, 255, 0.3)',
+                      color: '#ffffff'
+                    }}
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-clinic-gray-400 hover:text-clinic-cyan transition-colors"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 transition-colors"
+                    style={{ color: 'rgba(255, 255, 255, 0.6)' }}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -189,76 +305,81 @@ export default function LoginPage() {
 
               {/* Erro de Login */}
               {loginError && (
-                <div className="p-3 bg-red-500/10 border border-red-400/20 rounded-xl text-red-300 text-sm text-center backdrop-blur-sm">
+                <div 
+                  className="p-3 rounded-xl text-sm text-center backdrop-blur-sm border"
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                    borderColor: 'rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5'
+                  }}
+                >
                   {loginError}
                 </div>
               )}
 
-              {/* Botão de Login */}
+              {/* Botão de Login Premium */}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 px-6 bg-gradient-to-r from-clinic-cyan to-clinic-cyan-dark hover:from-clinic-cyan/90 hover:to-clinic-cyan-dark/90 text-clinic-black font-medium rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-clinic-cyan/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2 backdrop-blur-sm"
+                className="w-full py-3 px-6 font-medium rounded-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2 backdrop-blur-sm relative overflow-hidden group"
+                style={{
+                  background: `linear-gradient(135deg, #12f6ff 0%, #03c8d9 100%)`,
+                  color: '#000000',
+                  boxShadow: '0 10px 25px -5px rgba(18, 246, 255, 0.3), 0 0 0 1px rgba(18, 246, 255, 0.1)'
+                }}
               >
+                {/* Efeito de brilho no hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-r from-transparent via-white to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+                
                 {loading ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-clinic-black/30 border-t-clinic-black rounded-full animate-spin"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-current border-t-transparent" />
                     <span>Entrando...</span>
                   </>
                 ) : (
                   <>
-                    <Lock className="w-5 h-5" />
+                    <Crown className="w-5 h-5" />
                     <span>Acessar Sistema</span>
                   </>
                 )}
               </button>
             </form>
 
-            {/* Footer */}
-            <div className="mt-8 text-center">
-              {/* Indicadores de segurança */}
-              <div className="flex items-center justify-center space-x-4">
-                <div className="flex items-center space-x-1">
-                  <div className="w-2 h-2 bg-clinic-cyan rounded-full animate-pulse"></div>
-                  <span className="text-xs text-clinic-gray-400">Conectado</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Lock className="w-3 h-3 text-clinic-gray-400" />
-                  <span className="text-xs text-clinic-gray-400">Criptografado</span>
-                </div>
+            {/* Footer estético */}
+            <div className="mt-8 pt-6 border-t text-center" style={{ borderColor: 'rgba(18, 246, 255, 0.1)' }}>
+              <div className="flex items-center justify-center space-x-2">
+                <Heart className="w-4 h-4" style={{ color: '#12f6ff' }} />
+                <p className="text-xs" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                  Todos os direitos reservados a Justiconecta
+                </p>
+                <Heart className="w-4 h-4" style={{ color: '#12f6ff' }} />
               </div>
             </div>
-          </div>
-
-          {/* Efeitos adicionais embaixo do card */}
-          <div className="relative">
-            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 w-3/4 h-6 bg-gradient-to-r from-transparent via-clinic-cyan/10 to-transparent blur-xl"></div>
           </div>
         </div>
       </div>
 
-      {/* Overlay de brilho sutil com cores da marca */}
-      <div className="absolute inset-0 bg-gradient-to-t from-transparent via-transparent to-clinic-cyan/5 pointer-events-none"></div>
-      
-      {/* CSS Customizado para Animações */}
+      {/* Adição de estilos CSS personalizados */}
       <style jsx>{`
         @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-10px); }
-        }
-        
-        @keyframes wave {
-          0%, 100% { transform: rotate(0deg); }
-          33% { transform: rotate(5deg); }
-          66% { transform: rotate(-5deg); }
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          25% { transform: translateY(-10px) rotate(5deg); }
+          50% { transform: translateY(-5px) rotate(-5deg); }
+          75% { transform: translateY(-15px) rotate(3deg); }
         }
         
         .animate-float {
-          animation: float 3s ease-in-out infinite;
+          animation: float 15s ease-in-out infinite;
         }
         
-        .animate-wave {
-          animation: wave 2s ease-in-out infinite;
+        input:focus {
+          ring-color: #12f6ff !important;
+          border-color: #12f6ff !important;
+          box-shadow: 0 0 0 2px rgba(18, 246, 255, 0.2) !important;
+        }
+        
+        input::placeholder {
+          color: rgba(255, 255, 255, 0.5) !important;
         }
       `}</style>
     </div>

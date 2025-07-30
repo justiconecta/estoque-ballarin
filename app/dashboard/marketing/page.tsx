@@ -89,11 +89,14 @@ export default function DashboardMarketingPage() {
         return
       }
       
-      const stats: OrigemLeadStats[] = Object.entries(origemCount).map(([origem, count]) => ({
-        origem,
-        total: count,
-        percentual: Math.round((count / total) * 100)
-      })).sort((a, b) => b.total - a.total)
+      const stats: OrigemLeadStats[] = Object.entries(origemCount).map(([origem, count]) => {
+  const countNumber = Number(count)
+  return {
+    origem,
+    total: countNumber,
+    percentual: Math.round((countNumber / total) * 100)
+  }
+}).sort((a, b) => b.total - a.total)
       
       setOrigemLeadStats(stats)
     } catch (error) {
@@ -259,7 +262,7 @@ export default function DashboardMarketingPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
-      <div className="max-w-7xl mx-auto">
+      <div className="container mx-auto px-4 py0">
         {/* Header Universal */}
         <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
           <div className="flex justify-between items-center">

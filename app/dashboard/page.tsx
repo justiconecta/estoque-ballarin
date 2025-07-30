@@ -98,7 +98,7 @@ export default function DashboardPage() {
       // Calcular estatísticas de produtos
       const totalProdutos = produtos.length
       const estoqueTotal = produtos.reduce((sum, produto) => {
-        return sum + produto.lotes.reduce((loteSum, lote) => loteSum + lote.quantidade_disponivel, 0)
+        return sum + produto.lotes.reduce((loteSum: any, lote: { quantidade_disponivel: any }) => loteSum + lote.quantidade_disponivel, 0)
       }, 0)
 
       // Movimentações filtradas por data
@@ -124,7 +124,7 @@ export default function DashboardPage() {
       
       // Produtos com baixo estoque (menos de 10 unidades)
       const produtosBaixoEstoque = produtos.filter(produto => {
-        const estoqueProduto = produto.lotes.reduce((sum, lote) => sum + lote.quantidade_disponivel, 0)
+        const estoqueProduto = produto.lotes.reduce((sum: any, lote: { quantidade_disponivel: any }) => sum + lote.quantidade_disponivel, 0)
         return estoqueProduto < 10
       }).length
 
@@ -254,7 +254,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
-      <div className="max-w-7xl mx-auto">
+      <div className="container mx-auto px-4 py0">
         {/* Header Universal */}
         <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
           <div className="flex justify-between items-center">

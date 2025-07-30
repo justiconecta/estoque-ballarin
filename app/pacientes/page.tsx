@@ -210,8 +210,8 @@ export default function PacientesPage() {
                 <Image
                   src="/justiconecta.png"
                   alt="JustiConecta"
-                  width={70}
-                  height={70}
+                  width={75}
+                  height={75}
                   className="rounded-lg"
                 />
               </div>

@@ -13,10 +13,12 @@ export default function HomePage() {
     if (userData) {
       try {
         const user = JSON.parse(userData)
-        // Admin sempre vai para dashboard, staff para estoque
+        
         if (user.role === 'admin') {
+          // Admin sempre vai para dashboard (não importa se geral ou clínica)
           router.replace('/dashboard')
         } else {
+          // Staff vai para estoque
           router.replace('/estoque')
         }
       } catch {

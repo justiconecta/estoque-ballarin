@@ -409,7 +409,7 @@ export default function DashboardTerapeuticoPage() {
                 onClick={() => handleTabClick('jornada')}
                 className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
               >
-                Jornada do Cliente
+                Jornada do Paciente
               </button>
               <button
                 onClick={() => handleTabClick('marketing')}

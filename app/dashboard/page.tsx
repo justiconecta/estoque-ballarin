@@ -13,11 +13,13 @@ import {
   AlertCircle,
   Sun,
   Moon,
-  Home
+  Home,
+  Building
 } from 'lucide-react'
 import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario } from '@/types/database'
+import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 interface DashboardStats {
   totalProdutos: number
@@ -37,6 +39,8 @@ interface DateFilter {
 export default function DashboardPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
+  const [isAdminGeral, setIsAdminGeral] = useState(false)
+  const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [activeTab, setActiveTab] = useState<'jornada' | 'marketing' | 'terapeutico'>('jornada')
   const [stats, setStats] = useState<DashboardStats>({
     totalProdutos: 0,
@@ -60,6 +64,28 @@ export default function DashboardPage() {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard'
   const isCurrentPage = (path: string) => currentPath === path
 
+  // Função para alternar tema
+  const toggleTheme = () => {
+    const newTheme = !isDarkTheme
+    setIsDarkTheme(newTheme)
+    localStorage.setItem('ballarin_theme', newTheme ? 'dark' : 'light')
+  }
+
+  // Carregar tema salvo
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('ballarin_theme')
+    if (savedTheme) {
+      setIsDarkTheme(savedTheme === 'dark')
+    }
+  }, [])
+
+  // Aplicar tema no documento
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
+    }
+  }, [isDarkTheme])
+
   // Verificar autenticação
   useEffect(() => {
     const userData = localStorage.getItem('ballarin_user')
@@ -71,10 +97,25 @@ export default function DashboardPage() {
     try {
       const user = JSON.parse(userData) as Usuario
       setCurrentUser(user)
+      
+      // NOVA LÓGICA: Verificar se é admin geral
+      checkIfAdminGeral(user.usuario)
     } catch {
       router.push('/login')
     }
   }, [router])
+
+  // NOVA FUNÇÃO: Verificar admin geral
+  const checkIfAdminGeral = async (usuario: string) => {
+    try {
+      const isGeral = await supabaseApi.isAdminGeral(usuario)
+      setIsAdminGeral(isGeral)
+      console.log(`🔍 ADMIN GERAL: ${isGeral ? 'SIM' : 'NÃO'}`)
+    } catch (error) {
+      console.error('Erro ao verificar admin geral:', error)
+      setIsAdminGeral(false)
+    }
+  }
 
   // Carregar dados do dashboard
   useEffect(() => {
@@ -109,34 +150,32 @@ export default function DashboardPage() {
           const startDate = dateFilter.startDate ? new Date(dateFilter.startDate).toDateString() : null
           const endDate = dateFilter.endDate ? new Date(dateFilter.endDate).toDateString() : null
           
-          if (startDate && endDate) {
-            return movDate >= startDate && movDate <= endDate
-          } else if (startDate) {
-            return movDate >= startDate
-          } else if (endDate) {
-            return movDate <= endDate
-          }
-          return true
+          if (!startDate || !endDate) return true
+          
+          const movDateTime = new Date(movDate).getTime()
+          const startDateTime = new Date(startDate).getTime()
+          const endDateTime = new Date(endDate).getTime()
+          
+          return movDateTime >= startDateTime && movDateTime <= endDateTime
         })
       }
-      
+
       const movimentacoesHoje = movimentacoesFiltradas.length
-      
+
       // Produtos com baixo estoque (menos de 10 unidades)
       const produtosBaixoEstoque = produtos.filter(produto => {
-        const estoqueProduto = produto.lotes.reduce((sum: any, lote: { quantidade_disponivel: any }) => sum + lote.quantidade_disponivel, 0)
-        return estoqueProduto < 10
+        const estoqueAtual = produto.lotes.reduce((sum: any, lote: { quantidade_disponivel: any }) => sum + lote.quantidade_disponivel, 0)
+        return estoqueAtual < 10
       }).length
 
-      // Estatísticas de pacientes
+      // Pacientes
       const totalPacientes = pacientes.length
       
-      // Consultas baseadas em dados reais
-      const consultasHoje = procedimentos.filter(proc => {
-        const procDate = new Date(proc.data_realizacao || '').toDateString()
-        const hoje = new Date().toDateString()
-        return procDate === hoje
-      }).length
+      // Consultas hoje (usando procedimentos como proxy)
+      const hoje = new Date().toISOString().split('T')[0]
+      const consultasHoje = procedimentos.filter(proc => 
+        proc.data_realizacao && proc.data_realizacao.startsWith(hoje)
+      ).length
 
       setStats({
         totalProdutos,
@@ -154,115 +193,98 @@ export default function DashboardPage() {
     }
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('ballarin_user')
-    router.push('/login')
-  }
-
-  const toggleTheme = () => {
-    setIsDarkTheme(!isDarkTheme)
-    localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
-  }
-
-  // Carregar tema salvo
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('ballarin_theme')
-    if (savedTheme) {
-      setIsDarkTheme(savedTheme === 'dark')
-    }
-  }, [])
-
-  // Aplicar tema no documento
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
-    }
-  }, [isDarkTheme])
-
-  const getFilterDisplayName = (preset?: string) => {
-    switch (preset) {
-      case 'hoje': return 'Hoje'
-      case '7dias': return 'Últimos 7 dias'
-      case '14dias': return 'Últimos 14 dias'
-      case '30dias': return 'Últimos 30 dias'
-      case 'mes_passado': return 'Mês Passado'
-      case 'personalizado': return 'Personalizado'
-      default: return 'Hoje'
+  // NOVA FUNÇÃO: Callback de sucesso
+  const handleClinicaCriada = async () => {
+    // Recarregar dados se necessário
+    if (currentUser) {
+      await loadDashboardData()
     }
   }
 
-  const handleDatePreset = (preset: string) => {
-    const hoje = new Date()
-    const endDate = hoje.toISOString().split('T')[0]
-    let startDate = endDate
-
-    switch (preset) {
-      case 'hoje':
-        startDate = endDate
-        break
-      case '7dias':
-        const date7 = new Date(hoje)
-        date7.setDate(hoje.getDate() - 7)
-        startDate = date7.toISOString().split('T')[0]
-        break
-      case '14dias':
-        const date14 = new Date(hoje)
-        date14.setDate(hoje.getDate() - 14)
-        startDate = date14.toISOString().split('T')[0]
-        break
-      case '30dias':
-        const date30 = new Date(hoje)
-        date30.setDate(hoje.getDate() - 30)
-        startDate = date30.toISOString().split('T')[0]
-        break
-      case 'mes_passado':
-        const lastMonth = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1)
-        const lastMonthEnd = new Date(hoje.getFullYear(), hoje.getMonth(), 0)
-        startDate = lastMonth.toISOString().split('T')[0]
-        break
+  const handleLogout = async () => {
+    try {
+      await supabaseApi.logout()
+      router.push('/login')
+    } catch (error) {
+      console.error('Erro no logout:', error)
+      router.push('/login')
     }
-
-    setDateFilter({ startDate, endDate, preset })
-    setShowDateFilter(false)
-    setShowCustomDates(false)
-  }
-
-  const handleCustomDateApply = () => {
-    setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
-    setShowCustomDates(false)
-    setShowDateFilter(false)
   }
 
   const handleTabClick = (tab: 'jornada' | 'marketing' | 'terapeutico') => {
     setActiveTab(tab)
-    
     if (tab === 'marketing') {
       router.push('/dashboard/marketing')
     } else if (tab === 'terapeutico') {
       router.push('/dashboard/terapeutico')
     }
-    // Para 'jornada', mantém na mesma página
   }
 
-  if (!currentUser || loading) {
+  const handleDateFilterChange = (preset: string) => {
+    const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
+    
+    switch (preset) {
+      case 'hoje':
+        setDateFilter({ startDate: todayStr, endDate: todayStr, preset })
+        break
+      case '7dias':
+        const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+        setDateFilter({ 
+          startDate: weekAgo.toISOString().split('T')[0], 
+          endDate: todayStr, 
+          preset 
+        })
+        break
+      case '30dias':
+        const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
+        setDateFilter({ 
+          startDate: monthAgo.toISOString().split('T')[0], 
+          endDate: todayStr, 
+          preset 
+        })
+        break
+      case 'personalizado':
+        setShowCustomDates(true)
+        break
+    }
+    
+    if (preset !== 'personalizado') {
+      setShowDateFilter(false)
+      setShowCustomDates(false)
+    }
+  }
+
+  const handleCustomDateApply = () => {
+    setShowCustomDates(false)
+    setShowDateFilter(false)
+    setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
+  }
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-clinic-black flex items-center justify-center">
-        <div className="loading-spinner" />
+        <div className="text-center">
+          <div className="loading-spinner mb-4" />
+          <p className="text-clinic-gray-400">Carregando dashboard...</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
+      {/* Container principal */}
       <div className="container mx-auto px-4 py0">
-        {/* Header Universal */}
+        
+              {/* Header Universal */}
         <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
               <div className="flex-shrink-0">
                 <Image
                   src="/justiconecta.png"
-                  alt="JustiConecta"
+                  alt="JustiConecta"  
                   width={70}
                   height={70}
                   className="rounded-lg"
@@ -271,12 +293,17 @@ export default function DashboardPage() {
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
-                    <Home className="h-5 w-5 text-clinic-cyan" />
+                    <BarChart3 className="h-5 w-5 text-clinic-cyan" />
                   </div>
-                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Dashboard Geral</h1>
+                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Jornada do Paciente</h1>
+                  {isAdminGeral && (
+                    <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full border border-green-500/30">
+                      ADMIN GERAL
+                    </span>
+                  )}
                 </div>
                 <p className="text-clinic-gray-300 text-sm">
-                  Visão completa das operações e métricas da clínica
+                  Visão geral da jornada do paciente e performance da clínica
                 </p>
               </div>
             </div>
@@ -323,6 +350,19 @@ export default function DashboardPage() {
                 >
                   Pacientes
                 </Button>
+                
+                {/* NOVO: Botão Nova Clínica apenas para admin geral */}
+                {isAdminGeral && (
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowNovaClinicaModal(true)}
+                    icon={Building} 
+                    size="sm"
+                    className="px-4 py-2 transition-all duration-300 rounded-md font-medium bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-500 hover:text-white hover:scale-105"
+                  >
+                    Nova Clínica
+                  </Button>
+                )}
               </div>
               
               <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
@@ -361,17 +401,25 @@ export default function DashboardPage() {
                     : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
                 }`}
               >
-                Jornada do Cliente
+                Jornada do Paciente
               </button>
               <button
                 onClick={() => handleTabClick('marketing')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
+                  activeTab === 'marketing'
+                    ? 'border-clinic-cyan text-clinic-cyan'
+                    : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
+                }`}
               >
                 Marketing
               </button>
               <button
                 onClick={() => handleTabClick('terapeutico')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
+                  activeTab === 'terapeutico'
+                    ? 'border-clinic-cyan text-clinic-cyan'
+                    : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
+                }`}
               >
                 Terapêutico
               </button>
@@ -379,173 +427,169 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Filtro de Data */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Jornada do Cliente</h2>
-            <div className="relative">
-              <Button
-                variant="secondary"
-                onClick={() => setShowDateFilter(!showDateFilter)}
-                size="md"
-                className="min-w-[160px] justify-center"
-              >
-                {getFilterDisplayName(dateFilter.preset)}
-              </Button>
-              
-              {showDateFilter && (
-                <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-clinic-lg z-50 min-w-[200px]">
-                  <div className="p-3">
-                    <div className="space-y-2">
-                      {[
-                        { key: 'hoje', label: 'Hoje' },
-                        { key: '7dias', label: 'Últimos 7 dias' },
-                        { key: '14dias', label: 'Últimos 14 dias' },
-                        { key: '30dias', label: 'Últimos 30 dias' },
-                        { key: 'mes_passado', label: 'Mês Passado' }
-                      ].map((preset) => (
-                        <button
-                          key={preset.key}
-                          onClick={() => handleDatePreset(preset.key)}
-                          className="block w-full text-left px-3 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700 rounded transition-colors"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setShowCustomDates(!showCustomDates)}
-                        className="block w-full text-left px-3 py-2 text-sm text-clinic-cyan hover:bg-clinic-gray-700 rounded transition-colors"
-                      >
-                        Personalizado
-                      </button>
-                    </div>
-                    
-                    {showCustomDates && (
-                      <div className="mt-3 pt-3 border-t border-clinic-gray-600">
-                        <div className="space-y-2">
-                          <div>
-                            <label className="block text-xs text-clinic-gray-400 mb-1">De:</label>
-                            <input
-                              type="date"
-                              value={dateFilter.startDate}
-                              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-clinic-gray-400 mb-1">Até:</label>
-                            <input
-                              type="date"
-                              value={dateFilter.endDate}
-                              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                            />
-                          </div>
-                          <div className="flex space-x-2 mt-3">
-                            <Button size="sm" onClick={handleCustomDateApply}>
-                              Aplicar
-                            </Button>
-                            <Button size="sm" variant="secondary" onClick={() => {
-                              setShowCustomDates(false)
-                              setShowDateFilter(false)
-                            }}>
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Cards de Métricas Principais */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+          
           <Card>
-            <div className="flex items-center">
-              <div className="p-2 bg-clinic-cyan/20 rounded-lg">
-                <Package className={`h-6 w-6 ${
-                  stats.totalProdutos > 0 ? 'text-clinic-cyan' : 'text-gray-400'
-                }`} />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-clinic-gray-400">Total Produtos</p>
-                <p className="text-2xl font-bold text-clinic-white">{stats.totalProdutos}</p>
-                <p className="text-xs text-clinic-gray-400">produtos ativos</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center">
-              <div className="p-2 bg-green-500/20 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-green-400" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-clinic-gray-400">Estoque Total</p>
-                <p className="text-2xl font-bold text-clinic-white">{stats.estoqueTotal}</p>
-                <p className="text-xs text-green-400">unidades disponíveis</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-500/20 rounded-lg">
-                <BarChart3 className="h-6 w-6 text-blue-400" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-clinic-gray-400">Movimentações</p>
-                <p className="text-2xl font-bold text-clinic-white">{stats.movimentacoesHoje}</p>
-                <p className="text-xs text-blue-400">no período selecionado</p>
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center">
-              <div className="p-2 bg-red-500/20 rounded-lg">
-                <AlertCircle className={`h-6 w-6 ${
-                  stats.produtosBaixoEstoque > 0 ? 'text-red-400' : 'text-green-400'
-                }`} />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-clinic-gray-400">Baixo Estoque</p>
-                <p className="text-2xl font-bold text-clinic-white">{stats.produtosBaixoEstoque}</p>
-                <p className={`text-xs ${
-                  stats.produtosBaixoEstoque > 0 ? 'text-red-400' : 'text-green-400'
-                }`}>
-                  {stats.produtosBaixoEstoque > 0 ? 'produtos críticos' : 'tudo OK'}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Total de Pacientes</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.totalPacientes}
                 </p>
               </div>
+              <div className="p-3 bg-clinic-cyan/20 rounded-lg">
+                <Users className="h-6 w-6 text-clinic-cyan" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Produtos em Estoque</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.totalProdutos}
+                </p>
+              </div>
+              <div className="p-3 bg-green-500/20 rounded-lg">
+                <Package className="h-6 w-6 text-green-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Unidades Totais</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.estoqueTotal}
+                </p>
+              </div>
+              <div className="p-3 bg-blue-500/20 rounded-lg">
+                <TrendingUp className="h-6 w-6 text-blue-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Movimentações</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.movimentacoesHoje}
+                </p>
+              </div>
+              <div className="p-3 bg-purple-500/20 rounded-lg">
+                <BarChart3 className="h-6 w-6 text-purple-400" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Consultas Hoje</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.consultasHoje}
+                </p>
+              </div>
+              <div className="p-3 bg-clinic-cyan/20 rounded-lg">
+                <Users className="h-6 w-6 text-clinic-cyan" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-clinic-gray-400 text-sm">Baixo Estoque</p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">
+                  {stats.produtosBaixoEstoque}
+                </p>
+              </div>
+              <div className={`p-3 rounded-lg ${
+                stats.produtosBaixoEstoque > 0 
+                  ? 'bg-red-500/20' 
+                  : 'bg-green-500/20'
+              }`}>
+                <AlertCircle className={`h-6 w-6 ${
+                  stats.produtosBaixoEstoque > 0 
+                    ? 'text-red-400' 
+                    : 'text-green-400'
+                }`} />
+              </div>
             </div>
           </Card>
         </div>
 
-        {/* Conteúdo da Jornada do Paciente */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card title="Pacientes Cadastrados">
-            <div className="text-center py-6">
-              <div className="text-4xl font-bold text-clinic-cyan mb-2">
-                {stats.totalPacientes}
+        {/* Resumo de Ações Rápidas */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <Card>
+            <div className="text-center p-6">
+              <div className="p-4 bg-clinic-cyan/20 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <Package className="h-8 w-8 text-clinic-cyan" />
               </div>
-              <p className="text-clinic-gray-400">pacientes no sistema</p>
+              <h3 className="text-lg font-semibold text-clinic-white mb-2">Gerenciar Estoque</h3>
+              <p className="text-clinic-gray-400 text-sm mb-4">
+                Controle de entrada e saída de produtos
+              </p>
+              <Button 
+                onClick={() => router.push('/estoque')}
+                className="w-full"
+              >
+                Acessar Estoque
+              </Button>
             </div>
           </Card>
-          
-          <Card title="Consultas do Dia">
-            <div className="text-center py-6">
-              <div className="text-4xl font-bold text-green-400 mb-2">
-                {stats.consultasHoje}
+
+          <Card>
+            <div className="text-center p-6">
+              <div className="p-4 bg-green-500/20 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <Users className="h-8 w-8 text-green-400" />
               </div>
-              <p className="text-clinic-gray-400">procedimentos realizados hoje</p>
+              <h3 className="text-lg font-semibold text-clinic-white mb-2">Cadastro de Pacientes</h3>
+              <p className="text-clinic-gray-400 text-sm mb-4">
+                Gerenciar informações dos pacientes
+              </p>
+              <Button 
+                onClick={() => router.push('/pacientes')}
+                variant="secondary"
+                className="w-full"
+              >
+                Ver Pacientes
+              </Button>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="text-center p-6">
+              <div className="p-4 bg-purple-500/20 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                <BarChart3 className="h-8 w-8 text-purple-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-clinic-white mb-2">Analytics Avançado</h3>
+              <p className="text-clinic-gray-400 text-sm mb-4">
+                Relatórios detalhados e insights
+              </p>
+              <Button 
+                onClick={() => handleTabClick('marketing')}
+                variant="secondary"
+                className="w-full"
+              >
+                Ver Analytics
+              </Button>
             </div>
           </Card>
         </div>
       </div>
+
+      {/* Modal Nova Clínica */}
+      <NovaClinicaModal 
+        isOpen={showNovaClinicaModal}
+        onClose={() => setShowNovaClinicaModal(false)}
+        onSuccess={handleClinicaCriada}
+      />
     </div>
   )
 }

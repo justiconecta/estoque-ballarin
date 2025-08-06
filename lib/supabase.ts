@@ -99,12 +99,15 @@ export const supabaseApi = {
         clinica_nome: data.clinicas?.nome_clinica
       })
       
-      // Definir clínica atual automaticamente
-      if (data.id_clinica) {
+      // Definir clínica atual automaticamente (APENAS se não for admin geral)
+      if (data.id_clinica && data.id_clinica > 0) {
         setCurrentClinic(data.id_clinica, {
           nome_completo: data.nome_completo,
           clinica_nome: data.clinicas?.nome_clinica
         })
+      } else {
+        // Admin geral não tem clínica específica
+        console.log('🔍 ADMIN GERAL LOGADO - SEM CLÍNICA ESPECÍFICA')
       }
       
       return data
@@ -119,6 +122,156 @@ export const supabaseApi = {
     clearCurrentClinic()
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ballarin_user')
+    }
+  },
+
+  // ============ ADMIN GERAL - GESTÃO DE CLÍNICAS ============
+
+  // VERIFICAR SE USUÁRIO É ADMIN GERAL
+  async isAdminGeral(usuario: string): Promise<boolean> {
+    try {
+      const { data, error } = await supabase
+        .from('usuarios_internos')
+        .select(`
+          role, 
+          id_clinica,
+          clinicas:id_clinica (
+            nome_clinica
+          )
+        `)
+        .eq('usuario', usuario)
+        .single()
+      
+      if (error) throw error
+      
+      // Admin geral: role='admin' E (id_clinica = NULL OU nome da clínica contém 'ADMIN GERAL')
+      const isRoleAdmin = data.role === 'admin'
+      const nomeClinica = data.clinicas?.nome_clinica || ''
+      const isClinicaAdminGeral = nomeClinica.includes('ADMIN GERAL')
+      const isIdClinicaNull = data.id_clinica == null || data.id_clinica === 0
+      
+      const resultado = isRoleAdmin && (isIdClinicaNull || isClinicaAdminGeral)
+      
+      console.log('🔍 isAdminGeral check:', { 
+        usuario, 
+        role: data.role, 
+        id_clinica: data.id_clinica, 
+        nome_clinica: nomeClinica,
+        isRoleAdmin,
+        isClinicaAdminGeral,
+        isIdClinicaNull,
+        resultado_final: resultado
+      })
+      
+      return resultado
+    } catch (error) {
+      console.error('💥 ERRO isAdminGeral:', error)
+      return false
+    }
+  },
+
+  // LISTAR TODAS AS CLÍNICAS (apenas admin geral)
+  async getTodasClinicas() {
+    try {
+      const { data, error } = await supabase
+        .from('clinicas')
+        .select('*')
+        .order('data_cadastro', { ascending: false })
+      
+      if (error) throw error
+      console.log(`🏥 CLÍNICAS ENCONTRADAS: ${data?.length || 0}`)
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getTodasClinicas:', error)
+      throw error
+    }
+  },
+
+  // CRIAR NOVA CLÍNICA (apenas admin geral)
+  async createClinica(clinica: {
+    nome_clinica: string
+    cnpj?: string
+    endereco?: string
+    telefone?: string
+    email?: string
+  }) {
+    try {
+      console.log('🏥 CRIANDO NOVA CLÍNICA:', clinica.nome_clinica)
+      
+      const clinicaCompleta = {
+        ...clinica,
+        plano: 'basico', // padrão fixo
+        ativa: true,
+        data_cadastro: new Date().toISOString()
+      }
+      
+      const { data, error } = await supabase
+        .from('clinicas')
+        .insert(clinicaCompleta)
+        .select()
+        .single()
+      
+      if (error) throw error
+      console.log('✅ CLÍNICA CRIADA:', data.id_clinica)
+      return data
+    } catch (error) {
+      console.error('💥 ERRO createClinica:', error)
+      throw error
+    }
+  },
+
+  // CRIAR USUÁRIO ADMIN DA CLÍNICA (junto com clínica)
+  async createAdminClinica(clinicaId: number, adminData: {
+    nome_completo: string
+    email: string
+    usuario_base: string // será transformado em admin.{usuario_base}
+  }) {
+    try {
+      const usuarioAdmin = `admin.${adminData.usuario_base}`
+      const senhaInicial = `${adminData.usuario_base}123` // Senha temporária
+      
+      console.log(`👤 CRIANDO ADMIN PARA CLÍNICA ${clinicaId}:`, usuarioAdmin)
+      
+      const { data, error } = await supabase
+        .from('usuarios_internos')
+        .insert({
+          usuario: usuarioAdmin,
+          senha: senhaInicial,
+          nome_completo: adminData.nome_completo,
+          email: adminData.email,
+          role: 'admin',
+          id_clinica: clinicaId
+        })
+        .select()
+        .single()
+      
+      if (error) throw error
+      console.log('✅ ADMIN CLÍNICA CRIADO')
+      return { ...data, senha_inicial: senhaInicial }
+    } catch (error) {
+      console.error('💥 ERRO createAdminClinica:', error)
+      throw error
+    }
+  },
+
+  // ATUALIZAR STATUS CLÍNICA (ativar/desativar)
+  async updateStatusClinica(clinicaId: number, ativa: boolean) {
+    try {
+      console.log(`🔄 ATUALIZANDO STATUS CLÍNICA ${clinicaId}: ${ativa ? 'ATIVA' : 'INATIVA'}`)
+      
+      const { data, error } = await supabase
+        .from('clinicas')
+        .update({ ativa })
+        .eq('id_clinica', clinicaId)
+        .select()
+        .single()
+      
+      if (error) throw error
+      console.log('✅ STATUS CLÍNICA ATUALIZADO')
+      return data
+    } catch (error) {
+      console.error('💥 ERRO updateStatusClinica:', error)
+      throw error
     }
   },
 
@@ -481,6 +634,50 @@ export const supabaseApi = {
     } catch (error) {
       console.error('💥 ERRO getCurrentClinic:', error)
       return null
+    }
+  },
+
+  // ============ FUNÇÕES PARA PROCEDIMENTOS E OUTROS DADOS ============
+  
+  // PROCEDIMENTOS (isolamento por clínica)
+  async getProcedimentos(limit = 100) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) return []
+
+      const { data, error } = await supabase
+        .from('procedimentos')
+        .select('*')
+        .eq('id_clinica', clinicId)
+        .order('data_realizacao', { ascending: false, nullsFirst: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getProcedimentos:', error)
+      return []
+    }
+  },
+
+  // GOOGLE REVIEWS (isolamento por clínica)
+  async getGoogleReviews(limit = 50) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) return []
+
+      const { data, error } = await supabase
+        .from('google_review')
+        .select('*')
+        .eq('id_clinica', clinicId)
+        .order('data_review', { ascending: false })
+        .limit(limit)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getGoogleReviews:', error)
+      return []
     }
   }
 }

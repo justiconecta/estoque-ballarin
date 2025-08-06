@@ -19,7 +19,9 @@ import {
   ArrowLeft,
   Package,
   Sun,
-  Moon
+  Moon,
+  Save,
+  X
 } from 'lucide-react'
 import { Button, Input, Select, Card, Modal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -61,6 +63,7 @@ export default function PacientesPage() {
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
   const [pacienteForm, setPacienteForm] = useState<PacienteForm>(pacienteFormInitial)
   const [consultas, setConsultas] = useState<Consulta[]>([])
+  const [submitting, setSubmitting] = useState(false)
   
   // Estados de feedback
   const [feedbackModal, setFeedbackModal] = useState<{
@@ -180,6 +183,9 @@ export default function PacientesPage() {
       })
     } else if (type === 'create') {
       setPacienteForm(pacienteFormInitial)
+    } else if (type === 'view' && paciente) {
+      // Carregar consultas do paciente para visualização
+      loadConsultas(paciente.id_paciente)
     }
     
     setIsModalOpen(true)
@@ -189,6 +195,96 @@ export default function PacientesPage() {
     setIsModalOpen(false)
     setSelectedPaciente(null)
     setPacienteForm(pacienteFormInitial)
+    setConsultas([])
+    setSubmitting(false)
+  }
+
+  const loadConsultas = async (pacienteId: number) => {
+    try {
+      const data = await supabaseApi.getConsultasByPaciente(pacienteId)
+      setConsultas(data)
+    } catch (error) {
+      console.error('Erro ao carregar consultas:', error)
+    }
+  }
+
+  // CRIAR PACIENTE
+  const handleCreatePaciente = async () => {
+    if (!pacienteForm.nome || !pacienteForm.cpf) {
+      showFeedback('error', 'Erro de Validação', 'Nome e CPF são obrigatórios')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+      await supabaseApi.createPaciente({
+        ...pacienteForm,
+        data_cadastro: new Date().toISOString()
+      })
+      
+      showFeedback('success', 'Sucesso', 'Paciente cadastrado com sucesso!')
+      closeModal()
+      loadPacientes()
+    } catch (error) {
+      showFeedback('error', 'Erro', 'Falha ao cadastrar paciente')
+      console.error('Erro ao criar paciente:', error)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // EDITAR PACIENTE
+  const handleUpdatePaciente = async () => {
+    if (!selectedPaciente) return
+
+    if (!pacienteForm.nome || !pacienteForm.cpf) {
+      showFeedback('error', 'Erro de Validação', 'Nome e CPF são obrigatórios')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+      await supabaseApi.updatePaciente(selectedPaciente.id_paciente, pacienteForm)
+      
+      showFeedback('success', 'Sucesso', 'Paciente atualizado com sucesso!')
+      closeModal()
+      loadPacientes()
+    } catch (error) {
+      showFeedback('error', 'Erro', 'Falha ao atualizar paciente')
+      console.error('Erro ao atualizar paciente:', error)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // EXCLUIR PACIENTE
+  const handleDeletePaciente = async () => {
+    if (!selectedPaciente) return
+
+    try {
+      setSubmitting(true)
+      await supabaseApi.deletePaciente(selectedPaciente.id_paciente)
+      
+      showFeedback('success', 'Sucesso', 'Paciente excluído com sucesso!')
+      closeModal()
+      loadPacientes()
+    } catch (error) {
+      showFeedback('error', 'Erro', 'Falha ao excluir paciente')
+      console.error('Erro ao excluir paciente:', error)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // SUBMIT PRINCIPAL
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (modalType === 'create') {
+      handleCreatePaciente()
+    } else if (modalType === 'edit') {
+      handleUpdatePaciente()
+    }
   }
 
   if (!currentUser) {
@@ -201,7 +297,7 @@ export default function PacientesPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
-      <div className="container mx-auto px-4 py0">
+      <div className="container mx-auto px-4 py-6">
         {/* Header Universal */}
         <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
           <div className="flex justify-between items-center">
@@ -272,7 +368,7 @@ export default function PacientesPage() {
                 </Button>
               </div>
               
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
+              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-1.5 flex items-center space-x-1 border border-clinic-gray-600">
                 <Button 
                   variant="secondary" 
                   onClick={toggleTheme} 
@@ -397,6 +493,287 @@ export default function PacientesPage() {
             </div>
           )}
         </Card>
+
+        {/* MODAL CRIAR/EDITAR PACIENTE */}
+        {(modalType === 'create' || modalType === 'edit') && (
+          <Modal
+            isOpen={isModalOpen}
+            onClose={closeModal}
+            title={modalType === 'create' ? 'Novo Paciente' : 'Editar Paciente'}
+          >
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Nome Completo *"
+                  value={pacienteForm.nome}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, nome: e.target.value }))}
+                  placeholder="Digite o nome completo"
+                  required
+                />
+                
+                <Input
+                  label="CPF *"
+                  value={pacienteForm.cpf}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, cpf: e.target.value }))}
+                  placeholder="000.000.000-00"
+                  required
+                />
+                
+                <Input
+                  label="Data de Nascimento"
+                  type="date"
+                  value={pacienteForm.data_nascimento}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, data_nascimento: e.target.value }))}
+                />
+                
+                <Select
+                  label="Sexo"
+                  value={pacienteForm.sexo}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, sexo: e.target.value }))}
+                  options={[
+                    { value: '', label: 'Selecione...' },
+                    { value: 'Masculino', label: 'Masculino' },
+                    { value: 'Feminino', label: 'Feminino' },
+                    { value: 'Outro', label: 'Outro' }
+                  ]}
+                />
+                
+                <Input
+                  label="Telefone"
+                  value={pacienteForm.telefone}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, telefone: e.target.value }))}
+                  placeholder="(11) 99999-9999"
+                />
+                
+                <Input
+                  label="Email"
+                  type="email"
+                  value={pacienteForm.email}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+              
+              <Select
+                label="Origem do Lead"
+                value={pacienteForm.origem_lead}
+                onChange={(e) => setPacienteForm(prev => ({ ...prev, origem_lead: e.target.value }))}
+                options={[
+                  { value: '', label: 'Selecione a origem...' },
+                  { value: 'Instagram', label: 'Instagram' },
+                  { value: 'Google', label: 'Google' },
+                  { value: 'Facebook', label: 'Facebook' },
+                  { value: 'Indicação', label: 'Indicação' },
+                  { value: 'Site', label: 'Site' },
+                  { value: 'Outros', label: 'Outros' }
+                ]}
+              />
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={closeModal}
+                  icon={X}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  icon={Save}
+                >
+                  {submitting ? 'Salvando...' : (modalType === 'create' ? 'Criar Paciente' : 'Salvar Alterações')}
+                </Button>
+              </div>
+            </form>
+          </Modal>
+        )}
+
+        {/* MODAL VER PACIENTE */}
+        {modalType === 'view' && selectedPaciente && (
+          <Modal
+            isOpen={isModalOpen}
+            onClose={closeModal}
+            title="Detalhes do Paciente"
+          >
+            <div className="space-y-6">
+              {/* Informações Pessoais */}
+              <div>
+                <h3 className="text-clinic-white font-medium mb-4 flex items-center">
+                  <User className="w-5 h-5 mr-2 text-clinic-cyan" />
+                  Informações Pessoais
+                </h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-clinic-gray-400">Nome:</span>
+                    <p className="text-clinic-white font-medium">{selectedPaciente.nome}</p>
+                  </div>
+                  <div>
+                    <span className="text-clinic-gray-400">CPF:</span>
+                    <p className="text-clinic-white">{selectedPaciente.cpf}</p>
+                  </div>
+                  <div>
+                    <span className="text-clinic-gray-400">Data de Nascimento:</span>
+                    <p className="text-clinic-white">
+                      {selectedPaciente.data_nascimento ? new Date(selectedPaciente.data_nascimento).toLocaleDateString('pt-BR') : 'Não informado'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-clinic-gray-400">Sexo:</span>
+                    <p className="text-clinic-white">{selectedPaciente.sexo || 'Não informado'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contato */}
+              <div>
+                <h3 className="text-clinic-white font-medium mb-4 flex items-center">
+                  <Phone className="w-5 h-5 mr-2 text-clinic-cyan" />
+                  Contato
+                </h3>
+                <div className="grid grid-cols-1 gap-4 text-sm">
+                  <div>
+                    <span className="text-clinic-gray-400">Telefone:</span>
+                    <p className="text-clinic-white">{selectedPaciente.telefone || 'Não informado'}</p>
+                  </div>
+                  <div>
+                    <span className="text-clinic-gray-400">Email:</span>
+                    <p className="text-clinic-white">{selectedPaciente.email || 'Não informado'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Origem e Cadastro */}
+              <div>
+                <h3 className="text-clinic-white font-medium mb-4 flex items-center">
+                  <Calendar className="w-5 h-5 mr-2 text-clinic-cyan" />
+                  Informações de Cadastro
+                </h3>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-clinic-gray-400">Origem do Lead:</span>
+                    <p className="text-clinic-white">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        selectedPaciente.origem_lead === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
+                        selectedPaciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
+                        'bg-green-900/20 text-green-400'
+                      }`}>
+                        {selectedPaciente.origem_lead}
+                      </span>
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-clinic-gray-400">Data de Cadastro:</span>
+                    <p className="text-clinic-white">
+                      {new Date(selectedPaciente.data_cadastro).toLocaleDateString('pt-BR')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Consultas */}
+              <div>
+                <h3 className="text-clinic-white font-medium mb-4 flex items-center">
+                  <Calendar className="w-5 h-5 mr-2 text-clinic-cyan" />
+                  Histórico de Consultas ({consultas.length})
+                </h3>
+                {consultas.length === 0 ? (
+                  <p className="text-clinic-gray-400 text-sm">Nenhuma consulta registrada</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto space-y-2">
+                    {consultas.map((consulta) => (
+                      <div key={consulta.id_consulta} className="bg-clinic-gray-700 p-3 rounded-lg">
+                        <div className="flex justify-between items-center">
+                          <span className="text-clinic-white text-sm font-medium">
+                            {consulta.tipo_consulta}
+                          </span>
+                          <span className="text-clinic-gray-400 text-xs">
+                            {new Date(consulta.data_agendamento).toLocaleDateString('pt-BR')}
+                          </span>
+                        </div>
+                        <p className="text-clinic-gray-300 text-xs mt-1">
+                          Status: {consulta.status_consulta}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4">
+                <Button onClick={closeModal} variant="secondary">
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* MODAL EXCLUIR PACIENTE */}
+        {modalType === 'delete' && selectedPaciente && (
+          <Modal
+            isOpen={isModalOpen}
+            onClose={closeModal}
+            title="Excluir Paciente"
+          >
+            <div className="text-center py-4">
+              <div className="mx-auto w-16 h-16 bg-red-100/10 rounded-full flex items-center justify-center mb-4">
+                <Trash2 className="w-8 h-8 text-red-400" />
+              </div>
+              <h3 className="text-clinic-white font-medium mb-2">
+                Confirmar Exclusão
+              </h3>
+              <p className="text-clinic-gray-300 mb-6">
+                Tem certeza que deseja excluir o paciente <strong>{selectedPaciente.nome}</strong>? 
+                Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex justify-center space-x-3">
+                <Button
+                  variant="secondary"
+                  onClick={closeModal}
+                  disabled={submitting}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={handleDeletePaciente}
+                  disabled={submitting}
+                  icon={Trash2}
+                >
+                  {submitting ? 'Excluindo...' : 'Confirmar Exclusão'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* MODAL DE FEEDBACK */}
+        <Modal
+          isOpen={feedbackModal.isOpen}
+          onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+          title={feedbackModal.title}
+        >
+          <div className="text-center py-4">
+            <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+              feedbackModal.type === 'success' ? 'bg-green-100/10' : 'bg-red-100/10'
+            }`}>
+              {feedbackModal.type === 'success' ? (
+                <Users className="w-8 h-8 text-green-400" />
+              ) : (
+                <X className="w-8 h-8 text-red-400" />
+              )}
+            </div>
+            <p className="text-clinic-gray-300">{feedbackModal.message}</p>
+            <Button
+              onClick={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+              className="mt-4"
+            >
+              OK
+            </Button>
+          </div>
+        </Modal>
       </div>
     </div>
   )

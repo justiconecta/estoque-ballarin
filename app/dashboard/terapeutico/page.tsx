@@ -1,216 +1,67 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { Package, Users, LogOut, Heart, Sun, Moon, Home } from 'lucide-react'
-import { Button, Card } from '@/components/ui'
+import { 
+  Package, 
+  Users, 
+  LogOut, 
+  Sun, 
+  Moon, 
+  Home, 
+  Search,
+  Bot,
+  Calendar,
+  MessageCircle,
+  User
+} from 'lucide-react'
+import { Button, Card, Input } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import { Usuario } from '@/types/database'
+import { Usuario, Paciente } from '@/types/database'
 
-interface TerapeuticoStats {
-  totalPacientes: number
-  pacientesAtivos: number
-  consultasRealizadas: number
-  pacientesMaisAtivos: Array<{
-    nome: string
-    ultimaInteracao: string
-    resumosDiarios: number
-  }>
-  efeitosAdversos: Array<{
-    efeito: string
-    relatos: number
-  }>
-  fatoresSucesso: Array<{
-    fator: string
-    score: number
-    descricao: string
-  }>
-  pontosMelhoria: Array<{
-    ponto: string
-    impacto: string
-    sugestao: string
-  }>
-  satisfacaoGeral: number
-  reviewsPositivos: number
-  reviewsNegativos: number
+interface ResumosDiarios {
+  id_resumo_di: number
+  cpf: string
+  nome_paciente: string | null
+  resumo_interacao: string
+  status_processamento: string
+  data_resumo: string
+  data_criacao: string
 }
 
-interface DateFilter {
-  startDate: string
-  endDate: string
-  preset?: string
+interface ResumosSemanais {
+  id_resumo_sem: number
+  cpf: string
+  nome_paciente: string | null
+  data_inicio_semana: string
+  data_fim_semana: string
+  resumo_geral_semana: string
+  data_geracao: string
 }
 
-export default function DashboardTerapeuticoPage() {
+export default function DashboardIAPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
-  const [activeTab, setActiveTab] = useState<'jornada' | 'marketing' | 'terapeutico'>('terapeutico')
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<TerapeuticoStats | null>(null)
-  const [showDateFilter, setShowDateFilter] = useState(false)
-  const [showCustomDates, setShowCustomDates] = useState(false)
-  const [dateFilter, setDateFilter] = useState<DateFilter>({
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0],
-    preset: 'hoje'
-  })
   const [isDarkTheme, setIsDarkTheme] = useState(true)
+  
+  // Estados de busca de paciente
+  const [searchTerm, setSearchTerm] = useState('')
+  const [searchResults, setSearchResults] = useState<Paciente[]>([])
+  const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
+  const [showResults, setShowResults] = useState(false)
+  
+  // Estados dos resumos
+  const [resumosDiarios, setResumosDiarios] = useState<ResumosDiarios[]>([])
+  const [resumosSemanais, setResumosSemanais] = useState<ResumosSemanais[]>([])
+  const [selectedDate, setSelectedDate] = useState<string>('')
+  const [conversaDia, setConversaDia] = useState<ResumosDiarios | null>(null)
+  const [loadingConversa, setLoadingConversa] = useState(false)
 
-  // Detectar página atual para botão ativo
+  // Detectar página atual
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard/terapeutico'
   const isCurrentPage = (path: string) => currentPath === path
-
-  // Verificar autenticação
-  useEffect(() => {
-    const userData = localStorage.getItem('ballarin_user')
-    if (!userData) {
-      router.push('/login')
-      return
-    }
-    
-    try {
-      const user = JSON.parse(userData) as Usuario
-      setCurrentUser(user)
-    } catch {
-      router.push('/login')
-    }
-  }, [router])
-
-  // Carregar dados do dashboard
-  useEffect(() => {
-    if (currentUser) {
-      loadDashboardData()
-    }
-  }, [currentUser, dateFilter])
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true)
-      
-      // Carregar dados base com fallbacks
-      const [pacientes, procedimentos, reviews] = await Promise.all([
-        supabaseApi.getPacientes(1000).catch(() => []),
-        supabaseApi.getProcedimentos(100).catch(() => []),
-        supabaseApi.getGoogleReviews(50).catch(() => [])
-      ])
-      
-      // Estatísticas básicas
-      const totalPacientes = pacientes.length
-      
-      // Aplicar filtro de data nos procedimentos
-      let procedimentosFiltrados = procedimentos
-      if (dateFilter.preset !== 'hoje' || dateFilter.startDate !== dateFilter.endDate) {
-        procedimentosFiltrados = procedimentos.filter(proc => {
-          if (!proc.data_realizacao) return false
-          const procDate = new Date(proc.data_realizacao)
-          const startDate = new Date(dateFilter.startDate + 'T00:00:00')
-          const endDate = new Date(dateFilter.endDate + 'T23:59:59')
-          
-          return procDate >= startDate && procDate <= endDate
-        })
-      }
-      
-      const pacientesAtivos = pacientes.filter(p => {
-        // Considerar paciente ativo se teve procedimento no período filtrado
-        return procedimentosFiltrados.some(proc => 
-          proc.id_orcamento && proc.data_realizacao
-        )
-      }).length
-      
-      const consultasRealizadas = procedimentosFiltrados.filter(p => p.status_procedimento === 'Concluido').length
-      
-      // Pacientes mais ativos (mock baseado em dados reais)
-      const pacientesMaisAtivos = pacientes.slice(0, 5).map((paciente, index) => ({
-        nome: paciente.nome,
-        ultimaInteracao: new Date(Date.now() - (index * 24 * 60 * 60 * 1000)).toLocaleDateString('pt-BR'),
-        resumosDiarios: Math.floor(Math.random() * 10) + 5
-      }))
-      
-      // Análise de reviews para CX
-      const reviewsPositivos = reviews.filter(r => r.sentimento === 'Positivo').length
-      const reviewsNegativos = reviews.filter(r => r.sentimento === 'Negativo').length
-      const satisfacaoGeral = Math.round((reviewsPositivos / Math.max(reviews.length, 1)) * 100)
-      
-      // Fatores de sucesso baseados em reviews positivos
-      const comentariosPositivos = reviews
-        .filter(r => r.sentimento === 'Positivo')
-        .map(r => r.comentario.toLowerCase())
-        .join(' ')
-      
-      const fatoresSucesso = [
-        {
-          fator: 'Qualidade do Atendimento',
-          score: comentariosPositivos.includes('atendimento') ? 9.2 : 8.5,
-          descricao: 'Excelência no relacionamento com pacientes'
-        },
-        {
-          fator: 'Resultados dos Tratamentos',
-          score: comentariosPositivos.includes('resultado') ? 9.0 : 8.2,
-          descricao: 'Eficácia dos procedimentos realizados'
-        },
-        {
-          fator: 'Ambiente da Clínica',
-          score: comentariosPositivos.includes('ambiente') || comentariosPositivos.includes('limpo') ? 9.1 : 8.7,
-          descricao: 'Qualidade das instalações e higiene'
-        }
-      ].filter(f => f.score >= 8.0)
-
-      // Pontos de melhoria baseados em reviews negativos
-      const comentariosNegativos = reviews
-        .filter(r => r.sentimento === 'Negativo')
-        .map(r => r.comentario.toLowerCase())
-        .join(' ')
-
-      const pontosMelhoria = [
-        {
-          ponto: 'Tempo de Espera',
-          impacto: comentariosNegativos.includes('espera') || comentariosNegativos.includes('atraso') ? 'Alto' : 'Baixo',
-          sugestao: 'Otimizar agendamentos e reduzir intervalos'
-        },
-        {
-          ponto: 'Comunicação de Preços',
-          impacto: comentariosNegativos.includes('preço') || comentariosNegativos.includes('caro') ? 'Médio' : 'Baixo',
-          sugestao: 'Maior transparência na comunicação de valores'
-        },
-        {
-          ponto: 'Follow-up Pós-Tratamento',
-          impacto: comentariosNegativos.includes('acompanhamento') || comentariosNegativos.includes('retorno') ? 'Alto' : 'Baixo',
-          sugestao: 'Implementar protocolo de acompanhamento pós-procedimento'
-        },
-        {
-          ponto: 'Disponibilidade de Horários',
-          impacto: comentariosNegativos.includes('disponível') || comentariosNegativos.includes('horário') ? 'Médio' : 'Baixo',
-          sugestao: 'Ampliar grade de horários disponíveis'
-        }
-      ].filter(p => p.impacto !== 'Baixo')
-
-      // Efeitos adversos simulados baseados em procedimentos
-      const efeitosAdversos = [
-        { efeito: 'Vermelhidão leve', relatos: 3 },
-        { efeito: 'Inchaço temporário', relatos: 2 },
-        { efeito: 'Sensibilidade', relatos: 1 }
-      ].filter(e => e.relatos > 0)
-
-      setStats({
-        totalPacientes,
-        pacientesAtivos,
-        consultasRealizadas,
-        pacientesMaisAtivos,
-        efeitosAdversos,
-        fatoresSucesso,
-        pontosMelhoria,
-        satisfacaoGeral,
-        reviewsPositivos,
-        reviewsNegativos
-      })
-
-    } catch (error) {
-      console.error('Erro ao carregar dados do dashboard terapêutico:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleLogout = () => {
     localStorage.removeItem('ballarin_user')
@@ -237,69 +88,162 @@ export default function DashboardTerapeuticoPage() {
     }
   }, [isDarkTheme])
 
-  const getFilterDisplayName = (preset?: string) => {
-    switch (preset) {
-      case 'hoje': return 'Hoje'
-      case '7dias': return 'Últimos 7 dias'
-      case '14dias': return 'Últimos 14 dias'
-      case '30dias': return 'Últimos 30 dias'
-      case 'mes_passado': return 'Mês Passado'
-      case 'personalizado': return 'Personalizado'
-      default: return 'Hoje'
+  // Verificar autenticação
+  useEffect(() => {
+    const userData = localStorage.getItem('ballarin_user')
+    if (!userData) {
+      router.push('/login')
+      return
+    }
+    
+    try {
+      const user = JSON.parse(userData) as Usuario
+      setCurrentUser(user)
+    } catch {
+      router.push('/login')
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
+  // Debounce para busca de pacientes
+  const debounceSearch = useCallback(
+    (term: string) => {
+      if (term.length < 2) {
+        setSearchResults([])
+        setShowResults(false)
+        return
+      }
+      
+      const searchPacientes = async () => {
+        try {
+          const results = await supabaseApi.searchPacientes(term)
+          setSearchResults(results)
+          setShowResults(results.length > 0)
+        } catch (error) {
+          console.error('Erro na busca:', error)
+        }
+      }
+
+      const timeoutId = setTimeout(searchPacientes, 300)
+      return () => clearTimeout(timeoutId)
+    },
+    []
+  )
+
+  // Buscar pacientes quando o termo muda
+  useEffect(() => {
+    const cleanup = debounceSearch(searchTerm)
+    return cleanup
+  }, [searchTerm, debounceSearch])
+
+  // Carregar resumos do paciente selecionado
+  const loadResumosPaciente = async (paciente: Paciente) => {
+    try {
+      setLoading(true)
+      const [diarios, semanais] = await Promise.all([
+        supabaseApi.getResumosDiariosPaciente(paciente.cpf),
+        supabaseApi.getResumosSemanasPaciente(paciente.cpf)
+      ])
+      
+      setResumosDiarios(diarios)
+      setResumosSemanais(semanais)
+      
+      // Selecionar primeira data automaticamente se houver dados
+      if (diarios.length > 0) {
+        const primeiraData = diarios[0].data_resumo
+        setSelectedDate(primeiraData)
+        loadConversaDia(paciente.cpf, primeiraData)
+      }
+    } catch (error) {
+      console.error('Erro ao carregar resumos:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const handleDatePreset = (preset: string) => {
-    const hoje = new Date()
-    const endDate = hoje.toISOString().split('T')[0]
-    let startDate = endDate
-
-    switch (preset) {
-      case 'hoje':
-        startDate = endDate
-        break
-      case '7dias':
-        const date7 = new Date(hoje)
-        date7.setDate(hoje.getDate() - 7)
-        startDate = date7.toISOString().split('T')[0]
-        break
-      case '14dias':
-        const date14 = new Date(hoje)
-        date14.setDate(hoje.getDate() - 14)
-        startDate = date14.toISOString().split('T')[0]
-        break
-      case '30dias':
-        const date30 = new Date(hoje)
-        date30.setDate(hoje.getDate() - 30)
-        startDate = date30.toISOString().split('T')[0]
-        break
-    }
-
-    setDateFilter({ startDate, endDate, preset })
-    setShowDateFilter(false)
-    setShowCustomDates(false)
-  }
-
-  const handleCustomDateApply = () => {
-    setDateFilter(prev => ({ ...prev, preset: 'personalizado' }))
-    setShowCustomDates(false)
-    setShowDateFilter(false)
-  }
-
-  const handleTabClick = (tab: 'jornada' | 'marketing' | 'terapeutico') => {
-    if (tab === 'jornada') {
-      router.push('/dashboard')
-    } else if (tab === 'marketing') {
-      router.push('/dashboard/marketing')
-    } else {
-      setActiveTab(tab)
+  // Carregar conversa de um dia específico
+  const loadConversaDia = async (cpf: string, data: string) => {
+    try {
+      setLoadingConversa(true)
+      const conversa = await supabaseApi.getResumoEspecifico(cpf, data)
+      setConversaDia(conversa)
+    } catch (error) {
+      console.error('Erro ao carregar conversa:', error)
+    } finally {
+      setLoadingConversa(false)
     }
   }
 
-  if (!currentUser || loading) {
+  // Selecionar paciente
+  const handleSelectPaciente = (paciente: Paciente) => {
+    setSelectedPaciente(paciente)
+    setSearchTerm(`${paciente.nome} - ${formatCPF(paciente.cpf)}`)
+    setShowResults(false)
+    loadResumosPaciente(paciente)
+  }
+
+  // Selecionar data
+  const handleSelectDate = (data: string) => {
+    setSelectedDate(data)
+    if (selectedPaciente) {
+      loadConversaDia(selectedPaciente.cpf, data)
+    }
+  }
+
+  // Formatar CPF
+  const formatCPF = (cpf: string) => {
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }
+
+  // Formatar data para exibição
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    }).toUpperCase()
+  }
+
+  // Renderizar conversa formatada
+  const renderConversa = (resumoInteracao: string) => {
+    if (!resumoInteracao) return <p className="text-clinic-gray-400">Nenhuma conversa disponível</p>
+    
+    // Dividir por **PACIENTE** e **EVELYN**
+    const parts = resumoInteracao.split(/(\*\*(?:PACIENTE|EVELYN)\*\*:)/)
+    
+    return (
+      <div className="space-y-4">
+        {parts.map((part, index) => {
+          if (part.includes('**PACIENTE**:')) {
+            return <div key={index} className="text-cyan-400 font-semibold">PACIENTE:</div>
+          } else if (part.includes('**EVELYN**:')) {
+            return <div key={index} className="text-purple-400 font-semibold">ALICE:</div>
+          } else if (part.trim()) {
+            const isFromPaciente = parts[index - 1]?.includes('**PACIENTE**')
+            return (
+              <div key={index} className={`p-3 rounded-lg ${
+                isFromPaciente 
+                  ? 'bg-cyan-950/30 border-l-4 border-cyan-400 ml-6' 
+                  : 'bg-purple-950/30 border-l-4 border-purple-400 mr-6'
+              }`}>
+                <p className="text-clinic-gray-200 leading-relaxed">{part.trim()}</p>
+              </div>
+            )
+          }
+          return null
+        })}
+      </div>
+    )
+  }
+
+  if (loading && !currentUser) {
     return (
       <div className="min-h-screen bg-clinic-black flex items-center justify-center">
-        <div className="loading-spinner" />
+        <div className="text-center">
+          <div className="loading-spinner mb-4" />
+          <p className="text-clinic-gray-400">Carregando dashboard...</p>
+        </div>
       </div>
     )
   }
@@ -307,7 +251,8 @@ export default function DashboardTerapeuticoPage() {
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="container mx-auto px-4 py0">
-        {/* Header Universal */}
+        
+        {/* Header */}
         <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-4">
@@ -321,349 +266,205 @@ export default function DashboardTerapeuticoPage() {
                 />
               </div>
               <div>
-                <div className="flex items-center space-x-2 mb-1">
-                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
-                    <Heart className="h-5 w-5 text-clinic-cyan" />
-                  </div>
-                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Dashboard Terapêutico</h1>
-                </div>
-                <p className="text-clinic-gray-300 text-sm">
-                  Monitoramento da jornada e experiência dos pacientes
+                <h1 className="text-2xl font-bold text-white mb-1">
+                  Interações Paciente - IA
+                </h1>
+                <p className="text-clinic-gray-300">
+                  Acompanhe todas as conversas entre pacientes e nossa assistente virtual ALICE
                 </p>
               </div>
             </div>
-            
-            {/* Navegação Universal */}
-            <div className="flex items-center space-x-3">
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/dashboard')} 
-                  icon={Home} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/dashboard')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Dashboard
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/estoque')} 
-                  icon={Package} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/estoque')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Estoque
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/pacientes')} 
-                  icon={Users} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/pacientes')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Pacientes
-                </Button>
-              </div>
+
+            <div className="flex items-center space-x-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleTheme}
+                className="border-clinic-gray-600 hover:bg-clinic-gray-700"
+              >
+                {isDarkTheme ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
               
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={toggleTheme} 
-                  icon={isDarkTheme ? Sun : Moon} 
-                  size="sm"
-                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-                />
-                
-                <Button 
-                  variant="secondary" 
-                  onClick={handleLogout} 
-                  icon={LogOut} 
-                  size="sm"
-                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                >
-                  Sair
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="border-clinic-gray-600 hover:bg-red-900/50 hover:border-red-600"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </Button>
             </div>
           </div>
         </header>
 
-        {/* Navegação por Tabs - Simplificada */}
-        <div className="mb-8">
-          <div className="border-b border-clinic-gray-700">
-            <nav className="flex space-x-8">
-              <button
-                onClick={() => handleTabClick('jornada')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Jornada do Paciente
-              </button>
-              <button
-                onClick={() => handleTabClick('marketing')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Marketing
-              </button>
-              <button
-                onClick={() => handleTabClick('terapeutico')}
-                className={`py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 ${
-                  activeTab === 'terapeutico'
-                    ? 'border-clinic-cyan text-clinic-cyan'
-                    : 'border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300'
-                }`}
-              >
-                Terapêutico
-              </button>
-            </nav>
-          </div>
+        {/* Navegação */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <Button
+            onClick={() => router.push('/dashboard')}
+            variant={isCurrentPage('/dashboard') ? "default" : "outline"}
+            className="flex items-center space-x-2"
+          >
+            <Home className="h-4 w-4" />
+            <span>Dashboard</span>
+          </Button>
+          
+          <Button
+            onClick={() => router.push('/estoque')}
+            variant={isCurrentPage('/estoque') ? "default" : "outline"}
+            className="flex items-center space-x-2"
+          >
+            <Package className="h-4 w-4" />
+            <span>Estoque</span>
+          </Button>
+          
+          <Button
+            onClick={() => router.push('/pacientes')}
+            variant={isCurrentPage('/pacientes') ? "default" : "outline"}
+            className="flex items-center space-x-2"
+          >
+            <Users className="h-4 w-4" />
+            <span>Pacientes</span>
+          </Button>
+
+          <Button
+            variant="default"
+            className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700"
+          >
+            <Bot className="h-4 w-4" />
+            <span>Paciente - IA</span>
+          </Button>
         </div>
 
-        {/* Filtro de Data */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">Acompanhamento Terapêutico</h2>
-            <div className="relative">
-              <Button
-                variant="secondary"
-                onClick={() => setShowDateFilter(!showDateFilter)}
-                size="md"
-                className="min-w-[160px] justify-center"
-              >
-                {getFilterDisplayName(dateFilter.preset)}
-              </Button>
+        {/* Conteúdo Principal */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Coluna 1: Busca e Dados do Paciente */}
+          <Card className="bg-clinic-gray-800 border-clinic-gray-700 p-6">
+            <h2 className="text-xl font-semibold text-white mb-4">
+              Dados do Paciente
+            </h2>
+            
+            {/* Campo de Busca */}
+            <div className="relative mb-6">
+              <label className="block text-sm font-medium text-clinic-gray-300 mb-2">
+                Selecionar Paciente:
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-clinic-gray-400" />
+                <Input
+                  placeholder="Digite nome ou CPF do paciente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-clinic-gray-900 border-clinic-gray-600 text-white"
+                />
+              </div>
               
-              {showDateFilter && (
-                <div className="absolute right-0 top-full mt-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-clinic-lg z-50 min-w-[200px]">
-                  <div className="p-3">
-                    <div className="space-y-2">
-                      {[
-                        { key: 'hoje', label: 'Hoje' },
-                        { key: '7dias', label: 'Últimos 7 dias' },
-                        { key: '14dias', label: 'Últimos 14 dias' },
-                        { key: '30dias', label: 'Últimos 30 dias' },
-                        { key: 'mes_passado', label: 'Mês Passado' }
-                      ].map((preset) => (
-                        <button
-                          key={preset.key}
-                          onClick={() => handleDatePreset(preset.key)}
-                          className="block w-full text-left px-3 py-2 text-sm text-clinic-white hover:bg-clinic-gray-700 rounded transition-colors"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setShowCustomDates(!showCustomDates)}
-                        className="block w-full text-left px-3 py-2 text-sm text-clinic-cyan hover:bg-clinic-gray-700 rounded transition-colors"
-                      >
-                        Personalizado
-                      </button>
+              {/* Resultados da Busca */}
+              {showResults && (
+                <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-clinic-gray-900 border border-clinic-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  {searchResults.map((paciente) => (
+                    <div
+                      key={paciente.id_paciente}
+                      onClick={() => handleSelectPaciente(paciente)}
+                      className="p-3 hover:bg-clinic-gray-700 cursor-pointer border-b border-clinic-gray-700 last:border-b-0"
+                    >
+                      <div className="text-white font-medium">{paciente.nome}</div>
+                      <div className="text-clinic-gray-400 text-sm">{formatCPF(paciente.cpf)}</div>
                     </div>
-                    
-                    {showCustomDates && (
-                      <div className="mt-3 pt-3 border-t border-clinic-gray-600">
-                        <div className="space-y-2">
-                          <div>
-                            <label className="block text-xs text-clinic-gray-400 mb-1">De:</label>
-                            <input
-                              type="date"
-                              value={dateFilter.startDate}
-                              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
-                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-clinic-gray-400 mb-1">Até:</label>
-                            <input
-                              type="date"
-                              value={dateFilter.endDate}
-                              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
-                              className="w-full px-3 py-2 bg-clinic-gray-700 border border-clinic-gray-600 rounded text-clinic-white text-sm"
-                            />
-                          </div>
-                          <div className="flex space-x-2 mt-3">
-                            <Button size="sm" onClick={handleCustomDateApply}>
-                              Aplicar
-                            </Button>
-                            <Button size="sm" variant="secondary" onClick={() => {
-                              setShowCustomDates(false)
-                              setShowDateFilter(false)
-                            }}>
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Informações do Paciente Selecionado */}
+            {selectedPaciente && (
+              <div className="space-y-3">
+                <div className="bg-clinic-gray-900 p-4 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <User className="h-4 w-4 text-cyan-400" />
+                    <span className="text-sm text-clinic-gray-300">Nome:</span>
+                  </div>
+                  <p className="text-white font-medium">{selectedPaciente.nome}</p>
+                </div>
+                
+                <div className="bg-clinic-gray-900 p-4 rounded-lg">
+                  <div className="text-sm text-clinic-gray-300 mb-1">CPF:</div>
+                  <p className="text-white font-mono">{formatCPF(selectedPaciente.cpf)}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Dias com Interação */}
+            {resumosDiarios.length > 0 && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                  <Calendar className="h-5 w-5 mr-2 text-cyan-400" />
+                  Dias com Interação
+                </h3>
+                <div className="space-y-2">
+                  {resumosDiarios.map((resumo) => (
+                    <div
+                      key={resumo.id_resumo_di}
+                      onClick={() => handleSelectDate(resumo.data_resumo)}
+                      className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                        selectedDate === resumo.data_resumo
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-clinic-gray-900 text-clinic-gray-300 hover:bg-clinic-gray-700'
+                      }`}
+                    >
+                      {formatDate(resumo.data_resumo)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Coluna 2 e 3: Conversa do Dia */}
+          <Card className="lg:col-span-2 bg-clinic-gray-800 border-clinic-gray-700 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-white flex items-center">
+                <MessageCircle className="h-5 w-5 mr-2 text-purple-400" />
+                Conversa do dia {selectedDate ? formatDate(selectedDate) : ''}
+              </h2>
+              
+              {selectedPaciente && (
+                <div className="flex items-center space-x-2 text-sm">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-green-400">ALICE Online</span>
+                </div>
+              )}
+            </div>
+
+            {/* Área da Conversa */}
+            <div className="bg-clinic-gray-900 rounded-lg p-4 h-96 overflow-y-auto">
+              {loadingConversa ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="loading-spinner" />
+                  <span className="ml-2 text-clinic-gray-400">Carregando conversa...</span>
+                </div>
+              ) : conversaDia ? (
+                renderConversa(conversaDia.resumo_interacao)
+              ) : selectedPaciente ? (
+                <div className="flex items-center justify-center h-full text-clinic-gray-400">
+                  <div className="text-center">
+                    <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Selecione uma data para ver a conversa</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-clinic-gray-400">
+                  <div className="text-center">
+                    <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Selecione um paciente para ver as conversas</p>
                   </div>
                 </div>
               )}
             </div>
-          </div>
+          </Card>
+
         </div>
-
-        {/* Conteúdo do Dashboard Terapêutico */}
-        {stats && (
-          <div className="space-y-6">
-            {/* Cards de Métricas Principais */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <Card>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-clinic-cyan mb-1">
-                    {stats.totalPacientes}
-                  </div>
-                  <p className="text-clinic-gray-400 text-sm">Total de Pacientes</p>
-                </div>
-              </Card>
-              
-              <Card>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-green-400 mb-1">
-                    {stats.pacientesAtivos}
-                  </div>
-                  <p className="text-clinic-gray-400 text-sm">Pacientes Ativos</p>
-                </div>
-              </Card>
-              
-              <Card>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-clinic-white mb-1">
-                    {stats.consultasRealizadas}
-                  </div>
-                  <p className="text-clinic-gray-400 text-sm">Consultas Realizadas</p>
-                </div>
-              </Card>
-              
-              <Card>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-clinic-cyan mb-1">
-                    {stats.satisfacaoGeral}%
-                  </div>
-                  <p className="text-clinic-gray-400 text-sm">Satisfação Geral</p>
-                </div>
-              </Card>
-            </div>
-
-            {/* Grid Principal */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Fatores de Sucesso */}
-              <Card title="Fatores de Sucesso">
-                <div className="space-y-4">
-                  {stats.fatoresSucesso.map((fator, index) => (
-                    <div key={index} className="bg-clinic-gray-700 p-4 rounded-lg">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-clinic-white font-medium">{fator.fator}</h4>
-                        <span className="text-green-400 font-bold">{fator.score}/10</span>
-                      </div>
-                      <p className="text-clinic-gray-300 text-sm">{fator.descricao}</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Pontos de Melhoria */}
-              <Card title="Pontos de Melhoria">
-                <div className="space-y-4">
-                  {stats.pontosMelhoria.map((ponto, index) => (
-                    <div key={index} className="bg-clinic-gray-700 p-4 rounded-lg">
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="text-clinic-white font-medium">{ponto.ponto}</h4>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          ponto.impacto === 'Alto' ? 'bg-red-900 text-red-200' :
-                          ponto.impacto === 'Médio' ? 'bg-yellow-900 text-yellow-200' :
-                          'bg-green-900 text-green-200'
-                        }`}>
-                          {ponto.impacto}
-                        </span>
-                      </div>
-                      <p className="text-clinic-gray-300 text-sm">{ponto.sugestao}</p>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Pacientes Mais Ativos */}
-              <Card title="Pacientes Mais Ativos">
-                <div className="space-y-3">
-                  {stats.pacientesMaisAtivos.map((paciente, index) => (
-                    <div key={index} className="flex justify-between items-center bg-clinic-gray-700 p-3 rounded-lg">
-                      <div>
-                        <p className="text-clinic-white font-medium">{paciente.nome}</p>
-                        <p className="text-clinic-gray-400 text-sm">Última: {paciente.ultimaInteracao}</p>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-clinic-cyan font-bold">{paciente.resumosDiarios}</div>
-                        <div className="text-clinic-gray-400 text-xs">interações</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Efeitos Adversos */}
-              <Card title="Efeitos Adversos Reportados">
-                {stats.efeitosAdversos.length === 0 ? (
-                  <div className="text-center py-6">
-                    <p className="text-green-400">Nenhum efeito adverso reportado</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {stats.efeitosAdversos.map((efeito, index) => (
-                      <div key={index} className="flex justify-between items-center">
-                        <span className="text-clinic-white">{efeito.efeito}</span>
-                        <span className="bg-orange-900 text-orange-200 px-2 py-1 rounded text-sm">
-                          {efeito.relatos} relato{efeito.relatos > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            </div>
-
-            {/* Reviews Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card title="Reviews Positivos">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-green-400 mb-2">
-                    {stats.reviewsPositivos}
-                  </div>
-                  <p className="text-clinic-gray-400">avaliações positivas</p>
-                </div>
-              </Card>
-              
-              <Card title="Reviews Negativos">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-red-400 mb-2">
-                    {stats.reviewsNegativos}
-                  </div>
-                  <p className="text-clinic-gray-400">avaliações negativas</p>
-                </div>
-              </Card>
-              
-              <Card title="Taxa de Satisfação">
-                <div className="text-center">
-                  <div className="text-4xl font-bold text-clinic-cyan mb-2">
-                    {stats.satisfacaoGeral}%
-                  </div>
-                  <p className="text-clinic-gray-400">de satisfação geral</p>
-                </div>
-              </Card>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

@@ -27,24 +27,30 @@ import { Button, Input, Select, Card, Modal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario, Paciente, Consulta } from '@/types/database'
 
+// ✅ INTERFACE CORRIGIDA - TODOS os campos com nomes reais da tabela
 interface PacienteForm {
-  nome: string
+  nome_completo: string      // ✅ CORRIGIDO: era 'nome'
   cpf: string
   data_nascimento: string
-  sexo: string
-  telefone: string
+  genero: string             // ✅ MANTIDO: correto
+  celular: string            // ✅ MANTIDO: correto
   email: string
   origem_lead: string
+  endereco_completo: string  // ✅ MANTIDO: correto
+  status_paciente: string    // ✅ MANTIDO: correto
 }
 
+// ✅ FORM INICIAL CORRIGIDO
 const pacienteFormInitial: PacienteForm = {
-  nome: '',
+  nome_completo: '',         // ✅ CORRIGIDO
   cpf: '',
   data_nascimento: '',
-  sexo: '',
-  telefone: '',
+  genero: '',               
+  celular: '',             
   email: '',
-  origem_lead: ''
+  origem_lead: '',
+  endereco_completo: '',   
+  status_paciente: 'Ativo'
 }
 
 export default function PacientesPage() {
@@ -138,7 +144,9 @@ export default function PacientesPage() {
   const loadPacientes = async () => {
     try {
       setLoading(true)
+      console.log('📋 Carregando pacientes...')
       const data = await supabaseApi.getPacientes()
+      console.log('📊 Dados recebidos:', data)
       setPacientes(data)
     } catch (error) {
       showFeedback('error', 'Erro', 'Falha ao carregar pacientes')
@@ -148,6 +156,7 @@ export default function PacientesPage() {
     }
   }
 
+  // ✅ FUNÇÃO DE BUSCA CORRIGIDA - Campo nome_completo
   const handleSearch = () => {
     if (!searchTerm.trim()) {
       loadPacientes()
@@ -155,10 +164,11 @@ export default function PacientesPage() {
     }
     
     const filteredPacientes = pacientes.filter(paciente =>
-      paciente.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.cpf.includes(searchTerm) ||
-      paciente.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.telefone.includes(searchTerm)
+      paciente.nome_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||  // ✅ CORRIGIDO
+      paciente.cpf?.includes(searchTerm) ||
+      paciente.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      paciente.celular?.includes(searchTerm) ||
+      (paciente.endereco_completo && paciente.endereco_completo.toLowerCase().includes(searchTerm.toLowerCase()))
     )
     setPacientes(filteredPacientes)
   }
@@ -167,19 +177,22 @@ export default function PacientesPage() {
     setFeedbackModal({ isOpen: true, type, title, message })
   }
 
+  // ✅ MAPEAMENTO MODAL CORRIGIDO - Campo nome_completo
   const openModal = (type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
     setModalType(type)
     setSelectedPaciente(paciente || null)
     
     if (type === 'edit' && paciente) {
       setPacienteForm({
-        nome: paciente.nome,
-        cpf: paciente.cpf,
+        nome_completo: paciente.nome_completo || '',      // ✅ CORRIGIDO
+        cpf: paciente.cpf || '',
         data_nascimento: paciente.data_nascimento || '',
-        sexo: paciente.sexo || '',
-        telefone: paciente.telefone || '',
+        genero: paciente.genero || '',                  
+        celular: paciente.celular || '',                
         email: paciente.email || '',
-        origem_lead: paciente.origem_lead || ''
+        origem_lead: paciente.origem_lead || '',
+        endereco_completo: paciente.endereco_completo || '',
+        status_paciente: paciente.status_paciente || 'Ativo'
       })
     } else if (type === 'create') {
       setPacienteForm(pacienteFormInitial)
@@ -210,8 +223,8 @@ export default function PacientesPage() {
 
   // CRIAR PACIENTE
   const handleCreatePaciente = async () => {
-    if (!pacienteForm.nome || !pacienteForm.cpf) {
-      showFeedback('error', 'Erro de Validação', 'Nome e CPF são obrigatórios')
+    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {  // ✅ CORRIGIDO
+      showFeedback('error', 'Erro de Validação', 'Nome completo e CPF são obrigatórios')
       return
     }
 
@@ -219,7 +232,7 @@ export default function PacientesPage() {
       setSubmitting(true)
       await supabaseApi.createPaciente({
         ...pacienteForm,
-        data_cadastro: new Date().toISOString()
+        termo_aceite_dados: true  // Valor padrão
       })
       
       showFeedback('success', 'Sucesso', 'Paciente cadastrado com sucesso!')
@@ -237,8 +250,8 @@ export default function PacientesPage() {
   const handleUpdatePaciente = async () => {
     if (!selectedPaciente) return
 
-    if (!pacienteForm.nome || !pacienteForm.cpf) {
-      showFeedback('error', 'Erro de Validação', 'Nome e CPF são obrigatórios')
+    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {  // ✅ CORRIGIDO
+      showFeedback('error', 'Erro de Validação', 'Nome completo e CPF são obrigatórios')
       return
     }
 
@@ -319,7 +332,7 @@ export default function PacientesPage() {
                   <h1 className="text-xl font-bold text-clinic-white tracking-tight">Gestão de Pacientes</h1>
                 </div>
                 <p className="text-clinic-gray-300 text-sm">
-                  Cadastro e acompanhamento de pacientes
+                  Cadastro e acompanhamento de pacientes da sua clínica
                 </p>
               </div>
             </div>
@@ -396,7 +409,7 @@ export default function PacientesPage() {
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="flex-1 flex gap-2">
             <Input
-              placeholder="Pesquisar por nome, CPF, email ou telefone..."
+              placeholder="Pesquisar por nome, CPF, email ou celular..."  
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -432,8 +445,9 @@ export default function PacientesPage() {
                   <tr className="border-b border-clinic-gray-700">
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Nome</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">CPF</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Telefone</th>
+                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Celular</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Email</th>
+                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Status</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Origem</th>
                     <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Cadastro</th>
                     <th className="text-center py-3 px-4 text-clinic-gray-400 font-medium">Ações</th>
@@ -442,21 +456,32 @@ export default function PacientesPage() {
                 <tbody>
                   {pacientes.map((paciente) => (
                     <tr key={paciente.id_paciente} className="border-b border-clinic-gray-700 hover:bg-clinic-gray-750">
-                      <td className="py-3 px-4 text-clinic-white font-medium">{paciente.nome}</td>
+                      <td className="py-3 px-4 text-clinic-white font-medium">{paciente.nome_completo}</td>
                       <td className="py-3 px-4 text-clinic-gray-300">{paciente.cpf}</td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.telefone}</td>
+                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.celular}</td>
                       <td className="py-3 px-4 text-clinic-gray-300">{paciente.email}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          paciente.status_paciente === 'Ativo' ? 'bg-green-900/20 text-green-400' :
+                          'bg-red-900/20 text-red-400'
+                        }`}>
+                          {paciente.status_paciente || 'Ativo'}
+                        </span>
+                      </td>
                       <td className="py-3 px-4">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
                           paciente.origem_lead === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
                           paciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
                           'bg-green-900/20 text-green-400'
                         }`}>
-                          {paciente.origem_lead}
+                          {paciente.origem_lead || 'Não informado'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-clinic-gray-300">
-                        {new Date(paciente.data_cadastro).toLocaleDateString('pt-BR')}
+                        {paciente.data_ultima_atualizacao ? 
+                          new Date(paciente.data_ultima_atualizacao).toLocaleDateString('pt-BR') :
+                          'Não informado'
+                        }
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex justify-center space-x-2">
@@ -505,8 +530,8 @@ export default function PacientesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input
                   label="Nome Completo *"
-                  value={pacienteForm.nome}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, nome: e.target.value }))}
+                  value={pacienteForm.nome_completo}  
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, nome_completo: e.target.value }))}
                   placeholder="Digite o nome completo"
                   required
                 />
@@ -527,9 +552,9 @@ export default function PacientesPage() {
                 />
                 
                 <Select
-                  label="Sexo"
-                  value={pacienteForm.sexo}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, sexo: e.target.value }))}
+                  label="Gênero"
+                  value={pacienteForm.genero}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, genero: e.target.value }))}
                   options={[
                     { value: '', label: 'Selecione...' },
                     { value: 'Masculino', label: 'Masculino' },
@@ -539,9 +564,9 @@ export default function PacientesPage() {
                 />
                 
                 <Input
-                  label="Telefone"
-                  value={pacienteForm.telefone}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, telefone: e.target.value }))}
+                  label="Celular"
+                  value={pacienteForm.celular}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, celular: e.target.value }))}
                   placeholder="(11) 99999-9999"
                 />
                 
@@ -554,20 +579,40 @@ export default function PacientesPage() {
                 />
               </div>
               
-              <Select
-                label="Origem do Lead"
-                value={pacienteForm.origem_lead}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, origem_lead: e.target.value }))}
-                options={[
-                  { value: '', label: 'Selecione a origem...' },
-                  { value: 'Instagram', label: 'Instagram' },
-                  { value: 'Google', label: 'Google' },
-                  { value: 'Facebook', label: 'Facebook' },
-                  { value: 'Indicação', label: 'Indicação' },
-                  { value: 'Site', label: 'Site' },
-                  { value: 'Outros', label: 'Outros' }
-                ]}
+              <Input
+                label="Endereço Completo"
+                value={pacienteForm.endereco_completo}
+                onChange={(e) => setPacienteForm(prev => ({ ...prev, endereco_completo: e.target.value }))}
+                placeholder="Rua, número, bairro, cidade, CEP"
               />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Select
+                  label="Status do Paciente"
+                  value={pacienteForm.status_paciente}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, status_paciente: e.target.value }))}
+                  options={[
+                    { value: 'Ativo', label: 'Ativo' },
+                    { value: 'Inativo', label: 'Inativo' },
+                    { value: 'Suspenso', label: 'Suspenso' }
+                  ]}
+                />
+                
+                <Select
+                  label="Origem do Lead"
+                  value={pacienteForm.origem_lead}
+                  onChange={(e) => setPacienteForm(prev => ({ ...prev, origem_lead: e.target.value }))}
+                  options={[
+                    { value: '', label: 'Selecione a origem...' },
+                    { value: 'Instagram', label: 'Instagram' },
+                    { value: 'Google', label: 'Google' },
+                    { value: 'Facebook', label: 'Facebook' },
+                    { value: 'Indicação', label: 'Indicação' },
+                    { value: 'Site', label: 'Site' },
+                    { value: 'Outros', label: 'Outros' }
+                  ]}
+                />
+              </div>
 
               <div className="flex justify-end space-x-3 pt-4">
                 <Button
@@ -607,7 +652,7 @@ export default function PacientesPage() {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-clinic-gray-400">Nome:</span>
-                    <p className="text-clinic-white font-medium">{selectedPaciente.nome}</p>
+                    <p className="text-clinic-white font-medium">{selectedPaciente.nome_completo}</p>
                   </div>
                   <div>
                     <span className="text-clinic-gray-400">CPF:</span>
@@ -620,8 +665,8 @@ export default function PacientesPage() {
                     </p>
                   </div>
                   <div>
-                    <span className="text-clinic-gray-400">Sexo:</span>
-                    <p className="text-clinic-white">{selectedPaciente.sexo || 'Não informado'}</p>
+                    <span className="text-clinic-gray-400">Gênero:</span>
+                    <p className="text-clinic-white">{selectedPaciente.genero || 'Não informado'}</p>
                   </div>
                 </div>
               </div>
@@ -634,23 +679,38 @@ export default function PacientesPage() {
                 </h3>
                 <div className="grid grid-cols-1 gap-4 text-sm">
                   <div>
-                    <span className="text-clinic-gray-400">Telefone:</span>
-                    <p className="text-clinic-white">{selectedPaciente.telefone || 'Não informado'}</p>
+                    <span className="text-clinic-gray-400">Celular:</span>
+                    <p className="text-clinic-white">{selectedPaciente.celular || 'Não informado'}</p>
                   </div>
                   <div>
                     <span className="text-clinic-gray-400">Email:</span>
                     <p className="text-clinic-white">{selectedPaciente.email || 'Não informado'}</p>
                   </div>
+                  <div>
+                    <span className="text-clinic-gray-400">Endereço:</span>
+                    <p className="text-clinic-white">{selectedPaciente.endereco_completo || 'Não informado'}</p>
+                  </div>
                 </div>
               </div>
 
-              {/* Origem e Cadastro */}
+              {/* Status e Origem */}
               <div>
                 <h3 className="text-clinic-white font-medium mb-4 flex items-center">
                   <Calendar className="w-5 h-5 mr-2 text-clinic-cyan" />
-                  Informações de Cadastro
+                  Status e Origem
                 </h3>
                 <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-clinic-gray-400">Status:</span>
+                    <p className="text-clinic-white">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        selectedPaciente.status_paciente === 'Ativo' ? 'bg-green-900/20 text-green-400' :
+                        'bg-red-900/20 text-red-400'
+                      }`}>
+                        {selectedPaciente.status_paciente || 'Ativo'}
+                      </span>
+                    </p>
+                  </div>
                   <div>
                     <span className="text-clinic-gray-400">Origem do Lead:</span>
                     <p className="text-clinic-white">
@@ -659,14 +719,17 @@ export default function PacientesPage() {
                         selectedPaciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
                         'bg-green-900/20 text-green-400'
                       }`}>
-                        {selectedPaciente.origem_lead}
+                        {selectedPaciente.origem_lead || 'Não informado'}
                       </span>
                     </p>
                   </div>
-                  <div>
-                    <span className="text-clinic-gray-400">Data de Cadastro:</span>
+                  <div className="col-span-2">
+                    <span className="text-clinic-gray-400">Última Atualização:</span>
                     <p className="text-clinic-white">
-                      {new Date(selectedPaciente.data_cadastro).toLocaleDateString('pt-BR')}
+                      {selectedPaciente.data_ultima_atualizacao ? 
+                        new Date(selectedPaciente.data_ultima_atualizacao).toLocaleDateString('pt-BR') :
+                        'Não informado'
+                      }
                     </p>
                   </div>
                 </div>
@@ -725,7 +788,7 @@ export default function PacientesPage() {
                 Confirmar Exclusão
               </h3>
               <p className="text-clinic-gray-300 mb-6">
-                Tem certeza que deseja excluir o paciente <strong>{selectedPaciente.nome}</strong>? 
+                Tem certeza que deseja excluir o paciente <strong>{selectedPaciente.nome_completo}</strong>? 
                 Esta ação não pode ser desfeita.
               </p>
               <div className="flex justify-center space-x-3">

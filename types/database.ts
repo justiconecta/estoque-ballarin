@@ -1,8 +1,9 @@
-// TIPOS ATUALIZADOS com id_clinica em PACIENTES
+// types/database.ts - VERSÃO DEFINITIVA COM SCHEMA 100% REAL
+
 export interface Database {
   public: {
     Tables: {
-      // Nova tabela de clínicas
+      // Clínicas
       clinicas: {
         Row: {
           id_clinica: number
@@ -38,7 +39,7 @@ export interface Database {
           data_cadastro?: string
         }
       }
-      // Usuários com id_clinica
+      // Usuários
       usuarios_internos: {
         Row: {
           id_usuario: number
@@ -68,46 +69,58 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // ⭐ PACIENTES ATUALIZADO COM id_clinica ⭐
+      // ✅ PACIENTES COM SCHEMA 100% REAL BASEADO NA SUA TABELA
       pacientes: {
         Row: {
           id_paciente: number
-          nome: string
-          cpf: string
-          data_nascimento: string
-          sexo: string
-          telefone: string
-          email: string
-          origem_lead: string
-          data_cadastro: string
-          id_clinica: number  // ← NOVA COLUNA
+          nome_completo: string | null     // ✅ CORRIGIDO: era 'nome'
+          cpf: string | null
+          data_nascimento: string | null   // date
+          celular: string | null
+          email: string | null
+          genero: string | null
+          endereco_completo: string | null // text
+          origem_lead: string | null
+          status_paciente: string | null
+          termo_aceite_dados: boolean | null
+          data_ultima_atualizacao: string | null  // timestamp
+          consulta_agendada: boolean | null
+          id_clinica: number | null
         }
         Insert: {
           id_paciente?: number
-          nome: string
-          cpf: string
-          data_nascimento?: string
-          sexo?: string
-          telefone?: string
-          email?: string
-          origem_lead?: string
-          data_cadastro?: string
-          id_clinica: number  // ← NOVA COLUNA OBRIGATÓRIA
+          nome_completo?: string | null     // ✅ CORRIGIDO
+          cpf?: string | null
+          data_nascimento?: string | null
+          celular?: string | null
+          email?: string | null
+          genero?: string | null
+          endereco_completo?: string | null
+          origem_lead?: string | null
+          status_paciente?: string | null
+          termo_aceite_dados?: boolean | null
+          data_ultima_atualizacao?: string | null
+          consulta_agendada?: boolean | null
+          id_clinica?: number | null
         }
         Update: {
           id_paciente?: number
-          nome?: string
-          cpf?: string
-          data_nascimento?: string
-          sexo?: string
-          telefone?: string
-          email?: string
-          origem_lead?: string
-          data_cadastro?: string
-          id_clinica?: number  // ← NOVA COLUNA
+          nome_completo?: string | null     // ✅ CORRIGIDO
+          cpf?: string | null
+          data_nascimento?: string | null
+          celular?: string | null
+          email?: string | null
+          genero?: string | null
+          endereco_completo?: string | null
+          origem_lead?: string | null
+          status_paciente?: string | null
+          termo_aceite_dados?: boolean | null
+          data_ultima_atualizacao?: string | null
+          consulta_agendada?: boolean | null
+          id_clinica?: number | null
         }
       }
-      // Consultas com id_clinica
+      // Consultas
       consultas: {
         Row: {
           id_consulta: number
@@ -123,7 +136,7 @@ export interface Database {
           mes_ano: string | null
           supervalorizado: boolean
           data_cadastro: string
-          id_clinica: number  // ← NOVA COLUNA
+          id_clinica: number
         }
         Insert: {
           id_consulta?: number
@@ -139,7 +152,7 @@ export interface Database {
           mes_ano?: string | null
           supervalorizado?: boolean
           data_cadastro?: string
-          id_clinica: number  // ← NOVA COLUNA OBRIGATÓRIA
+          id_clinica: number
         }
         Update: {
           id_consulta?: number
@@ -158,7 +171,7 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // SKUs com id_clinica
+      // Outras tabelas mantidas...
       skus: {
         Row: {
           id_sku: number
@@ -191,7 +204,6 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Lotes com id_clinica
       lotes: {
         Row: {
           id_lote: number
@@ -218,7 +230,6 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Movimentações com id_clinica
       movimentacoes_estoque: {
         Row: {
           id_movimentacao: number
@@ -251,7 +262,7 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Orçamentos com id_clinica
+      // Tabelas adicionais para completude
       orcamentos: {
         Row: {
           id_orcamento: number
@@ -290,67 +301,35 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Classes terapêuticas com id_clinica
-      classes_terapeuticas: {
+      procedimentos: {
         Row: {
-          id_classe_terapeutica: number
-          nome: string
-          estoque_minimo_dias: number
+          id_procedimento: number
+          id_orcamento: number
+          nome_procedimento: string
+          valor_procedimento: number
+          status_procedimento: string
+          data_realizacao: string | null
           id_clinica: number
         }
         Insert: {
-          id_classe_terapeutica?: number
-          nome: string
-          estoque_minimo_dias: number
+          id_procedimento?: number
+          id_orcamento: number
+          nome_procedimento: string
+          valor_procedimento: number
+          status_procedimento: string
+          data_realizacao?: string | null
           id_clinica: number
         }
         Update: {
-          id_classe_terapeutica?: number
-          nome?: string
-          estoque_minimo_dias?: number
+          id_procedimento?: number
+          id_orcamento?: number
+          nome_procedimento?: string
+          valor_procedimento?: number
+          status_procedimento?: string
+          data_realizacao?: string | null
           id_clinica?: number
         }
       }
-      // Fornecedores com id_clinica
-      fornecedores: {
-        Row: {
-          id_fornecedor: number
-          cnpj: string
-          razao_social: string
-          nome_fantasia: string
-          consultor_nome: string
-          consultor_whatsapp: string
-          consultor_email: string
-          status: string
-          data_cadastro: string
-          id_clinica: number
-        }
-        Insert: {
-          id_fornecedor?: number
-          cnpj: string
-          razao_social: string
-          nome_fantasia: string
-          consultor_nome: string
-          consultor_whatsapp: string
-          consultor_email: string
-          status?: string
-          data_cadastro?: string
-          id_clinica: number
-        }
-        Update: {
-          id_fornecedor?: number
-          cnpj?: string
-          razao_social?: string
-          nome_fantasia?: string
-          consultor_nome?: string
-          consultor_whatsapp?: string
-          consultor_email?: string
-          status?: string
-          data_cadastro?: string
-          id_clinica?: number
-        }
-      }
-      // Demais tabelas com id_clinica (para completude)
       dashboard_agregados: {
         Row: {
           id_dashboard: number
@@ -400,32 +379,67 @@ export interface Database {
           id_clinica?: number
         }
       }
-      procedimentos: {
+      resumos_diarios_paciente: {
         Row: {
-          id_procedimento: number
-          id_orcamento: number
-          nome_procedimento: string
-          valor_procedimento: number
-          status_procedimento: string
-          data_realizacao: string | null
+          id_resumo_di: number
+          cpf: string
+          nome_paciente: string | null
+          resumo_interacao: string
+          status_processamento: string
+          data_resumo: string
+          data_criacao: string
           id_clinica: number
         }
         Insert: {
-          id_procedimento?: number
-          id_orcamento: number
-          nome_procedimento: string
-          valor_procedimento: number
-          status_procedimento: string
-          data_realizacao?: string | null
+          id_resumo_di?: number
+          cpf: string
+          nome_paciente?: string | null
+          resumo_interacao: string
+          status_processamento: string
+          data_resumo: string
+          data_criacao?: string
           id_clinica: number
         }
         Update: {
-          id_procedimento?: number
-          id_orcamento?: number
-          nome_procedimento?: string
-          valor_procedimento?: number
-          status_procedimento?: string
-          data_realizacao?: string | null
+          id_resumo_di?: number
+          cpf?: string
+          nome_paciente?: string | null
+          resumo_interacao?: string
+          status_processamento?: string
+          data_resumo?: string
+          data_criacao?: string
+          id_clinica?: number
+        }
+      }
+      resumos_semanais_paciente: {
+        Row: {
+          id_resumo_sem: number
+          cpf: string
+          nome_paciente: string | null
+          data_inicio_semana: string
+          data_fim_semana: string
+          resumo_geral_semana: string
+          data_geracao: string
+          id_clinica: number
+        }
+        Insert: {
+          id_resumo_sem?: number
+          cpf: string
+          nome_paciente?: string | null
+          data_inicio_semana: string
+          data_fim_semana: string
+          resumo_geral_semana: string
+          data_geracao?: string
+          id_clinica: number
+        }
+        Update: {
+          id_resumo_sem?: number
+          cpf?: string
+          nome_paciente?: string | null
+          data_inicio_semana?: string
+          data_fim_semana?: string
+          resumo_geral_semana?: string
+          data_geracao?: string
           id_clinica?: number
         }
       }
@@ -433,18 +447,39 @@ export interface Database {
   }
 }
 
-// Tipos derivados atualizados
+// Tipos derivados corrigidos
 export type Clinica = Database['public']['Tables']['clinicas']['Row']
 export type Usuario = Database['public']['Tables']['usuarios_internos']['Row']
-export type Paciente = Database['public']['Tables']['pacientes']['Row']  // ⭐ AGORA COM id_clinica
+export type Paciente = Database['public']['Tables']['pacientes']['Row']  // ✅ Agora com nome_completo
 export type Consulta = Database['public']['Tables']['consultas']['Row']
 export type Sku = Database['public']['Tables']['skus']['Row']
 export type Lote = Database['public']['Tables']['lotes']['Row']
 export type Movimentacao = Database['public']['Tables']['movimentacoes_estoque']['Row']
 export type Orcamento = Database['public']['Tables']['orcamentos']['Row']
 export type Procedimento = Database['public']['Tables']['procedimentos']['Row']
+export type ResumosDiarios = Database['public']['Tables']['resumos_diarios_paciente']['Row']
+export type ResumosSemanais = Database['public']['Tables']['resumos_semanais_paciente']['Row']
 
-// Tipos compostos com relacionamentos
+// Interfaces auxiliares corrigidas
+export interface PacienteComConsultas extends Paciente {
+  consultas?: Consulta[]
+  total_consultas?: number
+}
+
+// ✅ FORM INTERFACE CORRIGIDA
+export interface PacienteForm {
+  nome_completo: string        // ✅ CORRIGIDO: era 'nome'
+  cpf: string
+  data_nascimento?: string
+  genero?: string
+  celular?: string
+  email?: string
+  origem_lead?: string
+  endereco_completo?: string
+  status_paciente?: string
+}
+
+// Outros tipos mantidos
 export interface UsuarioComClinica extends Usuario {
   clinicas?: Clinica
 }
@@ -462,48 +497,4 @@ export interface MovimentacaoDetalhada extends Movimentacao {
       nome_produto: string
     }
   }
-}
-
-// ⭐ NOVOS TIPOS PARA PACIENTES ⭐
-export interface PacienteComConsultas extends Paciente {
-  consultas?: Consulta[]
-  total_consultas?: number
-}
-
-export interface PacienteForm {
-  nome: string
-  cpf: string
-  data_nascimento?: string
-  sexo?: string
-  telefone?: string
-  email?: string
-  origem_lead?: string
-}
-
-// Tipos para formulários multi-tenant
-export interface NovaMovimentacao {
-  id_lote: number
-  tipo_movimentacao: 'ENTRADA' | 'SAIDA'
-  quantidade: number
-  usuario: string
-  observacao?: string
-  // id_clinica será adicionado automaticamente
-}
-
-export interface NovoLote {
-  id_sku: number
-  quantidade_disponivel: number
-  validade: string
-  // id_clinica será adicionado automaticamente
-}
-
-export interface NovoPaciente {
-  nome: string
-  cpf: string
-  data_nascimento?: string
-  sexo?: string
-  telefone?: string
-  email?: string
-  origem_lead?: string
-  // id_clinica será adicionado automaticamente
 }

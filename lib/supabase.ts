@@ -279,159 +279,172 @@ export const supabaseApi = {
   
   // LISTAR PACIENTES (isolamento por clínica)
   async getPacientes(limit = 100) {
-    try {
-      const clinicId = getCurrentClinicId()
-      console.log(`👥 BUSCANDO PACIENTES PARA CLÍNICA: ${clinicId}`)
-      
-      if (!clinicId) throw new Error('Clínica não identificada')
+  try {
+    const clinicId = getCurrentClinicId()
+    console.log(`👥 BUSCANDO PACIENTES PARA CLÍNICA: ${clinicId}`)
+    
+    if (!clinicId) throw new Error('Clínica não identificada')
 
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('*')
-        .eq('id_clinica', clinicId)
-        .order('data_cadastro', { ascending: false })
-        .limit(limit)
-      
-      if (error) throw error
-      console.log(`📊 PACIENTES ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
-      return data || []
-    } catch (error) {
-      console.error('💥 ERRO getPacientes:', error)
-      return []
-    }
-  },
-
-  // BUSCAR PACIENTE POR ID (com validação de clínica)
-  async getPacienteById(id: number) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select('*')
-        .eq('id_paciente', id)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DE CLÍNICA
-        .single()
-      
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO getPacienteById:', error)
-      throw error
-    }
-  },
-
-  // CRIAR PACIENTE (com clínica automática)
-  async createPaciente(paciente: {
-    nome: string
-    cpf: string
-    data_nascimento?: string
-    sexo?: string
-    telefone?: string
-    email?: string
-    origem_lead?: string
-    data_cadastro?: string
-  }) {
-    try {
-      const pacienteCompleto = ensureClinicFilter({
-        ...paciente,
-        data_cadastro: paciente.data_cadastro || new Date().toISOString()
+    // ✅ QUERY COM CAMPOS CORRETOS DA TABELA REAL
+    const { data, error } = await supabase
+      .from('pacientes')
+      .select(`
+        id_paciente,
+        nome_completo,
+        cpf,
+        data_nascimento,
+        celular,
+        email,
+        genero,
+        endereco_completo,
+        origem_lead,
+        status_paciente,
+        termo_aceite_dados,
+        data_ultima_atualizacao,
+        consulta_agendada,
+        id_clinica
+      `)
+      .eq('id_clinica', clinicId)
+      .order('data_ultima_atualizacao', { ascending: false, nullsFirst: false })
+      .limit(limit)
+    
+    if (error) {
+      console.error('💥 ERRO DETALHADO getPacientes:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
       })
-
-      console.log('👤 CRIANDO PACIENTE:', { nome: pacienteCompleto.nome, clinica: pacienteCompleto.id_clinica })
-      
-      const { data, error } = await supabase
-        .from('pacientes')
-        .insert(pacienteCompleto)
-        .select()
-        .single()
-      
-      if (error) throw error
-      console.log('✅ PACIENTE CRIADO')
-      return data
-    } catch (error) {
-      console.error('💥 ERRO createPaciente:', error)
       throw error
     }
-  },
-
-  // ATUALIZAR PACIENTE (com validação de clínica)
-  async updatePaciente(id: number, updates: {
-    nome?: string
-    cpf?: string
-    data_nascimento?: string
-    sexo?: string
-    telefone?: string
-    email?: string
-    origem_lead?: string
-  }) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      console.log(`📝 ATUALIZANDO PACIENTE ${id} PARA CLÍNICA: ${clinicId}`)
-      
-      const { data, error } = await supabase
-        .from('pacientes')
-        .update(updates)
-        .eq('id_paciente', id)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
-        .select()
-        .single()
-      
-      if (error) throw error
-      console.log('✅ PACIENTE ATUALIZADO')
-      return data
-    } catch (error) {
-      console.error('💥 ERRO updatePaciente:', error)
-      throw error
+    
+    console.log(`📊 PACIENTES ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
+    if (data && data.length > 0) {
+      console.log('📋 PRIMEIRO PACIENTE (debug):', {
+        id: data[0].id_paciente,
+        nome: data[0].nome_completo,
+        cpf: data[0].cpf,
+        celular: data[0].celular,
+        genero: data[0].genero,
+        status: data[0].status_paciente
+      })
     }
-  },
+    
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO GERAL getPacientes:', error)
+    return []
+  }
+},
 
-  // EXCLUIR PACIENTE (com validação de clínica)
-  async deletePaciente(id: number) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
+// CRIAR PACIENTE (corrigido com nome_completo)
+async createPaciente(paciente: {
+  nome_completo: string    // ✅ CORRIGIDO: era 'nome'
+  cpf: string
+  data_nascimento?: string
+  genero?: string          // ✅ Mantido correto
+  celular?: string         // ✅ Mantido correto  
+  email?: string
+  origem_lead?: string
+  endereco_completo?: string
+  status_paciente?: string
+  termo_aceite_dados?: boolean
+}) {
+  try {
+    const pacienteCompleto = ensureClinicFilter({
+      ...paciente,
+      data_ultima_atualizacao: new Date().toISOString(),
+      consulta_agendada: false
+    })
 
-      console.log(`🗑️ EXCLUINDO PACIENTE ${id} DA CLÍNICA: ${clinicId}`)
-      
-      const { error } = await supabase
-        .from('pacientes')
-        .delete()
-        .eq('id_paciente', id)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
-      
-      if (error) throw error
-      console.log('✅ PACIENTE EXCLUÍDO')
-    } catch (error) {
-      console.error('💥 ERRO deletePaciente:', error)
-      throw error
+    console.log('👤 CRIANDO PACIENTE:', { 
+      nome_completo: pacienteCompleto.nome_completo, 
+      clinica: pacienteCompleto.id_clinica 
+    })
+    
+    const { data, error } = await supabase
+      .from('pacientes')
+      .insert(pacienteCompleto)
+      .select()
+      .single()
+    
+    if (error) throw error
+    console.log('✅ PACIENTE CRIADO')
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createPaciente:', error)
+    throw error
+  }
+},
+
+// ATUALIZAR PACIENTE (corrigido com nome_completo)
+async updatePaciente(id: number, updates: {
+  nome_completo?: string   // ✅ CORRIGIDO: era 'nome'
+  cpf?: string
+  data_nascimento?: string
+  genero?: string          // ✅ Mantido correto
+  celular?: string         // ✅ Mantido correto
+  email?: string
+  origem_lead?: string
+  endereco_completo?: string
+  status_paciente?: string
+}) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    // Adicionar timestamp de atualização
+    const updatesWithTimestamp = {
+      ...updates,
+      data_ultima_atualizacao: new Date().toISOString()
     }
-  },
 
-  // CONSULTAS DO PACIENTE (isolamento por clínica)
-  async getConsultasByPaciente(pacienteId: number) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
+    console.log(`📝 ATUALIZANDO PACIENTE ${id} PARA CLÍNICA: ${clinicId}`)
+    
+    const { data, error } = await supabase
+      .from('pacientes')
+      .update(updatesWithTimestamp)
+      .eq('id_paciente', id)
+      .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
+      .select()
+      .single()
+    
+    if (error) throw error
+    console.log('✅ PACIENTE ATUALIZADO')
+    return data
+  } catch (error) {
+    console.error('💥 ERRO updatePaciente:', error)
+    throw error
+  }
+},
 
-      const { data, error } = await supabase
-        .from('consultas')
-        .select('*')
-        .eq('id_paciente', pacienteId)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
-        .order('data_agendamento', { ascending: false })
-      
-      if (error) throw error
-      console.log(`📅 CONSULTAS DO PACIENTE ${pacienteId}: ${data?.length || 0}`)
-      return data || []
-    } catch (error) {
-      console.error('💥 ERRO getConsultasByPaciente:', error)
-      return []
-    }
-  },
+// BUSCAR PACIENTES PARA DASHBOARD IA (corrigido)
+async searchPacientes(searchTerm: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return []
+
+    console.log(`🔍 BUSCANDO PACIENTES IA: "${searchTerm}"`)
+
+    // Limpar e formatar termo de busca
+    const cleanTerm = searchTerm.replace(/[^\d]/g, '') // Remove formatação CPF
+    
+    const { data, error } = await supabase
+      .from('pacientes')
+      .select('id_paciente, nome_completo, cpf, data_nascimento, celular')  // ✅ CORRIGIDO
+      .eq('id_clinica', clinicId)
+      .or(`nome_completo.ilike.%${searchTerm}%,cpf.eq.${cleanTerm}`)        // ✅ CORRIGIDO
+      .limit(10)
+    
+    if (error) throw error
+    
+    console.log(`📋 PACIENTES ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO searchPacientes:', error)
+    return []
+  }
+},
 
   // ============ PRODUTOS/ESTOQUE (MANTIDO DO CÓDIGO ANTERIOR) ============
   
@@ -616,7 +629,82 @@ export const supabaseApi = {
       return []
     }
   },
+// Buscar resumos diários de um paciente específico
+async getResumosDiariosPaciente(cpf: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return []
 
+    console.log(`📅 BUSCANDO RESUMOS DIÁRIOS: CPF=${cpf}`)
+
+    const { data, error } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpf)
+      .eq('id_clinica', clinicId)
+      .order('data_resumo', { ascending: false })
+    
+    if (error) throw error
+    
+    console.log(`📊 RESUMOS DIÁRIOS ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getResumosDiariosPaciente:', error)
+    return []
+  }
+},
+
+// Buscar resumos semanais de um paciente específico
+async getResumosSemanasPaciente(cpf: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return []
+
+    console.log(`📊 BUSCANDO RESUMOS SEMANAIS: CPF=${cpf}`)
+
+    const { data, error } = await supabase
+      .from('resumos_semanais_paciente')
+      .select('*')
+      .eq('cpf', cpf)
+      .eq('id_clinica', clinicId)
+      .order('data_inicio_semana', { ascending: false })
+    
+    if (error) throw error
+    
+    console.log(`📈 RESUMOS SEMANAIS ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getResumosSemanasPaciente:', error)
+    return []
+  }
+},
+
+// Buscar resumo diário específico por data
+async getResumoEspecifico(cpf: string, dataResumo: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return null
+
+    console.log(`💬 BUSCANDO CONVERSA: CPF=${cpf}, Data=${dataResumo}`)
+
+    const { data, error } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpf)
+      .eq('id_clinica', clinicId)
+      .gte('data_resumo', dataResumo)
+      .lt('data_resumo', new Date(new Date(dataResumo).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      .single()
+    
+    if (error && error.code !== 'PGRST116') throw error
+    
+    console.log(`✅ CONVERSA ENCONTRADA: ${data ? 'SIM' : 'NÃO'}`)
+    return data
+  } catch (error) {
+    console.error('💥 ERRO getResumoEspecifico:', error)
+    return null
+  }
+},
   // INFO DA CLÍNICA ATUAL
   async getCurrentClinic() {
     try {
@@ -679,5 +767,6 @@ export const supabaseApi = {
       console.error('💥 ERRO getGoogleReviews:', error)
       return []
     }
+    
   }
 }

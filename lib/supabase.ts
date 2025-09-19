@@ -633,48 +633,70 @@ async searchPacientes(searchTerm: string) {
 async getResumosDiariosPaciente(cpf: string) {
   try {
     const clinicId = getCurrentClinicId()
-    if (!clinicId) return []
+    if (!clinicId) {
+      console.log('❌ ID da clínica não encontrado')
+      return []
+    }
 
-    console.log(`📅 BUSCANDO RESUMOS DIÁRIOS: CPF=${cpf}`)
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    console.log(`📅 BUSCANDO RESUMOS DIÁRIOS: CPF=${cpfLimpo}, Clínica=${clinicId}`)
 
     const { data, error } = await supabase
       .from('resumos_diarios_paciente')
       .select('*')
-      .eq('cpf', cpf)
+      .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
       .order('data_resumo', { ascending: false })
+
+    if (error) {
+      console.error('❌ ERRO ao buscar resumos diários:', error.message)
+      return []
+    }
+
+    const resumos = data || []
+    console.log(`📊 RESUMOS DIÁRIOS ENCONTRADOS: ${resumos.length}`)
     
-    if (error) throw error
+    // Log das datas encontradas para debug
+    if (resumos.length > 0) {
+      console.log('📋 Datas disponíveis:', resumos.map(r => r.data_resumo).slice(0, 5))
+    }
     
-    console.log(`📊 RESUMOS DIÁRIOS ENCONTRADOS: ${data?.length || 0}`)
-    return data || []
+    return resumos
   } catch (error) {
-    console.error('💥 ERRO getResumosDiariosPaciente:', error)
+    console.error('💥 ERRO CRÍTICO getResumosDiariosPaciente:', error)
     return []
   }
 },
-
 // Buscar resumos semanais de um paciente específico
 async getResumosSemanasPaciente(cpf: string) {
   try {
     const clinicId = getCurrentClinicId()
-    if (!clinicId) return []
+    if (!clinicId) {
+      console.log('❌ ID da clínica não encontrado')
+      return []
+    }
 
-    console.log(`📊 BUSCANDO RESUMOS SEMANAIS: CPF=${cpf}`)
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    console.log(`📈 BUSCANDO RESUMOS SEMANAIS: CPF=${cpfLimpo}, Clínica=${clinicId}`)
 
     const { data, error } = await supabase
       .from('resumos_semanais_paciente')
       .select('*')
-      .eq('cpf', cpf)
+      .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
       .order('data_inicio_semana', { ascending: false })
+
+    if (error) {
+      console.error('❌ ERRO ao buscar resumos semanais:', error.message)
+      return []
+    }
+
+    const resumos = data || []
+    console.log(`📈 RESUMOS SEMANAIS ENCONTRADOS: ${resumos.length}`)
     
-    if (error) throw error
-    
-    console.log(`📈 RESUMOS SEMANAIS ENCONTRADOS: ${data?.length || 0}`)
-    return data || []
+    return resumos
   } catch (error) {
-    console.error('💥 ERRO getResumosSemanasPaciente:', error)
+    console.error('💥 ERRO CRÍTICO getResumosSemanasPaciente:', error)
     return []
   }
 },
@@ -683,25 +705,75 @@ async getResumosSemanasPaciente(cpf: string) {
 async getResumoEspecifico(cpf: string, dataResumo: string) {
   try {
     const clinicId = getCurrentClinicId()
-    if (!clinicId) return null
+    if (!clinicId) {
+      console.log('❌ ID da clínica não encontrado')
+      return null
+    }
 
-    console.log(`💬 BUSCANDO CONVERSA: CPF=${cpf}, Data=${dataResumo}`)
+    console.log(`💬 BUSCANDO CONVERSA: CPF=${cpf}, Data=${dataResumo}, Clínica=${clinicId}`)
 
-    const { data, error } = await supabase
+    // Limpar CPF removendo formatação
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    
+    // Primeira tentativa: busca exata por data_resumo
+    const { data: resumoExato, error: errorExato } = await supabase
       .from('resumos_diarios_paciente')
       .select('*')
-      .eq('cpf', cpf)
+      .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
-      .gte('data_resumo', dataResumo)
-      .lt('data_resumo', new Date(new Date(dataResumo).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+      .eq('data_resumo', dataResumo)
       .single()
+
+    if (!errorExato && resumoExato) {
+      console.log('✅ CONVERSA ENCONTRADA (busca exata):', resumoExato.id_resumo_di)
+      return resumoExato
+    }
+
+    // Segunda tentativa: busca por range de data (dia completo)
+    const dataInicio = new Date(dataResumo)
+    const dataFim = new Date(dataResumo)
+    dataFim.setDate(dataFim.getDate() + 1)
+
+    const { data: resumoRange, error: errorRange } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpfLimpo)
+      .eq('id_clinica', clinicId)
+      .gte('data_resumo', dataInicio.toISOString().split('T')[0])
+      .lt('data_resumo', dataFim.toISOString().split('T')[0])
+      .order('data_resumo', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!errorRange && resumoRange) {
+      console.log('✅ CONVERSA ENCONTRADA (busca range):', resumoRange.id_resumo_di)
+      return resumoRange
+    }
+
+    // Terceira tentativa: busca por data_criacao (fallback)
+    const { data: resumoFallback, error: errorFallback } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpfLimpo)
+      .eq('id_clinica', clinicId)
+      .gte('data_criacao', dataInicio.toISOString().split('T')[0])
+      .lt('data_criacao', dataFim.toISOString().split('T')[0])
+      .order('data_criacao', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!errorFallback && resumoFallback) {
+      console.log('✅ CONVERSA ENCONTRADA (fallback data_criacao):', resumoFallback.id_resumo_di)
+      return resumoFallback
+    }
+
+    console.log('⚠️ NENHUMA CONVERSA ENCONTRADA para:', { cpf: cpfLimpo, data: dataResumo })
+    console.log('Erros:', { errorExato: errorExato?.message, errorRange: errorRange?.message, errorFallback: errorFallback?.message })
     
-    if (error && error.code !== 'PGRST116') throw error
+    return null
     
-    console.log(`✅ CONVERSA ENCONTRADA: ${data ? 'SIM' : 'NÃO'}`)
-    return data
   } catch (error) {
-    console.error('💥 ERRO getResumoEspecifico:', error)
+    console.error('💥 ERRO CRÍTICO getResumoEspecifico:', error)
     return null
   }
 },
@@ -768,5 +840,51 @@ async getResumoEspecifico(cpf: string, dataResumo: string) {
       return []
     }
     
+  },
+  async debugResumosPaciente(cpf: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    
+    console.log('🔍 DEBUG RESUMOS PACIENTE:', { cpf: cpfLimpo, clinica: clinicId })
+
+    // Verificar se existem dados sem filtro de clínica primeiro
+    const { data: semFiltro, error: errorSemFiltro } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpfLimpo)
+      .limit(5)
+
+    console.log('📋 Dados sem filtro de clínica:', {
+      count: semFiltro?.length || 0,
+      samples: semFiltro?.map(r => ({ 
+        id: r.id_resumo_di, 
+        data: r.data_resumo, 
+        clinica: r.id_clinica 
+      })) || []
+    })
+
+    // Verificar com filtro de clínica
+    const { data: comFiltro, error: errorComFiltro } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('*')
+      .eq('cpf', cpfLimpo)
+      .eq('id_clinica', clinicId)
+      .limit(5)
+
+    console.log('📋 Dados com filtro de clínica:', {
+      count: comFiltro?.length || 0,
+      samples: comFiltro?.map(r => ({ 
+        id: r.id_resumo_di, 
+        data: r.data_resumo 
+      })) || []
+    })
+
+    return { semFiltro, comFiltro }
+    
+  } catch (error) {
+    console.error('💥 ERRO DEBUG:', error)
+    return null
   }
+}
 }

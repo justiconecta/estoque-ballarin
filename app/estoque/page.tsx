@@ -2,23 +2,17 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { 
-  LogOut, 
   Package, 
   TrendingUp, 
   TrendingDown, 
   AlertCircle, 
-  Home, 
-  Users, 
-  Sun, 
-  Moon,
   Plus,
   Calendar,
   User,
   FileText
 } from 'lucide-react'
-import { Button, Input, Select, Card, Modal } from '@/components/ui'
+import { Button, Input, Select, Card, Modal, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { ProdutoComEstoque, MovimentacaoDetalhada, Usuario } from '@/types/database'
 
@@ -33,13 +27,11 @@ interface MovimentacaoForm {
 export default function EstoquePage() {
   const router = useRouter()
   
-  // Estados principais
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
+  // ✅ ESTADOS ESPECÍFICOS DO ESTOQUE (mantidos)
   const [produtos, setProdutos] = useState<ProdutoComEstoque[]>([])
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoDetalhada[]>([])
   const [selectedProduto, setSelectedProduto] = useState<ProdutoComEstoque | null>(null)
   const [loading, setLoading] = useState(false)
-  const [isDarkTheme, setIsDarkTheme] = useState(true)
   
   // Estados de formulário
   const [movForm, setMovForm] = useState<MovimentacaoForm>({
@@ -63,15 +55,6 @@ export default function EstoquePage() {
     message: ''
   })
 
-  // Detectar página atual para botão ativo
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
-  const isCurrentPage = (path: string) => {
-    if (path === '/dashboard') {
-      return currentPath === '/dashboard' || currentPath.startsWith('/dashboard/')
-    }
-    return currentPath === path
-  }
-
   const showModal = (type: 'success' | 'error', title: string, message: string) => {
     setModalState({ isOpen: true, type, title, message })
   }
@@ -87,54 +70,15 @@ export default function EstoquePage() {
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('ballarin_user')
-    router.push('/login')
-  }
-
-  const toggleTheme = () => {
-    setIsDarkTheme(!isDarkTheme)
-    localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
-  }
-
-  // Carregar tema salvo
+  // ✅ CARREGAR DADOS ESPECÍFICOS DO ESTOQUE
   useEffect(() => {
-    const savedTheme = localStorage.getItem('ballarin_theme')
-    if (savedTheme) {
-      setIsDarkTheme(savedTheme === 'dark')
-    }
-  }, [])
-
-  // Aplicar tema no documento
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
-    }
-  }, [isDarkTheme])
-
-  // Verificar autenticação
-  useEffect(() => {
+    // Carregar dados apenas se usuário existir (será validado pelo HeaderUniversal)
     const userData = localStorage.getItem('ballarin_user')
-    if (!userData) {
-      router.push('/login')
-      return
-    }
-    
-    try {
-      const user = JSON.parse(userData) as Usuario
-      setCurrentUser(user)
-    } catch {
-      router.push('/login')
-    }
-  }, [router])
-
-  // Carregar dados iniciais
-  useEffect(() => {
-    if (currentUser) {
+    if (userData) {
       loadProdutos()
       loadMovimentacoes()
     }
-  }, [currentUser])
+  }, [])
 
   const loadProdutos = async () => {
     try {
@@ -193,6 +137,10 @@ export default function EstoquePage() {
 
     try {
       setLoading(true)
+
+      // Obter usuário atual para movimentação
+      const userData = localStorage.getItem('ballarin_user')
+      const currentUser = userData ? JSON.parse(userData) : null
 
       if (movForm.tipo === 'ENTRADA') {
         // ENTRADA: Criar novo lote
@@ -278,100 +226,15 @@ export default function EstoquePage() {
   return (
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
-        {/* Header */}
-        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-700 to-clinic-gray-700 rounded-xl p-5 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0 relative">
-                <div className="absolute inset-0"></div>
-                <Image
-                  src="/justiconecta.png"
-                  alt="Clínica Ballarin"
-                  width={75}
-                  height={75}
-                  className="rounded-lg relative z-10"
-                />
-              </div>
-              <div>
-                <div className="flex items-center space-x-2 mb-1">
-                  <div className="p-1.5 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
-                    <Package className="h-5 w-5 text-clinic-cyan" />
-                  </div>
-                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Controle de Estoque</h1>
-                </div>
-                <p className="text-clinic-gray-300 text-sm">Gerencie produtos e movimentações</p>
-              </div>
-            </div>
-            
-            {/* Navegação Universal */}
-            <div className="flex items-center space-x-3">
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-1.5 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/dashboard')} 
-                  icon={Home} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/dashboard')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Dashboard
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/estoque')} 
-                  icon={Package} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/estoque')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Estoque
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/pacientes')} 
-                  icon={Users} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/pacientes')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Pacientes
-                </Button>
-              </div>
-              
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-1.5 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={toggleTheme} 
-                  icon={isDarkTheme ? Sun : Moon} 
-                  size="sm"
-                  className="px-3 py-2 hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-                />
-                
-                <Button 
-                  variant="secondary" 
-                  onClick={handleLogout} 
-                  icon={LogOut} 
-                  size="sm"
-                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                >
-                  Sair
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
+        
+        {/* ✅ HEADER UNIVERSAL - UMA LINHA APENAS! */}
+        <HeaderUniversal 
+          titulo="Controle de Estoque" 
+          descricao="Gerencie produtos e movimentações"
+          icone={Package}
+        />
 
-        {/* Layout Principal: ESQUERDA = Movimentação | DIREITA = Produtos */}
+        {/* ✅ LAYOUT PRINCIPAL: ESQUERDA = Movimentação | DIREITA = Produtos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           
           {/* ESQUERDA: Registrar Movimentação */}
@@ -598,7 +461,7 @@ export default function EstoquePage() {
           </div>
         </div>
 
-        {/* EMBAIXO: Histórico de Movimentações Completo */}
+        {/* ✅ EMBAIXO: Histórico de Movimentações Completo */}
         <Card title="Histórico de Movimentações">
           {movimentacoes.length === 0 ? (
             <div className="text-center py-8">
@@ -663,7 +526,7 @@ export default function EstoquePage() {
           )}
         </Card>
 
-        {/* Modal de Feedback */}
+        {/* ✅ MODAL DE FEEDBACK */}
         <Modal
           isOpen={modalState.isOpen}
           onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}

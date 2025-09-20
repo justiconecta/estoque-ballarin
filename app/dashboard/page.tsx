@@ -2,21 +2,14 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { 
-  LogOut, 
   Package, 
   Users, 
   BarChart3,
   TrendingUp,
-  TrendingDown,
-  AlertCircle,
-  Sun,
-  Moon,
-  Home,
-  Building
+  AlertCircle
 } from 'lucide-react'
-import { Button, Card } from '@/components/ui'
+import { Button, Card, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario } from '@/types/database'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
@@ -38,8 +31,8 @@ interface DateFilter {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
-  const [isAdminGeral, setIsAdminGeral] = useState(false)
+  
+  // ✅ ESTADOS ESPECÍFICOS DA DASHBOARD (mantidos)
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [activeTab, setActiveTab] = useState<'jornada' | 'marketing' | 'terapeutico'>('jornada')
   const [stats, setStats] = useState<DashboardStats>({
@@ -58,71 +51,15 @@ export default function DashboardPage() {
     endDate: new Date().toISOString().split('T')[0],
     preset: 'hoje'
   })
-  const [isDarkTheme, setIsDarkTheme] = useState(true)
 
-  // Detectar página atual para botão ativo
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard'
-  const isCurrentPage = (path: string) => currentPath === path
-
-  // Função para alternar tema
-  const toggleTheme = () => {
-    const newTheme = !isDarkTheme
-    setIsDarkTheme(newTheme)
-    localStorage.setItem('ballarin_theme', newTheme ? 'dark' : 'light')
-  }
-
-  // Carregar tema salvo
+  // ✅ CARREGAR DADOS ESPECÍFICOS DA DASHBOARD
   useEffect(() => {
-    const savedTheme = localStorage.getItem('ballarin_theme')
-    if (savedTheme) {
-      setIsDarkTheme(savedTheme === 'dark')
-    }
-  }, [])
-
-  // Aplicar tema no documento
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
-    }
-  }, [isDarkTheme])
-
-  // Verificar autenticação
-  useEffect(() => {
+    // Carregar dados apenas se usuário existir (será validado pelo HeaderUniversal)
     const userData = localStorage.getItem('ballarin_user')
-    if (!userData) {
-      router.push('/login')
-      return
-    }
-    
-    try {
-      const user = JSON.parse(userData) as Usuario
-      setCurrentUser(user)
-      
-      // NOVA LÓGICA: Verificar se é admin geral
-      checkIfAdminGeral(user.usuario)
-    } catch {
-      router.push('/login')
-    }
-  }, [router])
-
-  // NOVA FUNÇÃO: Verificar admin geral
-  const checkIfAdminGeral = async (usuario: string) => {
-    try {
-      const isGeral = await supabaseApi.isAdminGeral(usuario)
-      setIsAdminGeral(isGeral)
-      console.log(`🔍 ADMIN GERAL: ${isGeral ? 'SIM' : 'NÃO'}`)
-    } catch (error) {
-      console.error('Erro ao verificar admin geral:', error)
-      setIsAdminGeral(false)
-    }
-  }
-
-  // Carregar dados do dashboard
-  useEffect(() => {
-    if (currentUser) {
+    if (userData) {
       loadDashboardData()
     }
-  }, [currentUser, dateFilter])
+  }, [dateFilter])
 
   const loadDashboardData = async () => {
     try {
@@ -193,22 +130,15 @@ export default function DashboardPage() {
     }
   }
 
-  // NOVA FUNÇÃO: Callback de sucesso
+  // ✅ FUNÇÕES ESPECÍFICAS DA DASHBOARD (mantidas)
   const handleClinicaCriada = async () => {
-    // Recarregar dados se necessário
-    if (currentUser) {
-      await loadDashboardData()
-    }
+    // Recarregar dados após criar clínica
+    await loadDashboardData()
   }
 
-  const handleLogout = async () => {
-    try {
-      await supabaseApi.logout()
-      router.push('/login')
-    } catch (error) {
-      console.error('Erro no logout:', error)
-      router.push('/login')
-    }
+  // ✅ CALLBACK PARA ABRIR MODAL NOVA CLÍNICA
+  const handleShowNovaClinicaModal = () => {
+    setShowNovaClinicaModal(true)
   }
 
   const handleTabClick = (tab: 'jornada' | 'marketing' | 'terapeutico') => {
@@ -274,122 +204,17 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
-      {/* Container principal */}
       <div className="container mx-auto px-4 py0">
         
-              {/* Header Universal */}
-        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0">
-                <Image
-                  src="/justiconecta.png"
-                  alt="JustiConecta"  
-                  width={70}
-                  height={70}
-                  className="rounded-lg"
-                />
-              </div>
-              <div>
-                <div className="flex items-center space-x-2 mb-1">
-                  <div className="p-2 bg-clinic-cyan/20 rounded-md backdrop-blur-sm">
-                    <BarChart3 className="h-5 w-5 text-clinic-cyan" />
-                  </div>
-                  <h1 className="text-xl font-bold text-clinic-white tracking-tight">Jornada do Paciente</h1>
-                  {isAdminGeral && (
-                    <span className="px-2 py-1 bg-green-500/20 text-green-400 text-xs font-medium rounded-full border border-green-500/30">
-                      ADMIN GERAL
-                    </span>
-                  )}
-                </div>
-                <p className="text-clinic-gray-300 text-sm">
-                  Visão geral da jornada do paciente e performance da clínica
-                </p>
-              </div>
-            </div>
-            
-            {/* Navegação Universal */}
-            <div className="flex items-center space-x-3">
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/dashboard')} 
-                  icon={Home} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/dashboard')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Dashboard
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/estoque')} 
-                  icon={Package} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/estoque')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Estoque
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  onClick={() => router.push('/pacientes')} 
-                  icon={Users} 
-                  size="sm"
-                  className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
-                    isCurrentPage('/pacientes')
-                      ? 'bg-clinic-cyan text-clinic-black shadow-md' 
-                      : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
-                  }`}
-                >
-                  Pacientes
-                </Button>
-                
-                {/* NOVO: Botão Nova Clínica apenas para admin geral */}
-                {isAdminGeral && (
-                  <Button 
-                    variant="secondary" 
-                    onClick={() => setShowNovaClinicaModal(true)}
-                    icon={Building} 
-                    size="sm"
-                    className="px-4 py-2 transition-all duration-300 rounded-md font-medium bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-500 hover:text-white hover:scale-105"
-                  >
-                    Nova Clínica
-                  </Button>
-                )}
-              </div>
-              
-              <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
-                <Button 
-                  variant="secondary" 
-                  onClick={toggleTheme} 
-                  icon={isDarkTheme ? Sun : Moon} 
-                  size="sm"
-                  className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                  title={isDarkTheme ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
-                />
-                
-                <Button 
-                  variant="secondary" 
-                  onClick={handleLogout} 
-                  icon={LogOut} 
-                  size="sm"
-                  className="px-4 py-2 hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                >
-                  Sair
-                </Button>
-              </div>
-            </div>
-          </div>
-        </header>
+        {/* ✅ HEADER UNIVERSAL - UMA LINHA APENAS! */}
+        <HeaderUniversal 
+          titulo="Jornada do Paciente" 
+          descricao="Visão geral da jornada do paciente e performance da clínica"
+          icone={BarChart3}
+          showNovaClinicaModal={handleShowNovaClinicaModal}
+        />
 
-        {/* Navegação por Tabs - Simplificada */}
+        {/* ✅ NAVEGAÇÃO POR TABS - MANTIDA */}
         <div className="mb-8">
           <div className="border-b border-clinic-gray-700">
             <nav className="flex space-x-8">
@@ -427,7 +252,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Cards de Métricas Principais */}
+        {/* ✅ CARDS DE MÉTRICAS - MANTIDOS */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           
           <Card>
@@ -523,7 +348,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Resumo de Ações Rápidas */}
+        {/* ✅ RESUMO DE AÇÕES RÁPIDAS - MANTIDO */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           <Card>
@@ -584,7 +409,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Modal Nova Clínica */}
+      {/* ✅ MODAL NOVA CLÍNICA - MANTIDO */}
       <NovaClinicaModal 
         isOpen={showNovaClinicaModal}
         onClose={() => setShowNovaClinicaModal(false)}

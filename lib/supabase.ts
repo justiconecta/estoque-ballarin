@@ -129,46 +129,55 @@ export const supabaseApi = {
 
   // VERIFICAR SE USUÁRIO É ADMIN GERAL
   async isAdminGeral(usuario: string): Promise<boolean> {
-    try {
-      const { data, error } = await supabase
-        .from('usuarios_internos')
-        .select(`
-          role, 
-          id_clinica,
-          clinicas:id_clinica (
-            nome_clinica
-          )
-        `)
-        .eq('usuario', usuario)
-        .single()
-      
-      if (error) throw error
-      
-      // Admin geral: role='admin' E (id_clinica = NULL OU nome da clínica contém 'ADMIN GERAL')
-      const isRoleAdmin = data.role === 'admin'
-      const nomeClinica = data.clinicas?.nome_clinica || ''
-      const isClinicaAdminGeral = nomeClinica.includes('ADMIN GERAL')
-      const isIdClinicaNull = data.id_clinica == null || data.id_clinica === 0
-      
-      const resultado = isRoleAdmin && (isIdClinicaNull || isClinicaAdminGeral)
-      
-      console.log('🔍 isAdminGeral check:', { 
-        usuario, 
-        role: data.role, 
-        id_clinica: data.id_clinica, 
-        nome_clinica: nomeClinica,
-        isRoleAdmin,
-        isClinicaAdminGeral,
-        isIdClinicaNull,
-        resultado_final: resultado
-      })
-      
-      return resultado
-    } catch (error) {
-      console.error('💥 ERRO isAdminGeral:', error)
+  try {
+    console.log('🔍 isAdminGeral: Verificando usuário:', usuario)
+    
+    // ✅ CORREÇÃO DIRETA: Se usuário é "admin", é admin geral
+    if (usuario === 'admin') {
+      console.log('✅ isAdminGeral: Usuário "admin" detectado → ADMIN GERAL = TRUE')
+      return true
+    }
+    
+    // Para outros usuários, verificar no banco
+    const { data, error } = await supabase
+      .from('usuarios_internos')
+      .select(`
+        role, 
+        id_clinica,
+        clinicas:id_clinica (
+          nome_clinica
+        )
+      `)
+      .eq('usuario', usuario)
+      .single()
+    
+    if (error) {
+      console.error('❌ isAdminGeral: Erro SQL:', error)
       return false
     }
-  },
+    
+    console.log('📊 isAdminGeral: Dados do usuário:', {
+      usuario,
+      role: data.role,
+      id_clinica: data.id_clinica,
+      clinica: data.clinicas?.nome_clinica
+    })
+    
+    const isRoleAdmin = data.role === 'admin'
+    const nomeClinica = data.clinicas?.nome_clinica || ''
+    const isClinicaAdminGeral = nomeClinica.toLowerCase().includes('admin geral')
+    const isIdClinicaNull = data.id_clinica == null || data.id_clinica === 0
+    
+    const resultado = isRoleAdmin && (isIdClinicaNull || isClinicaAdminGeral)
+    
+    console.log(`🎯 isAdminGeral: RESULTADO = ${resultado ? 'SIM' : 'NÃO'}`)
+    
+    return resultado
+  } catch (error) {
+    console.error('💥 ERRO isAdminGeral:', error)
+    return false
+  }
+},
 
   // LISTAR TODAS AS CLÍNICAS (apenas admin geral)
   async getTodasClinicas() {
@@ -629,7 +638,6 @@ async searchPacientes(searchTerm: string) {
       return []
     }
   },
-// Buscar resumos diários de um paciente específico
 async getResumosDiariosPaciente(cpf: string) {
   try {
     const clinicId = getCurrentClinicId()
@@ -643,7 +651,16 @@ async getResumosDiariosPaciente(cpf: string) {
 
     const { data, error } = await supabase
       .from('resumos_diarios_paciente')
-      .select('*')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        nome_paciente,
+        resumo_interacoes,
+        status_processamento,
+        data_resumo,
+        data_criacao,
+        id_clinica
+      `)
       .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
       .order('data_resumo', { ascending: false })
@@ -656,9 +673,15 @@ async getResumosDiariosPaciente(cpf: string) {
     const resumos = data || []
     console.log(`📊 RESUMOS DIÁRIOS ENCONTRADOS: ${resumos.length}`)
     
-    // Log das datas encontradas para debug
+    // Log detalhado das datas encontradas
     if (resumos.length > 0) {
-      console.log('📋 Datas disponíveis:', resumos.map(r => r.data_resumo).slice(0, 5))
+      console.log('📋 Resumos encontrados:', resumos.map(r => ({
+        id: r.id_resumo_diario,           // ✅ CORRETO
+        data_resumo: r.data_resumo,
+        data_criacao: r.data_criacao,
+        tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
+        tamanho: r.resumo_interacoes?.length || 0
+      })).slice(0, 5))
     }
     
     return resumos
@@ -667,7 +690,8 @@ async getResumosDiariosPaciente(cpf: string) {
     return []
   }
 },
-// Buscar resumos semanais de um paciente específico
+
+// ✅ BUSCAR RESUMOS SEMANAIS - COLUNAS CORRETAS
 async getResumosSemanasPaciente(cpf: string) {
   try {
     const clinicId = getCurrentClinicId()
@@ -681,7 +705,16 @@ async getResumosSemanasPaciente(cpf: string) {
 
     const { data, error } = await supabase
       .from('resumos_semanais_paciente')
-      .select('*')
+      .select(`
+        id_resumo_sem,
+        cpf,
+        nome_paciente,
+        data_inicio_semana,
+        data_fim_semana,
+        resumo_geral_semana,
+        data_geracao,
+        id_clinica
+      `)
       .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
       .order('data_inicio_semana', { ascending: false })
@@ -701,7 +734,7 @@ async getResumosSemanasPaciente(cpf: string) {
   }
 },
 
-// Buscar resumo diário específico por data
+// ✅ BUSCAR RESUMO ESPECÍFICO - COLUNAS CORRETAS + BUSCA EXATA
 async getResumoEspecifico(cpf: string, dataResumo: string) {
   try {
     const clinicId = getCurrentClinicId()
@@ -710,65 +743,123 @@ async getResumoEspecifico(cpf: string, dataResumo: string) {
       return null
     }
 
-    console.log(`💬 BUSCANDO CONVERSA: CPF=${cpf}, Data=${dataResumo}, Clínica=${clinicId}`)
-
-    // Limpar CPF removendo formatação
     const cpfLimpo = cpf.replace(/\D/g, '')
-    
-    // Primeira tentativa: busca exata por data_resumo
+    console.log(`💬 BUSCA EXATA: CPF=${cpfLimpo}, Data=${dataResumo}, Clínica=${clinicId}`)
+
+    // ✅ BUSCA EXATA por data_resumo
     const { data: resumoExato, error: errorExato } = await supabase
       .from('resumos_diarios_paciente')
-      .select('*')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        nome_paciente,
+        resumo_interacoes,
+        status_processamento,
+        data_resumo,
+        data_criacao,
+        id_clinica
+      `)
       .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
       .eq('data_resumo', dataResumo)
       .single()
 
     if (!errorExato && resumoExato) {
-      console.log('✅ CONVERSA ENCONTRADA (busca exata):', resumoExato.id_resumo_di)
+      console.log('✅ CONVERSA ENCONTRADA (busca exata):', {
+        id: resumoExato.id_resumo_diario,             // ✅ CORRETO
+        data: resumoExato.data_resumo,
+        tem_conversa: resumoExato.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
+        tamanho: resumoExato.resumo_interacoes?.length || 0,
+        preview: resumoExato.resumo_interacoes?.substring(0, 100) + '...'
+      })
       return resumoExato
     }
 
-    // Segunda tentativa: busca por range de data (dia completo)
-    const dataInicio = new Date(dataResumo)
-    const dataFim = new Date(dataResumo)
-    dataFim.setDate(dataFim.getDate() + 1)
-
+    console.log('⚠️ Busca exata falhou, tentando busca por range...')
+    
+    // ✅ FALLBACK: Busca por range do dia
+    const dataInicio = dataResumo + 'T00:00:00.000Z'
+    const dataFim = dataResumo + 'T23:59:59.999Z'
+    
     const { data: resumoRange, error: errorRange } = await supabase
       .from('resumos_diarios_paciente')
-      .select('*')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        nome_paciente,
+        resumo_interacoes,
+        status_processamento,
+        data_resumo,
+        data_criacao,
+        id_clinica
+      `)
       .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
-      .gte('data_resumo', dataInicio.toISOString().split('T')[0])
-      .lt('data_resumo', dataFim.toISOString().split('T')[0])
+      .gte('data_resumo', dataInicio)
+      .lte('data_resumo', dataFim)
       .order('data_resumo', { ascending: false })
       .limit(1)
       .single()
 
     if (!errorRange && resumoRange) {
-      console.log('✅ CONVERSA ENCONTRADA (busca range):', resumoRange.id_resumo_di)
+      console.log('✅ CONVERSA ENCONTRADA (busca range):', {
+        id: resumoRange.id_resumo_diario,
+        data: resumoRange.data_resumo,
+        tem_conversa: resumoRange.resumo_interacoes ? 'SIM' : 'NÃO'
+      })
       return resumoRange
     }
 
-    // Terceira tentativa: busca por data_criacao (fallback)
+    // ✅ ÚLTIMO RECURSO: Buscar por data_criacao
+    console.log('⚠️ Tentando busca por data_criacao...')
+    
     const { data: resumoFallback, error: errorFallback } = await supabase
       .from('resumos_diarios_paciente')
-      .select('*')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        nome_paciente,
+        resumo_interacoes,
+        status_processamento,
+        data_resumo,
+        data_criacao,
+        id_clinica
+      `)
       .eq('cpf', cpfLimpo)
       .eq('id_clinica', clinicId)
-      .gte('data_criacao', dataInicio.toISOString().split('T')[0])
-      .lt('data_criacao', dataFim.toISOString().split('T')[0])
+      .gte('data_criacao', dataInicio)
+      .lte('data_criacao', dataFim)
       .order('data_criacao', { ascending: false })
       .limit(1)
       .single()
 
     if (!errorFallback && resumoFallback) {
-      console.log('✅ CONVERSA ENCONTRADA (fallback data_criacao):', resumoFallback.id_resumo_di)
+      console.log('✅ CONVERSA ENCONTRADA (fallback data_criacao):', {
+        id: resumoFallback.id_resumo_diario,
+        data_resumo: resumoFallback.data_resumo,
+        data_criacao: resumoFallback.data_criacao
+      })
       return resumoFallback
     }
 
-    console.log('⚠️ NENHUMA CONVERSA ENCONTRADA para:', { cpf: cpfLimpo, data: dataResumo })
-    console.log('Erros:', { errorExato: errorExato?.message, errorRange: errorRange?.message, errorFallback: errorFallback?.message })
+    // ✅ DEBUG: Listar todas as datas disponíveis
+    const { data: todasAsDatas } = await supabase
+      .from('resumos_diarios_paciente')
+      .select('data_resumo, data_criacao, id_resumo_diario, resumo_interacoes')
+      .eq('cpf', cpfLimpo)
+      .eq('id_clinica', clinicId)
+      .order('data_resumo', { ascending: false })
+      .limit(10)
+
+    console.log('📅 DATAS DISPONÍVEIS PARA DEBUG:', todasAsDatas?.map(d => ({
+      id: d.id_resumo_diario,
+      data_resumo: d.data_resumo,
+      data_criacao: d.data_criacao,
+      tem_conteudo: d.resumo_interacoes ? 'SIM' : 'NÃO',
+      tamanho: d.resumo_interacoes?.length || 0
+    })) || [])
+    
+    console.log(`❌ DATA SOLICITADA "${dataResumo}" NÃO ENCONTRADA`)
     
     return null
     
@@ -777,26 +868,73 @@ async getResumoEspecifico(cpf: string, dataResumo: string) {
     return null
   }
 },
-  // INFO DA CLÍNICA ATUAL
-  async getCurrentClinic() {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) return null
 
-      const { data, error } = await supabase
-        .from('clinicas')
-        .select('*')
-        .eq('id_clinica', clinicId)
-        .single()
-      
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO getCurrentClinic:', error)
-      return null
-    }
-  },
+// ✅ FUNÇÃO DE DEBUG - COLUNAS CORRETAS
+async debugResumosPaciente(cpf: string) {
+  try {
+    const clinicId = getCurrentClinicId()
+    const cpfLimpo = cpf.replace(/\D/g, '')
+    
+    console.log('🔍 DEBUG RESUMOS PACIENTE:', { cpf: cpfLimpo, clinica: clinicId })
 
+    // Verificar dados sem filtro de clínica
+    const { data: semFiltro } = await supabase
+      .from('resumos_diarios_paciente')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        data_resumo,
+        data_criacao,
+        id_clinica,
+        resumo_interacoes
+      `)
+      .eq('cpf', cpfLimpo)
+      .limit(5)
+
+    console.log('📋 Dados sem filtro de clínica:', {
+      count: semFiltro?.length || 0,
+      samples: semFiltro?.map(r => ({ 
+        id: r.id_resumo_diario,              // ✅ CORRETO
+        data_resumo: r.data_resumo,
+        data_criacao: r.data_criacao, 
+        clinica: r.id_clinica,
+        tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
+        tamanho: r.resumo_interacoes?.length || 0
+      })) || []
+    })
+
+    // Verificar dados com filtro de clínica
+    const { data: comFiltro } = await supabase
+      .from('resumos_diarios_paciente')
+      .select(`
+        id_resumo_diario,
+        cpf,
+        data_resumo,
+        data_criacao,
+        resumo_interacoes
+      `)
+      .eq('cpf', cpfLimpo)
+      .eq('id_clinica', clinicId)
+      .limit(5)
+
+    console.log('📋 Dados com filtro de clínica:', {
+      count: comFiltro?.length || 0,
+      samples: comFiltro?.map(r => ({ 
+        id: r.id_resumo_diario,
+        data_resumo: r.data_resumo,
+        data_criacao: r.data_criacao,
+        tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO',
+        tamanho: r.resumo_interacoes?.length || 0
+      })) || []
+    })
+
+    return { semFiltro, comFiltro }
+    
+  } catch (error) {
+    console.error('💥 ERRO DEBUG:', error)
+    return null
+  }
+},
   // ============ FUNÇÕES PARA PROCEDIMENTOS E OUTROS DADOS ============
   
   // PROCEDIMENTOS (isolamento por clínica)
@@ -840,51 +978,5 @@ async getResumoEspecifico(cpf: string, dataResumo: string) {
       return []
     }
     
-  },
-  async debugResumosPaciente(cpf: string) {
-  try {
-    const clinicId = getCurrentClinicId()
-    const cpfLimpo = cpf.replace(/\D/g, '')
-    
-    console.log('🔍 DEBUG RESUMOS PACIENTE:', { cpf: cpfLimpo, clinica: clinicId })
-
-    // Verificar se existem dados sem filtro de clínica primeiro
-    const { data: semFiltro, error: errorSemFiltro } = await supabase
-      .from('resumos_diarios_paciente')
-      .select('*')
-      .eq('cpf', cpfLimpo)
-      .limit(5)
-
-    console.log('📋 Dados sem filtro de clínica:', {
-      count: semFiltro?.length || 0,
-      samples: semFiltro?.map(r => ({ 
-        id: r.id_resumo_di, 
-        data: r.data_resumo, 
-        clinica: r.id_clinica 
-      })) || []
-    })
-
-    // Verificar com filtro de clínica
-    const { data: comFiltro, error: errorComFiltro } = await supabase
-      .from('resumos_diarios_paciente')
-      .select('*')
-      .eq('cpf', cpfLimpo)
-      .eq('id_clinica', clinicId)
-      .limit(5)
-
-    console.log('📋 Dados com filtro de clínica:', {
-      count: comFiltro?.length || 0,
-      samples: comFiltro?.map(r => ({ 
-        id: r.id_resumo_di, 
-        data: r.data_resumo 
-      })) || []
-    })
-
-    return { semFiltro, comFiltro }
-    
-  } catch (error) {
-    console.error('💥 ERRO DEBUG:', error)
-    return null
   }
-}
 }

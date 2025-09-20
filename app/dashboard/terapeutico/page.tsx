@@ -1,5 +1,3 @@
-// app/dashboard/terapeutico/page.tsx - VERSÃO CORRIGIDA COMPLETA
-
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -23,14 +21,16 @@ import { Button, Card } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario, Paciente } from '@/types/database'
 
+// ✅ INTERFACES CORRETAS COM NOMES DE COLUNAS EXATOS (CORRIGIDOS)
 interface ResumosDiarios {
-  id_resumo_di: number
+  id_resumo_diario: number       // ✅ CORRETO: id_resumo_diario (não id_resumo_di)
   cpf: string
   nome_paciente: string | null
-  resumo_interacao: string
+  resumo_interacoes: string      // ✅ CORRETO: resumo_interacoes (não resumo_interacao)
   status_processamento: string
   data_resumo: string
   data_criacao: string
+  id_clinica: number
 }
 
 interface ResumosSemanais {
@@ -41,9 +41,10 @@ interface ResumosSemanais {
   data_fim_semana: string
   resumo_geral_semana: string
   data_geracao: string
+  id_clinica: number
 }
 
-// ✅ COMPONENTE DROPDOWN DE BUSCA CORRIGIDO
+// ✅ COMPONENTE DROPDOWN - Mantido como estava funcionando
 const BuscaPacienteDropdown: React.FC<{
   onSelectPaciente: (paciente: Paciente) => void
   selectedPaciente: Paciente | null
@@ -54,35 +55,37 @@ const BuscaPacienteDropdown: React.FC<{
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [loading, setLoading] = useState(false)
 
-  // Carregar todos os pacientes da clínica ordenados alfabeticamente
   const carregarPacientes = useCallback(async () => {
     setLoading(true)
     try {
-      const response = await supabaseApi.getPacientes()
-      if (response.success && response.data) {
-        // Ordenar alfabeticamente por nome
-        const pacientesOrdenados = response.data
-          .filter(p => p.nome_completo) // Filtrar nomes válidos
+      console.log('🔄 CARREGANDO PACIENTES PARA DROPDOWN...')
+      
+      const pacientesData = await supabaseApi.getPacientes()
+      
+      if (Array.isArray(pacientesData) && pacientesData.length > 0) {
+        const pacientesOrdenados = pacientesData
+          .filter(p => p.nome_completo)
           .sort((a, b) => (a.nome_completo || '').localeCompare(b.nome_completo || ''))
         
         setPacientes(pacientesOrdenados)
-        console.log(`📋 PACIENTES CARREGADOS PARA DROPDOWN: ${pacientesOrdenados.length}`)
+        console.log(`✅ PACIENTES ORDENADOS PARA DROPDOWN: ${pacientesOrdenados.length}`)
+      } else {
+        setPacientes([])
       }
     } catch (error) {
-      console.error('❌ Erro ao carregar pacientes para dropdown:', error)
+      console.error('❌ ERRO ao carregar pacientes para dropdown:', error)
+      setPacientes([])
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Carregar pacientes ao abrir dropdown
   useEffect(() => {
     if (isOpen && pacientes.length === 0) {
       carregarPacientes()
     }
   }, [isOpen, pacientes.length, carregarPacientes])
 
-  // Filtrar pacientes baseado no termo de busca
   const pacientesFiltrados = pacientes.filter(paciente => {
     const termo = searchTerm.toLowerCase()
     const nome = (paciente.nome_completo || '').toLowerCase()
@@ -92,8 +95,8 @@ const BuscaPacienteDropdown: React.FC<{
     return nome.includes(termo) || cpf.includes(termoCpf)
   })
 
-  // Formatar CPF para exibição
   const formatCPF = (cpf: string) => {
+    if (!cpf) return 'CPF não informado'
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
   }
 
@@ -103,12 +106,11 @@ const BuscaPacienteDropdown: React.FC<{
         Selecionar Paciente:
       </label>
       
-      {/* Campo principal */}
       <div 
         className="relative cursor-pointer"
         onClick={() => setIsOpen(!isOpen)}
       >
-        <div className="flex items-center w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-white focus-within:border-cyan-400 transition-all duration-200">
+        <div className="flex items-center w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-white focus-within:border-cyan-400 transition-all duration-200 hover:border-cyan-500">
           <Search className="h-4 w-4 text-clinic-gray-400 mr-2" />
           <span className="flex-1 text-left">
             {selectedPaciente 
@@ -120,10 +122,8 @@ const BuscaPacienteDropdown: React.FC<{
         </div>
       </div>
 
-      {/* Dropdown */}
       {isOpen && (
         <div className="absolute z-50 w-full mt-1 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-xl">
-          {/* Campo de busca interno */}
           <div className="p-3 border-b border-clinic-gray-700">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-clinic-gray-400" />
@@ -138,7 +138,6 @@ const BuscaPacienteDropdown: React.FC<{
             </div>
           </div>
 
-          {/* Lista de pacientes */}
           <div className="max-h-64 overflow-y-auto">
             {loading ? (
               <div className="p-4 text-center text-clinic-gray-400">
@@ -147,12 +146,13 @@ const BuscaPacienteDropdown: React.FC<{
               </div>
             ) : pacientesFiltrados.length === 0 ? (
               <div className="p-4 text-center text-clinic-gray-400">
-                {searchTerm ? 'Nenhum paciente encontrado' : 'Nenhum paciente cadastrado'}
+                {searchTerm ? `Nenhum paciente encontrado para "${searchTerm}"` : 
+                 pacientes.length === 0 ? 'Nenhum paciente cadastrado' : 'Digite para buscar...'}
               </div>
             ) : (
               pacientesFiltrados.map((paciente) => (
                 <div
-                  key={`paciente-${paciente.id_paciente}`} // ✅ KEY ÚNICO
+                  key={`paciente-dropdown-${paciente.id_paciente}`}
                   className="p-3 hover:bg-clinic-gray-700 cursor-pointer border-b border-clinic-gray-700 last:border-b-0 transition-colors"
                   onClick={() => {
                     onSelectPaciente(paciente)
@@ -175,7 +175,6 @@ const BuscaPacienteDropdown: React.FC<{
         </div>
       )}
 
-      {/* Overlay para fechar dropdown */}
       {isOpen && (
         <div 
           className="fixed inset-0 z-40" 
@@ -192,17 +191,13 @@ export default function DashboardIAPage() {
   const [loading, setLoading] = useState(true)
   const [isDarkTheme, setIsDarkTheme] = useState(true)
   
-  // Estados do paciente selecionado
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
-  
-  // Estados dos resumos
   const [resumosDiarios, setResumosDiarios] = useState<ResumosDiarios[]>([])
   const [resumosSemanais, setResumosSemanais] = useState<ResumosSemanais[]>([])
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [conversaDia, setConversaDia] = useState<ResumosDiarios | null>(null)
   const [loadingConversa, setLoadingConversa] = useState(false)
 
-  // Detectar página atual
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard/terapeutico'
   const isCurrentPage = (path: string) => currentPath === path
 
@@ -216,7 +211,6 @@ export default function DashboardIAPage() {
     localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
   }
 
-  // Carregar tema salvo
   useEffect(() => {
     const savedTheme = localStorage.getItem('ballarin_theme')
     if (savedTheme) {
@@ -224,14 +218,12 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // Aplicar tema no documento
   useEffect(() => {
     if (typeof window !== 'undefined') {
       document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
     }
   }, [isDarkTheme])
 
-  // Verificar autenticação
   useEffect(() => {
     const userData = localStorage.getItem('ballarin_user')
     if (!userData) {
@@ -249,7 +241,7 @@ export default function DashboardIAPage() {
     }
   }, [router])
 
-  // ✅ CARREGAR RESUMOS DO PACIENTE SELECIONADO - CORRIGIDO
+  // ✅ CARREGAR RESUMOS - CORRIGIDO COM NOMES DE COLUNAS CORRETOS
   const loadResumosPaciente = useCallback(async (paciente: Paciente) => {
     if (!paciente.cpf) return
     
@@ -265,17 +257,24 @@ export default function DashboardIAPage() {
       setResumosDiarios(diarios || [])
       setResumosSemanais(semanais || [])
       
-      // Auto-selecionar primeira data se disponível
+      // ✅ LOGS COM NOMES DE COLUNAS CORRETOS
+      console.log(`📋 RESUMOS DIÁRIOS DETALHADOS:`, diarios?.map(d => ({
+        id: d.id_resumo_diario,           // ✅ CORRETO: id_resumo_diario
+        data_resumo: d.data_resumo,
+        data_criacao: d.data_criacao,
+        tem_conversa: d.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO: resumo_interacoes
+        tamanho: d.resumo_interacoes?.length || 0
+      })) || [])
+      
       if (diarios && diarios.length > 0) {
-        const primeiraData = diarios[0].data_resumo
-        setSelectedDate(primeiraData)
-        loadConversaDia(paciente.cpf, primeiraData)
+        const primeiraDataReal = diarios[0].data_resumo
+        console.log(`✅ AUTO-SELECIONANDO DATA REAL: ${primeiraDataReal}`)
+        setSelectedDate(primeiraDataReal)
+        loadConversaDia(paciente.cpf, primeiraDataReal)
       } else {
         setSelectedDate('')
         setConversaDia(null)
       }
-      
-      console.log(`✅ RESUMOS CARREGADOS: ${diarios?.length || 0} diários, ${semanais?.length || 0} semanais`)
       
     } catch (error) {
       console.error('❌ Erro ao carregar resumos:', error)
@@ -286,19 +285,26 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // ✅ CARREGAR CONVERSA DO DIA - CORRIGIDO
-  const loadConversaDia = useCallback(async (cpf: string, data: string) => {
-    if (!cpf || !data) return
+  const loadConversaDia = useCallback(async (cpf: string, dataResumo: string) => {
+    if (!cpf || !dataResumo) return
     
     try {
       setLoadingConversa(true)
-      console.log(`💬 CARREGANDO CONVERSA: CPF=${cpf}, Data=${data}`)
+      console.log(`💬 CARREGANDO CONVERSA EXATA: CPF=${cpf}, Data=${dataResumo}`)
       
-      const conversa = await supabaseApi.getResumoEspecifico(cpf, data)
+      const conversa = await supabaseApi.getResumoEspecifico(cpf, dataResumo)
       setConversaDia(conversa)
       
-      console.log(`${conversa ? '✅ CONVERSA ENCONTRADA' : '⚠️ CONVERSA NÃO ENCONTRADA'}`)
-      
+      if (conversa) {
+        // ✅ LOGS COM COLUNA CORRIGIDA
+        console.log(`✅ CONVERSA ENCONTRADA:`, {
+          id: conversa.id_resumo_diario,                 // ✅ CORRETO: id_resumo_diario
+          data: conversa.data_resumo,
+          tem_conteudo: conversa.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO: resumo_interacoes
+          tamanho: conversa.resumo_interacoes?.length || 0,
+          preview: conversa.resumo_interacoes?.substring(0, 100) + '...'
+        })
+      }
     } catch (error) {
       console.error('❌ Erro ao carregar conversa:', error)
       setConversaDia(null)
@@ -307,22 +313,20 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // ✅ HANDLE SELECT PACIENTE - CORRIGIDO
   const handleSelectPaciente = useCallback((paciente: Paciente) => {
     console.log(`👤 PACIENTE SELECIONADO: ${paciente.nome_completo} (${paciente.cpf})`)
     setSelectedPaciente(paciente)
     loadResumosPaciente(paciente)
   }, [loadResumosPaciente])
 
-  // ✅ HANDLE SELECT DATE - CORRIGIDO
-  const handleSelectDate = useCallback((data: string) => {
-    setSelectedDate(data)
+  const handleSelectDate = useCallback((dataResumo: string) => {
+    console.log(`📅 DATA SELECIONADA: ${dataResumo}`)
+    setSelectedDate(dataResumo)
     if (selectedPaciente?.cpf) {
-      loadConversaDia(selectedPaciente.cpf, data)
+      loadConversaDia(selectedPaciente.cpf, dataResumo)
     }
   }, [selectedPaciente?.cpf, loadConversaDia])
 
-  // ✅ FORMATAR DATA - CORRIGIDO
   const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -335,59 +339,167 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // ✅ RENDER CONVERSA - CORRIGIDO COM KEYS ÚNICOS
-  const renderConversa = useCallback((resumoInteracao: string) => {
-    if (!resumoInteracao) {
-      return <p className="text-clinic-gray-400 text-center py-8">Nenhuma conversa disponível</p>
+  // ✅ RENDER CONVERSA - PARSER CORRIGIDO PARA SEPARAR PACIENTE E IA
+  const renderConversa = useCallback((resumoInteracoes: string) => {
+    if (!resumoInteracoes || resumoInteracoes.trim() === '') {
+      return (
+        <div className="text-center py-8">
+          <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
+          <p className="text-clinic-gray-400">Conversa vazia ou sem conteúdo</p>
+        </div>
+      )
     }
     
     try {
-      // Split mais robusto mantendo delimitadores
-      const parts = resumoInteracao.split(/(\*\*(?:PACIENTE|EVELYN)\*\*:)/).filter(part => part.trim())
+      console.log('🎭 RENDERIZANDO CONVERSA:')
+      console.log('📏 TAMANHO:', resumoInteracoes.length)
+      console.log('🔍 PRIMEIROS 200 CHARS:', resumoInteracoes.substring(0, 200))
       
-      const elementos: JSX.Element[] = []
-      let currentSpeaker = ''
+      // ✅ PARSER CORRIGIDO - Split inicial por **PACIENTE**
+      let mensagens: Array<{speaker: string, texto: string}> = []
       
-      parts.forEach((part, index) => {
-        const trimmedPart = part.trim()
-        if (!trimmedPart) return
+      // Split por **PACIENTE**: para separar os blocos de conversa
+      const blocosPaciente = resumoInteracoes.split(/\*\*PACIENTE\*\*:?\s*/i).filter(bloco => bloco.trim())
+      
+      console.log('🔍 BLOCOS DE CONVERSA:', blocosPaciente.length)
+      
+      blocosPaciente.forEach((bloco, index) => {
+        console.log(`📦 BLOCO ${index + 1}:`, bloco.substring(0, 100) + '...')
         
-        if (trimmedPart.includes('**PACIENTE**:')) {
-          currentSpeaker = 'PACIENTE'
-          elementos.push(
-            <div key={`speaker-paciente-${index}`} className="text-cyan-400 font-semibold mb-2">
-              PACIENTE:
-            </div>
-          )
-        } else if (trimmedPart.includes('**EVELYN**:')) {
-          currentSpeaker = 'ALICE'
-          elementos.push(
-            <div key={`speaker-alice-${index}`} className="text-purple-400 font-semibold mb-2">
-              ALICE:
-            </div>
-          )
-        } else if (trimmedPart && currentSpeaker) {
-          const isFromPaciente = currentSpeaker === 'PACIENTE'
-          elementos.push(
-            <div 
-              key={`message-${currentSpeaker}-${index}`} // ✅ KEY ÚNICO BASEADO EM SPEAKER + INDEX
-              className={`p-3 rounded-lg mb-3 ${
-                isFromPaciente 
-                  ? 'bg-cyan-950/30 border-l-4 border-cyan-400 ml-6' 
-                  : 'bg-purple-950/30 border-l-4 border-purple-400 mr-6'
-              }`}
-            >
-              <p className="text-clinic-gray-200 leading-relaxed">{trimmedPart}</p>
-            </div>
-          )
+        // ✅ DENTRO DE CADA BLOCO: separar mensagem do paciente e resposta da IA
+        // Padrão: [MENSAGEM_PACIENTE]**EVELYN IA**: [RESPOSTA_IA]
+        const partesBloco = bloco.split(/\*\*(EVELYN|AGENTE|AGENT)\s*IA\*\*:?\s*/i)
+        
+        if (partesBloco.length >= 2) {
+          // Primeira parte: mensagem do paciente
+          const mensagemPaciente = partesBloco[0]?.trim()
+          if (mensagemPaciente) {
+            mensagens.push({
+              speaker: 'PACIENTE',
+              texto: mensagemPaciente
+            })
+            console.log(`👤 PACIENTE: ${mensagemPaciente.substring(0, 50)}...`)
+          }
+          
+          // Segunda parte: resposta da IA
+          const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim() // fallback para diferentes posições
+          if (respostaIA) {
+            mensagens.push({
+              speaker: 'ALICE',
+              texto: respostaIA
+            })
+            console.log(`🤖 ALICE: ${respostaIA.substring(0, 50)}...`)
+          }
+        } else {
+          // Se não conseguiu dividir, pode ser só mensagem do paciente
+          const textoLimpo = bloco.trim()
+          if (textoLimpo) {
+            mensagens.push({
+              speaker: 'PACIENTE',
+              texto: textoLimpo
+            })
+            console.log(`👤 PACIENTE (sem resposta): ${textoLimpo.substring(0, 50)}...`)
+          }
         }
       })
       
-      return <div className="space-y-2">{elementos}</div>
+      console.log(`✅ MENSAGENS EXTRAÍDAS: ${mensagens.length}`)
+      mensagens.forEach((msg, i) => {
+        console.log(`📨 MSG ${i+1} [${msg.speaker}]: ${msg.texto.substring(0, 60)}...`)
+      })
+      
+      // Se não conseguiu extrair mensagens, tentar método alternativo
+      if (mensagens.length === 0) {
+        console.log('⚠️ MÉTODO PRINCIPAL FALHOU, TENTANDO FALLBACK...')
+        
+        // Fallback: split por qualquer **SPEAKER**
+        const partes = resumoInteracoes.split(/\*\*(PACIENTE|EVELYN|AGENTE|AGENT|IA)\*\*:?\s*/gi)
+        
+        for (let i = 1; i < partes.length; i += 2) {
+          const speaker = partes[i - 1]?.toUpperCase() || ''
+          const texto = partes[i]?.trim() || ''
+          
+          if (texto) {
+            const isPatient = speaker.includes('PACIENTE')
+            mensagens.push({
+              speaker: isPatient ? 'PACIENTE' : 'ALICE',
+              texto: texto
+            })
+          }
+        }
+      }
+      
+      // Se ainda não conseguiu, mostrar raw
+      if (mensagens.length === 0) {
+        return (
+          <div className="text-center py-8">
+            <p className="text-yellow-400 mb-4">⚠️ Não foi possível parsear a conversa</p>
+            <div className="bg-clinic-gray-800 p-4 rounded-lg text-left text-xs text-clinic-gray-300 max-h-40 overflow-y-auto">
+              <pre className="whitespace-pre-wrap">{resumoInteracoes}</pre>
+            </div>
+          </div>
+        )
+      }
+      
+      // ✅ RENDER WHATSAPP-STYLE
+      return (
+        <div className="space-y-4 p-2">
+          {mensagens.map((mensagem, index) => {
+            const isPatient = mensagem.speaker === 'PACIENTE'
+            
+            return (
+              <div 
+                key={`msg-${index}-${mensagem.speaker}-${mensagem.texto.substring(0, 10)}`}
+                className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}
+              >
+                <div 
+                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
+                    isPatient 
+                      ? 'bg-cyan-600 text-white rounded-br-sm' // Paciente: direita, azul
+                      : 'bg-purple-600 text-white rounded-bl-sm' // Alice: esquerda, roxo
+                  }`}
+                >
+                  {/* Header com nome do speaker */}
+                  <div className={`text-xs font-semibold mb-1 opacity-90 ${
+                    isPatient ? 'text-cyan-100' : 'text-purple-100'
+                  }`}>
+                    {mensagem.speaker}
+                  </div>
+                  
+                  {/* Conteúdo da mensagem */}
+                  <div className="text-sm leading-relaxed">
+                    {mensagem.texto}
+                  </div>
+                  
+                  {/* Timestamp simulado */}
+                  <div className={`text-xs mt-1 opacity-75 text-right ${
+                    isPatient ? 'text-cyan-200' : 'text-purple-200'
+                  }`}>
+                    {new Date().toLocaleTimeString('pt-BR', { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )
       
     } catch (error) {
-      console.error('❌ Erro ao renderizar conversa:', error)
-      return <p className="text-red-400 text-center py-4">Erro ao carregar conversa</p>
+      console.error('❌ ERRO ao renderizar conversa:', error)
+      return (
+        <div className="text-center py-8">
+          <p className="text-red-400">Erro ao renderizar conversa</p>
+          <div className="mt-2 text-xs text-clinic-gray-400">
+            {error instanceof Error ? error.message : 'Erro desconhecido'}
+          </div>
+          <div className="mt-4 bg-clinic-gray-800 p-2 rounded text-xs">
+            Raw: {resumoInteracoes.substring(0, 500)}...
+          </div>
+        </div>
+      )
     }
   }, [])
 
@@ -499,14 +611,12 @@ export default function DashboardIAPage() {
               Dados do Paciente
             </h2>
             
-            {/* ✅ BUSCA DROPDOWN CORRIGIDA */}
             <BuscaPacienteDropdown
               onSelectPaciente={handleSelectPaciente}
               selectedPaciente={selectedPaciente}
               className="mb-6"
             />
 
-            {/* Dados do Paciente Selecionado */}
             {selectedPaciente && (
               <div className="space-y-4 mb-6">
                 <div className="bg-clinic-gray-900 p-4 rounded-lg">
@@ -527,17 +637,17 @@ export default function DashboardIAPage() {
               </div>
             )}
 
-            {/* Timeline de Datas com Interação */}
+            {/* ✅ TIMELINE COM COLUNA CORRIGIDA */}
             {resumosDiarios.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-white mb-3 flex items-center">
                   <Calendar className="h-4 w-4 mr-2 text-cyan-400" />
-                  Dias com Interação
+                  Dias com Interação ({resumosDiarios.length})
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {resumosDiarios.map((resumo) => (
                     <div
-                      key={`data-${resumo.id_resumo_di}`} // ✅ KEY ÚNICO BASEADO EM ID
+                      key={`timeline-${resumo.id_resumo_diario}-${resumo.data_resumo}`} // ✅ COLUNA CORRIGIDA
                       onClick={() => handleSelectDate(resumo.data_resumo)}
                       className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-center text-sm font-medium ${
                         selectedDate === resumo.data_resumo
@@ -545,7 +655,15 @@ export default function DashboardIAPage() {
                           : 'bg-clinic-gray-900 text-clinic-gray-300 hover:bg-clinic-gray-700'
                       }`}
                     >
-                      {formatDate(resumo.data_resumo)}
+                      <div className="font-medium">
+                        {formatDate(resumo.data_resumo)}
+                      </div>
+                      <div className="text-xs opacity-75 mt-1">
+                        {resumo.resumo_interacoes ? // ✅ COLUNA CORRIGIDA
+                          `${resumo.resumo_interacoes.length} chars` : 
+                          'Sem conversa'
+                        }
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -553,7 +671,7 @@ export default function DashboardIAPage() {
             )}
           </Card>
 
-          {/* Colunas 2 e 3: Conversa do Dia */}
+          {/* Colunas 2 e 3: Conversa do Dia - LAYOUT WHATSAPP */}
           <Card className="lg:col-span-2 bg-clinic-gray-800 border-clinic-gray-700 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white flex items-center">
@@ -569,15 +687,15 @@ export default function DashboardIAPage() {
               )}
             </div>
 
-            {/* Área da Conversa */}
-            <div className="bg-clinic-gray-900 rounded-lg p-4 h-96 overflow-y-auto">
+            {/* ✅ ÁREA DA CONVERSA - WHATSAPP STYLE */}
+            <div className="bg-clinic-gray-900 rounded-lg h-96 overflow-y-auto">
               {loadingConversa ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-cyan-400 border-t-transparent mr-3"></div>
                   <span className="ml-2 text-clinic-gray-400">Carregando conversa...</span>
                 </div>
               ) : conversaDia ? (
-                renderConversa(conversaDia.resumo_interacao)
+                renderConversa(conversaDia.resumo_interacoes) // ✅ COLUNA CORRIGIDA
               ) : selectedPaciente ? (
                 <div className="flex items-center justify-center h-full text-clinic-gray-400">
                   <div className="text-center">

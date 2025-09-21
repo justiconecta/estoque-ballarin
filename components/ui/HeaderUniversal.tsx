@@ -16,7 +16,7 @@ interface HeaderUniversalProps {
   titulo: string
   descricao: string
   icone: LucideIcon
-  showNovaClinicaModal?: () => void // ✅ OPCIONAL - callback para abrir modal Nova Clínica
+  showNovaClinicaModal?: () => void 
 }
 
 export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNovaClinicaModal }: HeaderUniversalProps) {

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Image from 'next/image'
 import { 
   Package, 
   Users, 
@@ -17,7 +16,7 @@ import {
   User,
   ChevronDown
 } from 'lucide-react'
-import { Button, Card } from '@/components/ui'
+import { Button, Card, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario, Paciente } from '@/types/database'
 
@@ -189,7 +188,6 @@ export default function DashboardIAPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
   const [loading, setLoading] = useState(true)
-  const [isDarkTheme, setIsDarkTheme] = useState(true)
   
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
   const [resumosDiarios, setResumosDiarios] = useState<ResumosDiarios[]>([])
@@ -197,32 +195,6 @@ export default function DashboardIAPage() {
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [conversaDia, setConversaDia] = useState<ResumosDiarios | null>(null)
   const [loadingConversa, setLoadingConversa] = useState(false)
-
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/dashboard/terapeutico'
-  const isCurrentPage = (path: string) => currentPath === path
-
-  const handleLogout = () => {
-    localStorage.removeItem('ballarin_user')
-    router.push('/login')
-  }
-
-  const toggleTheme = () => {
-    setIsDarkTheme(!isDarkTheme)
-    localStorage.setItem('ballarin_theme', !isDarkTheme ? 'dark' : 'light')
-  }
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('ballarin_theme')
-    if (savedTheme) {
-      setIsDarkTheme(savedTheme === 'dark')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light')
-    }
-  }, [isDarkTheme])
 
   useEffect(() => {
     const userData = localStorage.getItem('ballarin_user')
@@ -518,88 +490,30 @@ export default function DashboardIAPage() {
     <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
         
-        {/* Header */}
-        <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-6 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0">
-                <Image
-                  src="/justiconecta.png"
-                  alt="JustiConecta"
-                  width={70}
-                  height={70}
-                  className="rounded-lg"
-                />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-white mb-1">
-                  Interações Paciente - IA
-                </h1>
-                <p className="text-clinic-gray-300">
-                  Acompanhe todas as conversas entre pacientes e nossa assistente virtual ALICE
-                </p>
-              </div>
-            </div>
+        {/* ✅ HEADER UNIVERSAL - SUBSTITUÍDO */}
+        <HeaderUniversal 
+          titulo="Interações Paciente - IA" 
+          descricao="Acompanhe todas as conversas entre pacientes e nossa assistente virtual ALICE"
+          icone={Bot}
+        />
 
-            <div className="flex items-center space-x-4">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={toggleTheme}
-                className="border-clinic-gray-600 hover:bg-clinic-gray-700"
+        {/* ✅ NAVEGAÇÃO POR TABS */}
+        <div className="mb-8">
+          <div className="border-b border-clinic-gray-700">
+            <nav className="flex space-x-8">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300"
               >
-                {isDarkTheme ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-              
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleLogout}
-                className="border-clinic-gray-600 hover:bg-red-900/50 hover:border-red-600"
+                Marketing e Terapêutico
+              </button>
+              <button
+                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
               >
-                <LogOut className="h-4 w-4 mr-2" />
-                Sair
-              </Button>
-            </div>
+                IA - Paciente
+              </button>
+            </nav>
           </div>
-        </header>
-
-        {/* Navegação */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <Button
-            onClick={() => router.push('/dashboard')}
-            variant={isCurrentPage('/dashboard') ? "primary" : "secondary"}
-            className="flex items-center space-x-2"
-          >
-            <Home className="h-4 w-4" />
-            <span>Dashboard</span>
-          </Button>
-          
-          <Button
-            onClick={() => router.push('/estoque')}
-            variant={isCurrentPage('/estoque') ? "primary" : "secondary"}
-            className="flex items-center space-x-2"
-          >
-            <Package className="h-4 w-4" />
-            <span>Estoque</span>
-          </Button>
-          
-          <Button
-            onClick={() => router.push('/pacientes')}
-            variant={isCurrentPage('/pacientes') ? "primary" : "secondary"}
-            className="flex items-center space-x-2"
-          >
-            <Users className="h-4 w-4" />
-            <span>Pacientes</span>
-          </Button>
-
-          <Button
-            variant="primary"
-            className="flex items-center space-x-2 bg-purple-600 hover:bg-purple-700"
-          >
-            <Bot className="h-4 w-4" />
-            <span>Paciente - IA</span>
-          </Button>
         </div>
 
         {/* Conteúdo Principal */}

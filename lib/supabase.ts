@@ -160,11 +160,11 @@ export const supabaseApi = {
       usuario,
       role: data.role,
       id_clinica: data.id_clinica,
-      clinica: data.clinicas?.nome_clinica
+      clinica: data.clinicas?.[0]?.nome_clinica
     })
     
     const isRoleAdmin = data.role === 'admin'
-    const nomeClinica = data.clinicas?.nome_clinica || ''
+    const nomeClinica = data.clinicas?.[0]?.nome_clinica || ''
     const isClinicaAdminGeral = nomeClinica.toLowerCase().includes('admin geral')
     const isIdClinicaNull = data.id_clinica == null || data.id_clinica === 0
     

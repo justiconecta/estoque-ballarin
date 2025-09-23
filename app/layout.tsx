@@ -5,10 +5,10 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Clínica Ballarin - Controle de Estoque',
-  description: 'Sistema de controle de estoque para clínica de estética',
+  title: 'JustiConecta',
+  description: 'Sistema completo para clínica de estética',
   keywords: ['clínica', 'estoque', 'estética', 'controle'],
-  authors: [{ name: 'Clínica Ballarin' }],
+  authors: [{ name: 'JustiConecta' }],
   viewport: 'width=device-width, initial-scale=1',
   robots: 'noindex, nofollow', // Sistema interno
 }

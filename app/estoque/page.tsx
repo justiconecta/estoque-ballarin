@@ -15,6 +15,7 @@ import {
 import { Button, Input, Select, Card, Modal, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { ProdutoComEstoque, MovimentacaoDetalhada, Usuario } from '@/types/database'
+import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 interface MovimentacaoForm {
   tipo: 'ENTRADA' | 'SAIDA'
@@ -32,6 +33,7 @@ export default function EstoquePage() {
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoDetalhada[]>([])
   const [selectedProduto, setSelectedProduto] = useState<ProdutoComEstoque | null>(null)
   const [loading, setLoading] = useState(false)
+  const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
   // Estados de formulário
   const [movForm, setMovForm] = useState<MovimentacaoForm>({
@@ -57,6 +59,15 @@ export default function EstoquePage() {
 
   const showModal = (type: 'success' | 'error', title: string, message: string) => {
     setModalState({ isOpen: true, type, title, message })
+  }
+
+  const handleShowNovaClinicaModal = () => {
+    setShowNovaClinicaModal(true)
+  }
+
+  const handleClinicaCriada = () => {
+    setShowNovaClinicaModal(false)
+    showModal('success', 'Sucesso', 'Clínica criada com sucesso!')
   }
 
   const formatDate = (dateString: string) => {
@@ -232,6 +243,7 @@ export default function EstoquePage() {
           titulo="Controle de Estoque" 
           descricao="Gerencie produtos e movimentações"
           icone={Package}
+          showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
         {/* ✅ LAYOUT PRINCIPAL: ESQUERDA = Movimentação | DIREITA = Produtos */}
@@ -551,6 +563,13 @@ export default function EstoquePage() {
             </Button>
           </div>
         </Modal>
+
+        {/* Modal Nova Clínica */}
+        <NovaClinicaModal
+          isOpen={showNovaClinicaModal}
+          onClose={() => setShowNovaClinicaModal(false)}
+          onSuccess={handleClinicaCriada}
+        />
       </div>
     </div>
   )

@@ -180,14 +180,11 @@ export default function DashboardMarketingTerapeuticoPage() {
   const parseListaNumeros = (texto: string): string[] => {
     if (!texto) return []
     
-    // Parse de listas numeradas: "1. Item1 2. Item2 3. Item3"
-    const matches = texto.match(/\d+\.\s*([^0-9]+?)(?=\d+\.|$)/g)
-    if (matches) {
-      return matches.map(item => item.replace(/^\d+\.\s*/, '').trim())
-    }
-    
-    // Fallback: split por ponto
-    return texto.split(/\d+\./).filter(item => item.trim()).map(item => item.trim())
+    // Split por número seguido de ponto
+    return texto
+      .split(/\d+\.\s*/)
+      .filter(item => item.trim())
+      .map(item => item.trim())
   }
 
   if (loading) {
@@ -363,7 +360,7 @@ export default function DashboardMarketingTerapeuticoPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.fcs).map((item, index) => (
+                {parseListaNumeros(indicadoresMes.fcs).slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-start space-x-2">
                     <span className="text-green-400 font-bold">{index + 1}.</span>
                     <p className="text-clinic-white text-sm flex-1">{item}</p>
@@ -382,7 +379,7 @@ export default function DashboardMarketingTerapeuticoPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.melhorias).map((item, index) => (
+                {parseListaNumeros(indicadoresMes.melhorias).slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-start space-x-2">
                     <span className="text-yellow-400 font-bold">{index + 1}.</span>
                     <p className="text-clinic-white text-sm flex-1">{item}</p>
@@ -401,7 +398,7 @@ export default function DashboardMarketingTerapeuticoPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.supervalorizado).map((item, index) => (
+                {parseListaNumeros(indicadoresMes.supervalorizado).slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-start space-x-2">
                     <span className="text-purple-400 font-bold">{index + 1}.</span>
                     <p className="text-clinic-white text-sm flex-1">{item}</p>
@@ -420,7 +417,7 @@ export default function DashboardMarketingTerapeuticoPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.temas_marketing).map((item, index) => (
+                {parseListaNumeros(indicadoresMes.temas_marketing).slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-start space-x-2">
                     <span className="text-cyan-400 font-bold">{index + 1}.</span>
                     <p className="text-clinic-white text-sm flex-1">{item}</p>
@@ -439,7 +436,7 @@ export default function DashboardMarketingTerapeuticoPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.oportunidades_marketing).map((item, index) => (
+                {parseListaNumeros(indicadoresMes.oportunidades_marketing).slice(0, 5).map((item, index) => (
                   <div key={index} className="flex items-start space-x-2">
                     <span className="text-orange-400 font-bold">{index + 1}.</span>
                     <p className="text-clinic-white text-sm flex-1">{item}</p>

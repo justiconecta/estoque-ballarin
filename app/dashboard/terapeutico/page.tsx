@@ -19,6 +19,7 @@ import {
 import { Button, Card, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Usuario, Paciente } from '@/types/database'
+import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 // ✅ INTERFACES CORRETAS COM NOMES DE COLUNAS EXATOS (CORRIGIDOS)
 interface ResumosDiarios {
@@ -188,6 +189,7 @@ export default function DashboardIAPage() {
   const router = useRouter()
   const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
   const [resumosDiarios, setResumosDiarios] = useState<ResumosDiarios[]>([])
@@ -212,6 +214,14 @@ export default function DashboardIAPage() {
       setLoading(false)
     }
   }, [router])
+
+  const handleShowNovaClinicaModal = () => {
+    setShowNovaClinicaModal(true)
+  }
+
+  const handleClinicaCriada = () => {
+    setShowNovaClinicaModal(false)
+  }
 
   // ✅ CARREGAR RESUMOS - CORRIGIDO COM NOMES DE COLUNAS CORRETOS
   const loadResumosPaciente = useCallback(async (paciente: Paciente) => {
@@ -357,10 +367,10 @@ export default function DashboardIAPage() {
           const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim() // fallback para diferentes posições
           if (respostaIA) {
             mensagens.push({
-              speaker: 'ALICE',
+              speaker: 'Agente IA',
               texto: respostaIA
             })
-            console.log(`🤖 ALICE: ${respostaIA.substring(0, 50)}...`)
+            console.log(`🤖 Agente IA: ${respostaIA.substring(0, 50)}...`)
           }
         } else {
           // Se não conseguiu dividir, pode ser só mensagem do paciente
@@ -394,7 +404,7 @@ export default function DashboardIAPage() {
           if (texto) {
             const isPatient = speaker.includes('PACIENTE')
             mensagens.push({
-              speaker: isPatient ? 'PACIENTE' : 'ALICE',
+              speaker: isPatient ? 'PACIENTE' : 'Agente IA',
               texto: texto
             })
           }
@@ -428,7 +438,7 @@ export default function DashboardIAPage() {
                   className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
                     isPatient 
                       ? 'bg-cyan-600 text-white rounded-br-sm' // Paciente: direita, azul
-                      : 'bg-purple-600 text-white rounded-bl-sm' // Alice: esquerda, roxo
+                      : 'bg-purple-600 text-white rounded-bl-sm' // Agente IA: esquerda, roxo
                   }`}
                 >
                   {/* Header com nome do speaker */}
@@ -493,8 +503,9 @@ export default function DashboardIAPage() {
         {/* ✅ HEADER UNIVERSAL - SUBSTITUÍDO */}
         <HeaderUniversal 
           titulo="Interações Paciente - IA" 
-          descricao="Acompanhe todas as conversas entre pacientes e nossa assistente virtual ALICE"
+          descricao="Acompanhe todas as conversas entre pacientes e sua assistente virtual"
           icone={Bot}
+          showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
         {/* ✅ NAVEGAÇÃO POR TABS */}
@@ -596,7 +607,7 @@ export default function DashboardIAPage() {
               {selectedPaciente && (
                 <div className="flex items-center space-x-2 text-sm">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <span className="text-green-400">ALICE Online</span>
+                  <span className="text-green-400">Agente IA Online</span>
                 </div>
               )}
             </div>
@@ -629,6 +640,13 @@ export default function DashboardIAPage() {
           </Card>
 
         </div>
+
+        {/* Modal Nova Clínica */}
+        <NovaClinicaModal
+          isOpen={showNovaClinicaModal}
+          onClose={() => setShowNovaClinicaModal(false)}
+          onSuccess={handleClinicaCriada}
+        />
       </div>
     </div>
   )

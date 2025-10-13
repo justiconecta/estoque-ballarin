@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { 
-  Home, Package, Users, Building, Sun, Moon, LogOut, 
+  Home, Package, Users, Building, Sun, Moon, LogOut, DollarSign,
   LucideIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui'
@@ -175,6 +175,22 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
               >
                 Estoque
               </Button>
+              
+              {/* ✅ BOTÃO FINANCEIRO ADICIONADO */}
+              <Button 
+                variant="secondary" 
+                onClick={() => router.push('/financeiro')} 
+                icon={DollarSign} 
+                size="sm"
+                className={`px-4 py-2 transition-all duration-300 rounded-md font-medium ${
+                  isCurrentPage('/financeiro')
+                    ? 'bg-clinic-cyan text-clinic-black shadow-md' 
+                    : 'hover:bg-clinic-cyan hover:text-clinic-black hover:scale-105'
+                }`}
+              >
+                Financeiro
+              </Button>
+              
               <Button 
                 variant="secondary" 
                 onClick={() => router.push('/pacientes')} 
@@ -189,38 +205,38 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
                 Pacientes
               </Button>
               
-              {/* ✅ BOTÃO NOVA CLÍNICA COM DEBUG DETALHADO */}
               {isAdminGeral && (
                 <Button 
                   variant="secondary" 
                   onClick={handleNovaClinicaClick}
                   icon={Building} 
                   size="sm"
-                  className="px-4 py-2 transition-all duration-300 rounded-md font-medium bg-green-600/20 text-green-400 border border-green-500/30 hover:bg-green-500 hover:text-white hover:scale-105"
-                  title="Criar nova clínica"
+                  className="px-4 py-2 transition-all duration-300 rounded-md font-medium bg-green-600 hover:bg-green-700 text-white hover:scale-105"
                 >
                   Nova Clínica
                 </Button>
               )}
             </div>
-            
+
             <div className="bg-clinic-gray-800/80 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-1 border border-clinic-gray-600">
-              <Button 
-                variant="secondary" 
-                onClick={toggleTheme} 
-                icon={isDarkTheme ? Sun : Moon} 
-                size="sm"
-                className="w-12 h-10 flex items-center justify-center hover:bg-clinic-cyan hover:text-clinic-black transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                title={isDarkTheme ? "Modo claro" : "Modo escuro"}
-              />
-              <Button 
-                variant="secondary" 
-                onClick={handleLogout} 
-                icon={LogOut} 
-                size="sm"
-                className="w-12 h-10 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all duration-300 hover:scale-105 rounded-md font-medium"
-                title="Sair do sistema"
-              />
+              <button
+                onClick={toggleTheme}
+                className="p-2 hover:bg-clinic-gray-700 rounded-md transition-all hover:scale-110"
+                title={isDarkTheme ? 'Modo Claro' : 'Modo Escuro'}
+              >
+                {isDarkTheme ? (
+                  <Sun className="h-4 w-4 text-clinic-cyan" />
+                ) : (
+                  <Moon className="h-4 w-4 text-clinic-cyan" />
+                )}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 hover:bg-red-500/20 rounded-md transition-all hover:scale-110 group"
+                title="Sair"
+              >
+                <LogOut className="h-4 w-4 text-clinic-gray-400 group-hover:text-red-400" />
+              </button>
             </div>
           </div>
         </div>

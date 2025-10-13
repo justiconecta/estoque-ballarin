@@ -27,7 +27,8 @@ export function middleware(request: NextRequest) {
     '/dashboard/marketing', 
     '/dashboard/terapeutico',
     '/estoque',
-    '/pacientes'
+    '/pacientes',
+    '/financeiro'  // ✅ NOVA ROTA ADICIONADA
   ]
 
   // Se é uma rota válida, permitir

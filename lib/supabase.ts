@@ -117,6 +117,417 @@ export const supabaseApi = {
     }
   },
 
+// lib/supabase.ts - ADICIONAR AO supabaseApi EXISTENTE
+
+// ============ MÓDULO FINANCEIRO - SERVIÇOS ============
+
+async getServicos() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('servicos')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+
+    if (error) throw error
+    console.log(`📋 SERVIÇOS ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getServicos:', error)
+    return []
+  }
+},
+
+async createServico(servico: { nome: string; preco: number; custo_insumos: number }) {
+  try {
+    const servicoCompleto = ensureClinicFilter({
+      ...servico,
+      custo_equip: 0,
+      ativo: true
+    })
+
+    const { data, error } = await supabase
+      .from('servicos')
+      .insert(servicoCompleto)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ SERVIÇO CRIADO:', data.nome)
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createServico:', error)
+    throw error
+  }
+},
+
+async updateServico(id: number, updates: Partial<{ nome: string; preco: number; custo_insumos: number }>) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('servicos')
+      .update(updates)
+      .eq('id', id)
+      .eq('id_clinica', clinicId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error('💥 ERRO updateServico:', error)
+    throw error
+  }
+},
+
+// ============ MÓDULO FINANCEIRO - DESPESAS ============
+
+async getDespesas() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('despesas')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .eq('ativo', true)
+      .order('categoria', { ascending: true })
+
+    if (error) throw error
+    console.log(`💰 DESPESAS ENCONTRADAS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getDespesas:', error)
+    return []
+  }
+},
+
+async createDespesa(despesa: { categoria: string; item: string; valor_mensal: number }) {
+  try {
+    const despesaCompleta = ensureClinicFilter({
+      ...despesa,
+      ativo: true
+    })
+
+    const { data, error } = await supabase
+      .from('despesas')
+      .insert(despesaCompleta)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ DESPESA CRIADA:', data.item)
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createDespesa:', error)
+    throw error
+  }
+},
+
+// ============ MÓDULO FINANCEIRO - PROFISSIONAIS ============
+
+async getProfissionais() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('profissionais')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+
+    if (error) throw error
+    console.log(`👥 PROFISSIONAIS ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getProfissionais:', error)
+    return []
+  }
+},
+
+async createProfissional(profissional: { nome: string; horas_semanais: number }) {
+  try {
+    const profissionalCompleto = ensureClinicFilter({
+      ...profissional,
+      ativo: true
+    })
+
+    const { data, error } = await supabase
+      .from('profissionais')
+      .insert(profissionalCompleto)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ PROFISSIONAL CRIADO:', data.nome)
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createProfissional:', error)
+    throw error
+  }
+},
+
+async deleteProfissional(id: number) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { error } = await supabase
+      .from('profissionais')
+      .update({ ativo: false })
+      .eq('id', id)
+      .eq('id_clinica', clinicId)
+
+    if (error) throw error
+    console.log('✅ PROFISSIONAL REMOVIDO')
+  } catch (error) {
+    console.error('💥 ERRO deleteProfissional:', error)
+    throw error
+  }
+},
+
+// ============ MÓDULO FINANCEIRO - PARÂMETROS ============
+
+async getParametros() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('parametros')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .single()
+
+    if (error && error.code === 'PGRST116') {
+      // Não existe, criar com valores padrão
+      return this.createParametros()
+    }
+    
+    if (error) throw error
+    return data
+  } catch (error) {
+    console.error('💥 ERRO getParametros:', error)
+    throw error
+  }
+},
+
+async createParametros() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const parametrosPadrao = {
+      id_clinica: clinicId,
+      numero_salas: 3,
+      horas_trabalho_dia: 8,
+      duracao_media_servico_horas: 1.0,
+      mod_padrao: 500.00,
+      aliquota_impostos_pct: 17.0,
+      taxa_cartao_pct: 4.0,
+      meta_resultado_liquido_mensal: 65000.00
+    }
+
+    const { data, error } = await supabase
+      .from('parametros')
+      .insert(parametrosPadrao)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ PARÂMETROS CRIADOS')
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createParametros:', error)
+    throw error
+  }
+},
+
+async updateParametros(updates: Partial<{
+  numero_salas: number
+  horas_trabalho_dia: number
+  duracao_media_servico_horas: number
+  mod_padrao: number
+  aliquota_impostos_pct: number
+  taxa_cartao_pct: number
+  meta_resultado_liquido_mensal: number
+}>) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('parametros')
+      .update(updates)
+      .eq('id_clinica', clinicId)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ PARÂMETROS ATUALIZADOS')
+    return data
+  } catch (error) {
+    console.error('💥 ERRO updateParametros:', error)
+    throw error
+  }
+},
+
+// ============ MÓDULO FINANCEIRO - VENDAS ============
+
+async getVendas(ano: number, meses: number[]) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    // Construir filtro de datas
+    const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
+    const ultimoMes = Math.max(...meses)
+    const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
+    const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
+
+    const { data, error } = await supabase
+      .from('vendas')
+      .select(`
+        *,
+        pacientes:id_paciente (
+          nome_completo,
+          cpf
+        )
+      `)
+      .eq('id_clinica', clinicId)
+      .gte('data_venda', dataInicio)
+      .lte('data_venda', dataFim)
+      .order('data_venda', { ascending: false })
+
+    if (error) throw error
+
+    // Buscar serviços de cada venda
+    const vendasComServicos = await Promise.all(
+      (data || []).map(async (venda) => {
+        const { data: servicos } = await supabase
+          .from('venda_servicos')
+          .select(`
+            *,
+            servicos:id_servico (
+              nome
+            )
+          `)
+          .eq('id_venda', venda.id)
+
+        return {
+          ...venda,
+          servicos: servicos || []
+        }
+      })
+    )
+
+    console.log(`💵 VENDAS ENCONTRADAS: ${vendasComServicos.length}`)
+    return vendasComServicos
+  } catch (error) {
+    console.error('💥 ERRO getVendas:', error)
+    return []
+  }
+},
+
+async createVenda(venda: {
+  id_paciente: number
+  data_venda: string
+  metodo_pagamento: 'PIX' | 'Débito' | 'Crédito'
+  parcelas?: number
+  servicos: number[] // IDs dos serviços
+}) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    // Buscar serviços selecionados
+    const { data: servicosData } = await supabase
+      .from('servicos')
+      .select('*')
+      .in('id', venda.servicos)
+      .eq('id_clinica', clinicId)
+
+    if (!servicosData || servicosData.length === 0) {
+      throw new Error('Serviços não encontrados')
+    }
+
+    // Buscar parâmetros
+    const parametros = await this.getParametros()
+
+    // Calcular totais
+    const precoTotal = servicosData.reduce((sum, s) => sum + s.preco, 0)
+    const custoInsumosTotal = servicosData.reduce((sum, s) => sum + s.custo_insumos, 0)
+    
+    let custoTaxaCartao = 0
+    let valorEntrada = precoTotal
+    let valorParcelado = 0
+
+    if (venda.metodo_pagamento === 'Crédito') {
+      custoTaxaCartao = precoTotal * (parametros.taxa_cartao_pct / 100)
+      valorEntrada = precoTotal * 0.30
+      valorParcelado = precoTotal * 0.70
+    }
+
+    const custoTotal = custoInsumosTotal + parametros.mod_padrao + custoTaxaCartao
+    const margemTotal = precoTotal - custoTotal
+
+    // Criar venda
+    const vendaCompleta = ensureClinicFilter({
+      id_paciente: venda.id_paciente,
+      id_usuario_responsavel: null,
+      data_venda: venda.data_venda,
+      metodo_pagamento: venda.metodo_pagamento,
+      parcelas: venda.metodo_pagamento === 'Crédito' ? (venda.parcelas || 1) : null,
+      preco_total: precoTotal,
+      custo_total: custoTotal,
+      margem_total: margemTotal,
+      custo_taxa_cartao: custoTaxaCartao,
+      valor_entrada: valorEntrada,
+      valor_parcelado: valorParcelado
+    })
+
+    const { data: vendaCriada, error: vendaError } = await supabase
+      .from('vendas')
+      .insert(vendaCompleta)
+      .select()
+      .single()
+
+    if (vendaError) throw vendaError
+
+    // Criar venda_servicos
+    const vendaServicos = servicosData.map(s => ({
+      id_venda: vendaCriada.id,
+      id_servico: s.id,
+      quantidade: 1,
+      preco_no_momento: s.preco,
+      custo_insumos_no_momento: s.custo_insumos,
+      mod_aplicado_no_momento: parametros.mod_padrao,
+      custo_equip_no_momento: s.custo_equip
+    }))
+
+    const { error: servicosError } = await supabase
+      .from('venda_servicos')
+      .insert(vendaServicos)
+
+    if (servicosError) throw servicosError
+
+    console.log('✅ VENDA CRIADA:', vendaCriada.id)
+    return vendaCriada
+  } catch (error) {
+    console.error('💥 ERRO createVenda:', error)
+    throw error
+  }
+},
+
   // Logout
   async logout() {
     clearCurrentClinic()

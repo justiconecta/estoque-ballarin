@@ -3,6 +3,64 @@
 export interface Database {
   public: {
     Tables: {
+
+      servicos: {
+        Row: Servico
+        Insert: Omit<Servico, 'id' | 'criado_em' | 'atualizado_em'> & {
+          id?: number
+          ativo?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: Partial<Omit<Servico, 'id' | 'id_clinica'>>
+      }
+      
+      despesas: {
+        Row: Despesa
+        Insert: Omit<Despesa, 'id' | 'criado_em' | 'atualizado_em'> & {
+          id?: number
+          ativo?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: Partial<Omit<Despesa, 'id' | 'id_clinica'>>
+      }
+      
+      profissionais: {
+        Row: Profissional
+        Insert: Omit<Profissional, 'id' | 'criado_em'> & {
+          id?: number
+          ativo?: boolean
+          criado_em?: string
+        }
+        Update: Partial<Omit<Profissional, 'id' | 'id_clinica'>>
+      }
+      
+      parametros: {
+        Row: Parametros
+        Insert: Omit<Parametros, 'atualizado_em'> & {
+          atualizado_em?: string
+        }
+        Update: Partial<Omit<Parametros, 'id_clinica'>>
+      }
+      
+      vendas: {
+        Row: Venda
+        Insert: Omit<Venda, 'id' | 'criado_em'> & {
+          id?: number
+          criado_em?: string
+        }
+        Update: Partial<Omit<Venda, 'id' | 'id_clinica'>>
+      }
+      
+      venda_servicos: {
+        Row: VendaServico
+        Insert: Omit<VendaServico, 'id'> & {
+          id?: number
+        }
+        Update: Partial<Omit<VendaServico, 'id'>>
+      }
+
       // Clínicas
       clinicas: {
         Row: {
@@ -442,9 +500,96 @@ export interface Database {
           data_geracao?: string
           id_clinica?: number
         }
+
+        
       }
     }
   }
+}
+
+export interface Servico {
+  id: number
+  id_clinica: number
+  nome: string
+  preco: number
+  custo_insumos: number
+  custo_equip: number
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface Despesa {
+  id: number
+  id_clinica: number
+  categoria: string
+  item: string
+  valor_mensal: number
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface Profissional {
+  id: number
+  id_clinica: number
+  nome: string
+  horas_semanais: number
+  ativo: boolean
+  criado_em: string
+}
+
+export interface Parametros {
+  id_clinica: number // PK
+  numero_salas: number
+  horas_trabalho_dia: number
+  duracao_media_servico_horas: number
+  mod_padrao: number
+  aliquota_impostos_pct: number
+  taxa_cartao_pct: number
+  meta_resultado_liquido_mensal: number
+  atualizado_em: string
+}
+
+export interface Venda {
+  id: number
+  id_clinica: number
+  id_paciente: number
+  id_usuario_responsavel: number | null
+  data_venda: string
+  metodo_pagamento: 'PIX' | 'Débito' | 'Crédito'
+  parcelas: number | null
+  preco_total: number
+  custo_total: number
+  margem_total: number
+  custo_taxa_cartao: number
+  valor_entrada: number
+  valor_parcelado: number
+  criado_em: string
+}
+
+export interface VendaServico {
+  id: number
+  id_venda: number
+  id_servico: number
+  quantidade: number
+  preco_no_momento: number
+  custo_insumos_no_momento: number
+  mod_aplicado_no_momento: number
+  custo_equip_no_momento: number
+}
+
+export interface ServicoCalculado extends Servico {
+  margemContribuicao: number
+  margemContribuicaoPct: number
+}
+
+export interface VendaDetalhada extends Venda {
+  paciente?: {
+    nome_completo: string
+    cpf: string
+  }
+  servicos: VendaServico[]
 }
 
 // Tipos derivados corrigidos

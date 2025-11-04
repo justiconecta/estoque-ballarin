@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { DollarSign } from 'lucide-react'
+import { DollarSign, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado } from '@/types/database'
@@ -11,8 +11,28 @@ const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "O
 const ANOS_DISPONIVEIS = Array.from({ length: 11 }, (_, i) => 2025 + i)
 const FERIADOS_2025 = ['2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18', '2025-04-21', '2025-05-01', '2025-06-19', '2025-09-07', '2025-10-12', '2025-11-02', '2025-11-15', '2025-11-20', '2025-12-25']
 
+const CATEGORIAS_SKU = [
+  'Toxina Botulínica',
+  'Bioestimulador',
+  'Preenchedor',
+  'Bioregenerador',
+  'Tecnologias',
+  'Outros'
+]
+
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 const formatPercent = (value: number) => `${(value || 0).toFixed(2)}%`
+
+// ============ INTERFACES ============
+interface SKU {
+  id_sku: number
+  nome_produto: string
+  fabricante: string
+  classe_terapeutica: string
+  fator_divisao: string
+  status_estoque: string
+  id_clinica: number
+}
 
 // ============ COMPONENTE CARD CUSTOMIZADO ============
 const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'cyan' | 'green' | 'red' | 'default' }) => {
@@ -68,6 +88,7 @@ export default function FinanceiroPage() {
   const [profissionais, setProfissionais] = useState<Profissional[]>([])
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
+  const [skus, setSKUs] = useState<SKU[]>([]) // ✅ NOVO
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
@@ -76,7 +97,12 @@ export default function FinanceiroPage() {
   const [novaDespesa, setNovaDespesa] = useState({ categoria: 'Infraestrutura', item: '', valor: 0 })
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', horasSemanais: 40 })
 
-  // ============ ESTADO TEMPORÁRIO PARA META (FIX RELOAD) ============
+  // ✅ NOVO: Estados para edição de SKU
+  const [editandoSKU, setEditandoSKU] = useState<number | null>(null)
+  const [editFormSKU, setEditFormSKU] = useState<Partial<SKU>>({})
+  const [feedbackSKU, setFeedbackSKU] = useState<{ tipo: 'success' | 'error', mensagem: string } | null>(null)
+
+  // Estado temporário para meta
   const [metaTemporaria, setMetaTemporaria] = useState<number | null>(null)
 
   // Carregar dados
@@ -87,6 +113,9 @@ export default function FinanceiroPage() {
   useEffect(() => {
     if (['vendas', 'metas', 'controle', 'dre'].includes(abaAtiva)) {
       loadVendas()
+    }
+    if (abaAtiva === 'skus') {
+      loadSKUs() // ✅ NOVO
     }
   }, [abaAtiva, anoSelecionado, mesesSelecionados])
 
@@ -119,7 +148,70 @@ export default function FinanceiroPage() {
     }
   }
 
-  // Handlers
+  // ✅ NOVA FUNÇÃO: Carregar SKUs
+  const loadSKUs = async () => {
+    try {
+      setLoading(true)
+      const skusData = await supabaseApi.getSKUs()
+      setSKUs(skusData)
+    } catch (error) {
+      console.error('Erro ao carregar SKUs:', error)
+      showFeedbackSKU('error', 'Falha ao carregar produtos')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ✅ NOVA FUNÇÃO: Feedback SKU
+  const showFeedbackSKU = (tipo: 'success' | 'error', mensagem: string) => {
+    setFeedbackSKU({ tipo, mensagem })
+    setTimeout(() => setFeedbackSKU(null), 3000)
+  }
+
+  // ✅ NOVA FUNÇÃO: Editar SKU
+  const handleEditSKU = (sku: SKU) => {
+    setEditandoSKU(sku.id_sku)
+    setEditFormSKU({
+      classe_terapeutica: sku.classe_terapeutica,
+      fator_divisao: sku.fator_divisao
+    })
+  }
+
+  // ✅ NOVA FUNÇÃO: Cancelar edição SKU
+  const handleCancelEditSKU = () => {
+    setEditandoSKU(null)
+    setEditFormSKU({})
+  }
+
+  // ✅ NOVA FUNÇÃO: Salvar SKU
+  const handleSaveSKU = async (id_sku: number) => {
+    try {
+      setLoading(true)
+      
+      const fatorDivisao = parseFloat(editFormSKU.fator_divisao || '1')
+      if (isNaN(fatorDivisao) || fatorDivisao <= 0) {
+        showFeedbackSKU('error', 'Fator de divisão deve ser um número positivo')
+        return
+      }
+
+      await supabaseApi.updateSKU(id_sku, {
+        classe_terapeutica: editFormSKU.classe_terapeutica,
+        fator_divisao: editFormSKU.fator_divisao
+      })
+
+      showFeedbackSKU('success', 'SKU atualizado com sucesso!')
+      setEditandoSKU(null)
+      setEditFormSKU({})
+      loadSKUs()
+    } catch (error) {
+      console.error('Erro ao atualizar SKU:', error)
+      showFeedbackSKU('error', 'Falha ao atualizar SKU')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Handlers existentes
   const handleAdicionarServico = async () => {
     if (!novoServico.nome || novoServico.preco <= 0) return
     try {
@@ -173,7 +265,6 @@ export default function FinanceiroPage() {
     }
   }
 
-  // ============ HANDLER ESPECÍFICO PARA META (FIX RELOAD) ============
   const handleUpdateMetaMensal = async (novaMeta: number) => {
     try {
       await supabaseApi.updateParametros({ meta_resultado_liquido_mensal: novaMeta })
@@ -326,8 +417,10 @@ export default function FinanceiroPage() {
     return `${mesesSelecionados.map(m => MESES[m-1]).join(', ')} / ${anoSelecionado}`
   }, [mesesSelecionados, anoSelecionado])
 
+  // ✅ ARRAY DE ABAS ATUALIZADO COM GESTÃO DE SKUs
   const abas = [
     { id: 'servicos', label: 'Serviços' },
+    { id: 'skus', label: 'Gestão de SKUs' }, // ✅ NOVA ABA
     { id: 'parametros', label: 'Parâmetros' },
     { id: 'despesas', label: 'Despesas' },
     { id: 'vendas', label: 'Vendas' },
@@ -390,6 +483,21 @@ export default function FinanceiroPage() {
               novoServico={novoServico}
               setNovoServico={setNovoServico}
               onAdicionar={handleAdicionarServico}
+            />
+          )}
+
+          {/* ✅ NOVA ABA GESTÃO DE SKUs */}
+          {abaAtiva === 'skus' && (
+            <AbaGestaoSKUs
+              skus={skus}
+              editandoId={editandoSKU}
+              editForm={editFormSKU}
+              setEditForm={setEditFormSKU}
+              onEdit={handleEditSKU}
+              onSave={handleSaveSKU}
+              onCancel={handleCancelEditSKU}
+              feedback={feedbackSKU}
+              loading={loading}
             />
           )}
 
@@ -499,6 +607,145 @@ const Input = ({ label, type = 'text', value, onChange, placeholder = '' }: any)
       placeholder={placeholder}
       className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
     />
+  </div>
+)
+
+// ✅ NOVO COMPONENTE: Aba Gestão de SKUs
+const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave, onCancel, feedback, loading }: any) => (
+  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Gestão de SKUs</h2>
+
+    {/* Feedback */}
+    {feedback && (
+      <div className={`mb-6 p-4 rounded-lg border ${
+        feedback.tipo === 'success' 
+          ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30 text-green-700 dark:text-green-400' 
+          : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400'
+      }`}>
+        {feedback.mensagem}
+      </div>
+    )}
+
+    {/* Legenda */}
+    <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-4 mb-6">
+      <h3 className="text-cyan-700 dark:text-clinic-cyan font-semibold mb-2">📋 Sobre os Campos</h3>
+      <ul className="space-y-2 text-sm text-gray-700 dark:text-clinic-gray-300">
+        <li><strong className="text-gray-900 dark:text-clinic-white">Categoria:</strong> Classifica o tipo de produto para organização de vendas</li>
+        <li><strong className="text-gray-900 dark:text-clinic-white">Fator de Divisão:</strong> Usado para calcular o preço por dose/aplicação</li>
+        <li className="text-gray-600 dark:text-clinic-gray-400 italic">
+          💡 Exemplo: Dysport 500u com fator 2 = cada unidade no sistema representa 0,5u real
+        </li>
+      </ul>
+    </div>
+
+    {loading && !editandoId ? (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+        <p className="text-gray-600 dark:text-clinic-gray-400">Carregando SKUs...</p>
+      </div>
+    ) : skus.length === 0 ? (
+      <div className="text-center py-12">
+        <p className="text-gray-600 dark:text-clinic-gray-400">Nenhum SKU cadastrado</p>
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Produto</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Fabricante</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Categoria</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-clinic-cyan">Fator Divisão</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-clinic-cyan">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {skus.map((sku: SKU) => (
+              <tr key={sku.id_sku} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
+                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white font-medium">{sku.nome_produto}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-clinic-gray-400 text-sm">{sku.fabricante}</td>
+                <td className="px-4 py-3">
+                  {editandoId === sku.id_sku ? (
+                    <select
+                      value={editForm.classe_terapeutica}
+                      onChange={(e) => setEditForm((prev: any) => ({ ...prev, classe_terapeutica: e.target.value }))}
+                      className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded px-3 py-1 text-gray-900 dark:text-clinic-white text-sm focus:outline-none focus:border-clinic-cyan"
+                    >
+                      {CATEGORIAS_SKU.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="inline-block px-3 py-1 bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded text-cyan-700 dark:text-clinic-cyan text-sm">
+                      {sku.classe_terapeutica}
+                    </span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  {editandoId === sku.id_sku ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={editForm.fator_divisao}
+                      onChange={(e) => setEditForm((prev: any) => ({ ...prev, fator_divisao: e.target.value }))}
+                      className="w-24 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded px-3 py-1 text-gray-900 dark:text-clinic-white text-sm text-center focus:outline-none focus:border-clinic-cyan"
+                    />
+                  ) : (
+                    <span className="text-gray-900 dark:text-clinic-white font-mono">{sku.fator_divisao}</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex justify-center space-x-2">
+                    {editandoId === sku.id_sku ? (
+                      <>
+                        <button
+                          onClick={() => onSave(sku.id_sku)}
+                          disabled={loading}
+                          className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50"
+                          title="Salvar"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={onCancel}
+                          disabled={loading}
+                          className="p-2 bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 rounded-lg text-red-700 dark:text-red-400 transition-colors disabled:opacity-50"
+                          title="Cancelar"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => onEdit(sku)}
+                        className="px-3 py-1 bg-cyan-50 dark:bg-clinic-cyan/20 hover:bg-cyan-100 dark:hover:bg-clinic-cyan/30 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg text-cyan-700 dark:text-clinic-cyan text-sm transition-colors"
+                      >
+                        Editar
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {/* Estatísticas */}
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+      <FinanceCard title="Total de SKUs" value={skus.length} variant="cyan" />
+      <FinanceCard 
+        title="Categorias Ativas" 
+        value={new Set(skus.map((s: SKU) => s.classe_terapeutica)).size} 
+        variant="green" 
+      />
+      <FinanceCard 
+        title="SKUs Ativos" 
+        value={skus.filter((s: SKU) => s.status_estoque === 'Ativo').length} 
+      />
+    </div>
   </div>
 )
 
@@ -757,24 +1004,28 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
   }
 
   return (
-    <><div className="space-y-6">
-      <div className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-500/20 dark:to-pink-500/20 rounded-xl border border-purple-300 dark:border-purple-500/40 p-6">
-        <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400 mb-4">🎯 Defina sua Meta Mensal</h3>
-        <p className="text-xs text-gray-700 dark:text-gray-400 mb-2">
-          A meta total para o período de {tituloPeriodo} ({mesesSelecionadosCount} {mesesSelecionadosCount === 1 ? 'mês' : 'meses'}) será {formatCurrency(metaResultadoMensal * mesesSelecionadosCount)}.
-        </p>
-        <div className="max-w-md">
-          <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Meta de Resultado Operacional Mensal</label>
-          <input
-            type="text"
-            value={valorFormatado}
-            onChange={handleInputChange}
-            onBlur={handleBlur}
-            placeholder="R$ 0,00"
-            className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white" />
+    <>
+      <div className="space-y-6">
+        <div className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-500/20 dark:to-pink-500/20 rounded-xl border border-purple-300 dark:border-purple-500/40 p-6">
+          <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400 mb-4">🎯 Defina sua Meta Mensal</h3>
+          <p className="text-xs text-gray-700 dark:text-gray-400 mb-2">
+            A meta total para o período de {tituloPeriodo} ({mesesSelecionadosCount} {mesesSelecionadosCount === 1 ? 'mês' : 'meses'}) será {formatCurrency(metaResultadoMensal * mesesSelecionadosCount)}.
+          </p>
+          <div className="max-w-md">
+            <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Meta de Resultado Operacional Mensal</label>
+            <input
+              type="text"
+              value={valorFormatado}
+              onChange={handleInputChange}
+              onBlur={handleBlur}
+              placeholder="R$ 0,00"
+              className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white" 
+            />
+          </div>
         </div>
       </div>
-    </div><div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
+      
+      <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Controle - {tituloPeriodo}</h2>
 
         <div className="grid grid-cols-2 gap-4 mb-6">
@@ -797,7 +1048,8 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
           <FinanceCard
             title="Resultado Projetado"
             value={formatCurrency(controle.resultadoProjetado)}
-            variant={controle.resultadoProjetado >= 0 ? 'green' : 'red'} />
+            variant={controle.resultadoProjetado >= 0 ? 'green' : 'red'} 
+          />
         </div>
 
         <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400 mb-4">Engenharia Reversa</h3>
@@ -806,7 +1058,8 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
           <FinanceCard title="Meta Lucro Bruto" value={formatCurrency(controle.metaLucroBruto)} variant="cyan" />
           <FinanceCard title="Lucro Faltante" value={formatCurrency(controle.lucroBrutoFaltante)} variant="red" />
         </div>
-      </div></>
+      </div>
+    </>
   )
 }
 

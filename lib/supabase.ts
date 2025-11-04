@@ -438,6 +438,57 @@ async getVendas(ano: number, meses: number[]) {
   }
 },
 
+/**
+ * ✅ NOVA FUNÇÃO: Buscar todos os SKUs da clínica
+ */
+async getSKUs() {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('skus')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .order('nome_produto', { ascending: true })
+
+    if (error) throw error
+    console.log(`📦 SKUs ENCONTRADOS: ${data?.length || 0}`)
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getSKUs:', error)
+    return []
+  }
+},
+
+/**
+ * ✅ NOVA FUNÇÃO: Atualizar categoria e fator_divisao de um SKU
+ */
+async updateSKU(id_sku: number, updates: {
+  classe_terapeutica?: string
+  fator_divisao?: string
+}) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    const { data, error } = await supabase
+      .from('skus')
+      .update(updates)
+      .eq('id_sku', id_sku)
+      .eq('id_clinica', clinicId)
+      .select()
+      .single()
+
+    if (error) throw error
+    console.log('✅ SKU ATUALIZADO:', data.nome_produto)
+    return data
+  } catch (error) {
+    console.error('💥 ERRO updateSKU:', error)
+    throw error
+  }
+},
+
 async createVenda(venda: {
   id_paciente: number
   data_venda: string
@@ -991,6 +1042,71 @@ async searchPacientes(searchTerm: string) {
       throw error
     }
   },
+
+  /**
+ * ✅ NOVA FUNÇÃO: Criar lote com cálculo automático de preço unitário
+ * Fórmula: preco_unitario = (valor_total_compra / quantidade_disponivel) / fator_divisao
+ */
+async createLoteComValor(lote: {
+  id_sku: number
+  quantidade_disponivel: number
+  validade: string
+  valor_total_compra: number
+}) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
+
+    // 1. Buscar fator_divisao do SKU
+    const { data: skuData, error: skuError } = await supabase
+      .from('skus')
+      .select('fator_divisao')
+      .eq('id_sku', lote.id_sku)
+      .eq('id_clinica', clinicId)
+      .single()
+
+    if (skuError) throw new Error('SKU não encontrado')
+
+    // 2. Calcular preço unitário
+    const fatorDivisao = parseFloat(skuData.fator_divisao || '1')
+    const precoUnitario = (lote.valor_total_compra / lote.quantidade_disponivel) / fatorDivisao
+
+    console.log('💰 CÁLCULO PREÇO UNITÁRIO:', {
+      valor_total: lote.valor_total_compra,
+      quantidade: lote.quantidade_disponivel,
+      fator_divisao: fatorDivisao,
+      preco_unitario: precoUnitario.toFixed(2)
+    })
+
+    // 3. Criar lote com preço calculado
+    const loteCompleto = {
+      id_sku: lote.id_sku,
+      quantidade_disponivel: lote.quantidade_disponivel,
+      validade: lote.validade,
+      preco_unitario: precoUnitario,
+      data_entrada: new Date().toISOString(),
+      id_clinica: clinicId
+    }
+
+    const { data, error } = await supabase
+      .from('lotes')
+      .insert(loteCompleto)
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    console.log('✅ LOTE CRIADO COM PREÇO UNITÁRIO:', {
+      id_lote: data.id_lote,
+      preco_unitario: data.preco_unitario
+    })
+    
+    return data
+  } catch (error) {
+    console.error('💥 ERRO createLoteComValor:', error)
+    throw error
+  }
+},
 
   // Histórico com FILTRO RIGOROSO
   async getMovimentacoes(limit = 50) {

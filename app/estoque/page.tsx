@@ -21,30 +21,29 @@ interface MovimentacaoForm {
   tipo: 'ENTRADA' | 'SAIDA'
   quantidade: string
   loteId?: number
-  dataLote?: string // Para entrada: data do lote em DD/MM/YYYY
+  dataLote?: string
+  valorTotal?: string // ✅ NOVO: Valor total da compra em R$
   observacao?: string
 }
 
 export default function EstoquePage() {
   const router = useRouter()
   
-  // ✅ ESTADOS ESPECÍFICOS DO ESTOQUE (mantidos)
   const [produtos, setProdutos] = useState<ProdutoComEstoque[]>([])
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoDetalhada[]>([])
   const [selectedProduto, setSelectedProduto] = useState<ProdutoComEstoque | null>(null)
   const [loading, setLoading] = useState(false)
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
-  // Estados de formulário
   const [movForm, setMovForm] = useState<MovimentacaoForm>({
     tipo: 'SAIDA',
     quantidade: '',
     loteId: undefined,
     dataLote: '',
+    valorTotal: '', // ✅ NOVO
     observacao: ''
   })
   
-  // Estados de UI
   const [modalState, setModalState] = useState<{
     isOpen: boolean
     type: 'success' | 'error'
@@ -74,16 +73,28 @@ export default function EstoquePage() {
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
-  // Converter data DD/MM/YYYY para ISO
   const convertDateToISO = (ddmmyyyy: string): string => {
     if (!ddmmyyyy) return ''
     const [day, month, year] = ddmmyyyy.split('/')
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
   }
 
-  // ✅ CARREGAR DADOS ESPECÍFICOS DO ESTOQUE
+  // ✅ NOVA FUNÇÃO: Formatar valor monetário em tempo real
+  const formatCurrency = (value: string): string => {
+    const numbers = value.replace(/\D/g, '')
+    if (!numbers) return ''
+    const amount = parseInt(numbers) / 100
+    return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  // ✅ NOVA FUNÇÃO: Parse do valor formatado para número
+  const parseCurrency = (value: string): number => {
+    if (!value) return 0
+    const numbers = value.replace(/\D/g, '')
+    return parseInt(numbers) / 100
+  }
+
   useEffect(() => {
-    // Carregar dados apenas se usuário existir (será validado pelo HeaderUniversal)
     const userData = localStorage.getItem('ballarin_user')
     if (userData) {
       loadProdutos()
@@ -96,7 +107,6 @@ export default function EstoquePage() {
       setLoading(true)
       const data = await supabaseApi.getProdutos()
       
-      // Processar dados para incluir estoque total - SEM FALLBACKS
       const produtosProcessados = data.map(produto => ({
         ...produto,
         estoque_total: produto.lotes.reduce((sum: any, lote: { quantidade_disponivel: any }) => sum + lote.quantidade_disponivel, 0)
@@ -122,12 +132,12 @@ export default function EstoquePage() {
 
   const handleProdutoSelect = (produto: ProdutoComEstoque) => {
     setSelectedProduto(produto)
-    // Reset form ao selecionar produto
     setMovForm({
       tipo: 'SAIDA',
       quantidade: '',
       loteId: produto.lotes.length > 0 ? produto.lotes[0].id_lote : undefined,
       dataLote: '',
+      valorTotal: '',
       observacao: ''
     })
   }
@@ -149,39 +159,44 @@ export default function EstoquePage() {
     try {
       setLoading(true)
 
-      // Obter usuário atual para movimentação
       const userData = localStorage.getItem('ballarin_user')
       const currentUser = userData ? JSON.parse(userData) : null
 
       if (movForm.tipo === 'ENTRADA') {
-        // ENTRADA: Criar novo lote
+        // ✅ VALIDAÇÃO: Entrada requer data E valor
         if (!movForm.dataLote) {
           showModal('error', 'Erro de Validação', 'Informe a data do lote para entrada.')
           return
         }
 
+        if (!movForm.valorTotal || parseCurrency(movForm.valorTotal) <= 0) {
+          showModal('error', 'Erro de Validação', 'Informe o valor total da compra.')
+          return
+        }
+
         const dataValidade = convertDateToISO(movForm.dataLote)
+        const valorTotalNumerico = parseCurrency(movForm.valorTotal)
         
-        // Criar novo lote
-        const novoLote = await supabaseApi.createLote({
+        // ✅ CRIAR LOTE COM VALOR TOTAL (API calculará preco_unitario)
+        const novoLote = await supabaseApi.createLoteComValor({
           id_sku: selectedProduto.id_sku,
           quantidade_disponivel: quantidade,
-          validade: dataValidade
+          validade: dataValidade,
+          valor_total_compra: valorTotalNumerico
         })
 
-        // Registrar movimentação de entrada
         await supabaseApi.createMovimentacao({
           id_lote: novoLote.id_lote,
           tipo_movimentacao: 'ENTRADA',
           quantidade: quantidade,
           usuario: currentUser?.usuario || 'desconhecido',
-          observacao: movForm.observacao || `Novo lote criado - Val: ${movForm.dataLote}`
+          observacao: movForm.observacao || `Entrada - Val: ${movForm.dataLote} - R$ ${movForm.valorTotal}`
         })
 
-        showModal('success', 'Sucesso', `Entrada de ${quantidade} unidades registrada com sucesso!`)
+        showModal('success', 'Sucesso', `Entrada de ${quantidade} unidades registrada!\nPreço unitário calculado: R$ ${novoLote.preco_unitario.toFixed(2)}`)
         
       } else {
-        // SAÍDA: Usar lote existente
+        // SAÍDA: Lógica existente mantida
         if (!movForm.loteId) {
           showModal('error', 'Erro de Validação', 'Selecione um lote para saída.')
           return
@@ -198,7 +213,6 @@ export default function EstoquePage() {
           return
         }
 
-        // Registrar movimentação de saída
         await supabaseApi.createMovimentacao({
           id_lote: movForm.loteId,
           tipo_movimentacao: 'SAIDA',
@@ -207,19 +221,18 @@ export default function EstoquePage() {
           observacao: movForm.observacao || `Uso diário - ${new Date().toLocaleDateString('pt-BR')}`
         })
 
-        // Atualizar quantidade do lote
         const novaQuantidade = loteAtual.quantidade_disponivel - quantidade
         await supabaseApi.updateLoteQuantidade(movForm.loteId, novaQuantidade)
 
         showModal('success', 'Sucesso', `Saída de ${quantidade} unidades registrada com sucesso!`)
       }
 
-      // Resetar formulário e recarregar dados
       setMovForm({
         tipo: 'SAIDA',
         quantidade: '',
         loteId: undefined,
         dataLote: '',
+        valorTotal: '',
         observacao: ''
       })
       setSelectedProduto(null)
@@ -228,7 +241,7 @@ export default function EstoquePage() {
 
     } catch (error) {
       showModal('error', 'Erro', 'Falha ao registrar movimentação.')
-      console.error('Erro na movimentação:', error)
+      console.error('Erro ao registrar movimentação:', error)
     } finally {
       setLoading(false)
     }
@@ -237,8 +250,6 @@ export default function EstoquePage() {
   return (
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
-        
-        {/* ✅ HEADER UNIVERSAL - UMA LINHA APENAS! */}
         <HeaderUniversal 
           titulo="Controle de Estoque" 
           descricao="Gerencie produtos e movimentações"
@@ -246,7 +257,6 @@ export default function EstoquePage() {
           showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
-        {/* ✅ LAYOUT PRINCIPAL: ESQUERDA = Movimentação | DIREITA = Produtos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           
           {/* ESQUERDA: Registrar Movimentação */}
@@ -265,8 +275,8 @@ export default function EstoquePage() {
                     <p className="text-clinic-cyan font-medium">{selectedProduto.nome_produto}</p>
                     <p className="text-clinic-gray-400 text-sm">{selectedProduto.fabricante}</p>
                     <p className="text-clinic-gray-400 text-sm">{selectedProduto.classe_terapeutica}</p>
+                    <p className="text-clinic-gray-400 text-sm">Fator Divisão: {selectedProduto.fator_divisao || '1'}</p>
                     
-                    {/* Estoque Total */}
                     <div className="mt-3 p-3 bg-clinic-gray-800 rounded-lg">
                       <div className="text-center">
                         <p className="text-clinic-gray-400 text-sm">Estoque Total</p>
@@ -288,7 +298,6 @@ export default function EstoquePage() {
                     </div>
                   </div>
 
-                  {/* Tipo de Movimentação */}
                   <Select
                     label="Tipo de Movimentação"
                     value={movForm.tipo}
@@ -304,7 +313,6 @@ export default function EstoquePage() {
                   />
 
                   {movForm.tipo === 'SAIDA' ? (
-                    /* INTERFACE PARA SAÍDA */
                     <>
                       <div>
                         <label className="block text-sm font-medium text-clinic-white mb-2">
@@ -334,7 +342,7 @@ export default function EstoquePage() {
                       />
                     </>
                   ) : (
-                    /* INTERFACE PARA ENTRADA */
+                    /* ✅ INTERFACE ENTRADA COM NOVO CAMPO VALOR */
                     <>
                       <Input
                         label="Quantidade Comprada"
@@ -346,53 +354,58 @@ export default function EstoquePage() {
                         required
                       />
 
+                      {/* ✅ NOVO CAMPO: Valor Total da Compra */}
                       <div className="space-y-1">
                         <label className="block text-sm font-medium text-clinic-white">
-                          Data do Lote
+                          Valor Total da Compra (R$) *
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-clinic-gray-400">R$</span>
+                          <input
+                            type="text"
+                            value={movForm.valorTotal}
+                            onChange={(e) => {
+                              const formatted = formatCurrency(e.target.value)
+                              setMovForm(prev => ({ ...prev, valorTotal: formatted }))
+                            }}
+                            placeholder="0,00"
+                            className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg px-10 py-2 text-clinic-white focus:outline-none focus:border-clinic-cyan"
+                            required
+                          />
+                        </div>
+                        <p className="text-xs text-clinic-gray-400">
+                          O preço unitário será calculado automaticamente: Valor ÷ Quantidade ÷ Fator Divisão
+                        </p>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-sm font-medium text-clinic-white">
+                          Data de Validade do Lote *
                         </label>
                         <input
                           type="date"
-                          value={movForm.dataLote ? convertDateToISO(movForm.dataLote) : ''}
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              const [year, month, day] = e.target.value.split('-')
-                              const formattedDate = `${day}/${month}/${year}`
-                              setMovForm(prev => ({ ...prev, dataLote: formattedDate }))
-                            } else {
-                              setMovForm(prev => ({ ...prev, dataLote: '' }))
-                            }
-                          }}
-                          className="block w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-clinic-cyan focus:border-clinic-cyan transition-all duration-200"
+                          value={movForm.dataLote || ''}
+                          onChange={(e) => setMovForm(prev => ({ ...prev, dataLote: e.target.value }))}
+                          className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg px-4 py-2 text-clinic-white focus:outline-none focus:border-clinic-cyan"
                           required
                         />
-                        {movForm.dataLote && (
-                          <p className="text-clinic-gray-400 text-xs">Data selecionada: {movForm.dataLote}</p>
-                        )}
                       </div>
                     </>
                   )}
 
-                  {/* Observação */}
-                  <div className="space-y-1">
-                    <label className="block text-sm font-medium text-clinic-white">
-                      Observação (opcional)
-                    </label>
-                    <textarea
-                      value={movForm.observacao}
-                      onChange={(e) => setMovForm(prev => ({ ...prev, observacao: e.target.value }))}
-                      placeholder="Adicione uma observação sobre a movimentação..."
-                      rows={3}
-                      className="block w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-md text-clinic-white placeholder-clinic-gray-400 focus:outline-none focus:ring-2 focus:ring-clinic-cyan focus:border-clinic-cyan transition-all duration-200"
-                    />
-                  </div>
+                  <Input
+                    label="Observação (opcional)"
+                    type="text"
+                    value={movForm.observacao}
+                    onChange={(e) => setMovForm(prev => ({ ...prev, observacao: e.target.value }))}
+                    placeholder="Digite uma observação"
+                  />
 
-                  {/* Botões */}
-                  <div className="flex space-x-3 pt-4">
+                  <div className="flex space-x-2">
                     <Button
                       type="submit"
-                      disabled={loading || !movForm.quantidade || (movForm.tipo === 'SAIDA' && !movForm.loteId) || (movForm.tipo === 'ENTRADA' && !movForm.dataLote)}
+                      disabled={loading}
                       className="flex-1"
-                      loading={loading}
                     >
                       {loading ? 'Processando...' : `Registrar ${movForm.tipo === 'ENTRADA' ? 'Entrada' : 'Saída'}`}
                     </Button>
@@ -406,6 +419,7 @@ export default function EstoquePage() {
                           quantidade: '',
                           loteId: undefined,
                           dataLote: '',
+                          valorTotal: '',
                           observacao: ''
                         })
                       }}
@@ -473,37 +487,37 @@ export default function EstoquePage() {
           </div>
         </div>
 
-        {/* ✅ EMBAIXO: Histórico de Movimentações Completo */}
+        {/* Histórico de Movimentações */}
         <Card title="Histórico de Movimentações">
           {movimentacoes.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="mx-auto h-8 w-8 text-clinic-gray-500 mb-4" />
-              <p className="text-clinic-gray-400">Nenhuma movimentação registrada ainda</p>
+            <div className="text-center py-12">
+              <FileText className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
+              <p className="text-clinic-gray-400">Nenhuma movimentação registrada</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-clinic-gray-700">
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Data</th>
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Produto</th>
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Tipo</th>
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Quantidade</th>
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Usuário</th>
-                    <th className="text-left py-3 px-4 font-medium text-clinic-gray-300">Observação</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Data</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Produto</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Tipo</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Qtd</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Usuário</th>
+                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Observação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {movimentacoes.map((mov) => (
                     <tr key={mov.id_movimentacao} className="border-b border-clinic-gray-800 hover:bg-clinic-gray-800/50">
-                      <td className="py-3 px-4 text-clinic-gray-300 text-sm">
+                      <td className="py-3 px-4 text-clinic-white text-sm">
                         <div className="flex items-center">
                           <Calendar className="w-4 h-4 mr-2 text-clinic-gray-500" />
                           {formatDate(mov.data_movimentacao)}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-clinic-white font-medium">
-                        {mov.lotes.skus.nome_produto}
+                      <td className="py-3 px-4 text-clinic-white text-sm font-medium">
+                        {mov.lote?.skus?.nome_produto || 'N/A'}
                       </td>
                       <td className="py-3 px-4">
                         <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
@@ -538,7 +552,6 @@ export default function EstoquePage() {
           )}
         </Card>
 
-        {/* ✅ MODAL DE FEEDBACK */}
         <Modal
           isOpen={modalState.isOpen}
           onClose={() => setModalState(prev => ({ ...prev, isOpen: false }))}
@@ -554,7 +567,7 @@ export default function EstoquePage() {
                 <AlertCircle className="w-8 h-8 text-red-400" />
               )}
             </div>
-            <p className="text-clinic-gray-300">{modalState.message}</p>
+            <p className="text-clinic-gray-300 whitespace-pre-line">{modalState.message}</p>
             <Button
               onClick={() => setModalState(prev => ({ ...prev, isOpen: false }))}
               className="mt-4"
@@ -564,7 +577,6 @@ export default function EstoquePage() {
           </div>
         </Modal>
 
-        {/* Modal Nova Clínica */}
         <NovaClinicaModal
           isOpen={showNovaClinicaModal}
           onClose={() => setShowNovaClinicaModal(false)}

@@ -630,11 +630,13 @@ export interface UsuarioComClinica extends Usuario {
 }
 
 export interface ProdutoComEstoque extends Sku {
+  fator_divisao: string
   lotes: Lote[]
   estoque_total: number
 }
 
 export interface MovimentacaoDetalhada extends Movimentacao {
+  lote: any
   lotes: {
     id_sku: number
     validade: string

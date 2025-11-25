@@ -4,9 +4,9 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { DollarSign, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado } from '@/types/database'
+import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado, Lote } from '@/types/database'
 
-// ============ CONSTANTES ============
+// =========== CONSTANTES ===========
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 const ANOS_DISPONIVEIS = Array.from({ length: 11 }, (_, i) => 2025 + i)
 const FERIADOS_2025 = ['2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18', '2025-04-21', '2025-05-01', '2025-06-19', '2025-09-07', '2025-10-12', '2025-11-02', '2025-11-15', '2025-11-20', '2025-12-25']
@@ -81,6 +81,7 @@ export default function FinanceiroPage() {
   const [anoSelecionado, setAnoSelecionado] = useState(2025)
   const [mesesSelecionados, setMesesSelecionados] = useState([new Date().getMonth() + 1])
   const [loading, setLoading] = useState(false)
+  const [loadingSKUs, setLoadingSKUs] = useState(false)
 
   // Estados de dados
   const [servicos, setServicos] = useState<Servico[]>([])
@@ -89,6 +90,7 @@ export default function FinanceiroPage() {
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
   const [skus, setSKUs] = useState<SKU[]>([]) // ✅ NOVO
+  const [lotes, setLotes] = useState<any[]>([]) // ✅ NOVO: Lotes para ficha técnica
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
@@ -122,16 +124,18 @@ export default function FinanceiroPage() {
   const loadData = async () => {
     try {
       setLoading(true)
-      const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
+      const [servicosData, despesasData, profissionaisData, parametrosData, lotesData] = await Promise.all([
         supabaseApi.getServicos(),
         supabaseApi.getDespesas(),
         supabaseApi.getProfissionais(),
-        supabaseApi.getParametros()
+        supabaseApi.getParametros(),
+        supabaseApi.getLotesDisponiveis()
       ])
       setServicos(servicosData)
       setDespesas(despesasData)
       setProfissionais(profissionaisData)
       setParametros(parametrosData)
+      setLotes(lotesData)
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
     } finally {
@@ -151,14 +155,14 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Carregar SKUs
   const loadSKUs = async () => {
     try {
-      setLoading(true)
+      setLoadingSKUs(true)
       const skusData = await supabaseApi.getSKUs()
       setSKUs(skusData)
     } catch (error) {
       console.error('Erro ao carregar SKUs:', error)
       showFeedbackSKU('error', 'Falha ao carregar produtos')
     } finally {
-      setLoading(false)
+      setLoadingSKUs(false)
     }
   }
 
@@ -186,8 +190,8 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Salvar SKU
   const handleSaveSKU = async (id_sku: number) => {
     try {
-      setLoading(true)
-      
+      setLoadingSKUs(true)
+
       const fatorDivisao = parseFloat(editFormSKU.fator_divisao || '1')
       if (isNaN(fatorDivisao) || fatorDivisao <= 0) {
         showFeedbackSKU('error', 'Fator de divisão deve ser um número positivo')
@@ -207,7 +211,7 @@ export default function FinanceiroPage() {
       console.error('Erro ao atualizar SKU:', error)
       showFeedbackSKU('error', 'Falha ao atualizar SKU')
     } finally {
-      setLoading(false)
+      setLoadingSKUs(false)
     }
   }
 
@@ -288,17 +292,17 @@ export default function FinanceiroPage() {
   }, [])
 
   // Cálculos
-  const diasUteisTotais = useMemo(() => 
+  const diasUteisTotais = useMemo(() =>
     mesesSelecionados.reduce((total, mes) => total + calcularDiasUteis(anoSelecionado, mes), 0),
     [anoSelecionado, mesesSelecionados]
   )
 
-  const diaUtilAtual = useMemo(() => 
+  const diaUtilAtual = useMemo(() =>
     mesesSelecionados.reduce((total, mes) => total + calcularDiaUtilAtual(anoSelecionado, mes), 0),
     [anoSelecionado, mesesSelecionados]
   )
 
-  const servicosCalculados: ServicoCalculado[] = useMemo(() => 
+  const servicosCalculados: ServicoCalculado[] = useMemo(() =>
     servicos.map(s => ({
       ...s,
       margemContribuicao: s.preco - s.custo_insumos - s.custo_equip,
@@ -307,27 +311,27 @@ export default function FinanceiroPage() {
     [servicos]
   )
 
-  const totalDespesasFixas = useMemo(() => 
+  const totalDespesasFixas = useMemo(() =>
     despesas.reduce((sum, d) => sum + d.valor_mensal, 0),
     [despesas]
   )
 
-  const despesasFixasPeriodo = useMemo(() => 
+  const despesasFixasPeriodo = useMemo(() =>
     totalDespesasFixas * mesesSelecionados.length,
     [totalDespesasFixas, mesesSelecionados]
   )
 
   const parametrosCalculados = useMemo(() => {
     if (!parametros) return null
-    
+
     const totalHorasSemanais = profissionais.reduce((sum, p) => sum + p.horas_semanais, 0)
     const horasDaEquipe = (totalHorasSemanais / 5) * diasUteisTotais
     const horasDasSalas = parametros.numero_salas * parametros.horas_trabalho_dia * diasUteisTotais
     const horasProdutivasPotenciais = Math.min(horasDaEquipe, horasDasSalas)
-    
+
     const totalServicosVendidos = vendas.reduce((sum, v) => sum + (v.servicos?.length || 0), 0)
     const horasOcupadas = totalServicosVendidos * parametros.duracao_media_servico_horas
-    
+
     const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
     const taxaOcupacao = horasProdutivasPotenciais > 0 ? (horasOcupadas / horasProdutivasPotenciais) * 100 : 0
     const custoOciosidade = (horasProdutivasPotenciais - horasOcupadas) * custoHora
@@ -337,7 +341,7 @@ export default function FinanceiroPage() {
 
   const dre = useMemo(() => {
     if (!parametros) return null
-    
+
     const faturamentoBruto = vendas.reduce((sum, v) => sum + v.preco_total, 0)
     const impostos = faturamentoBruto * (parametros.aliquota_impostos_pct / 100)
     const taxasFinanceiras = vendas.reduce((sum, v) => sum + v.custo_taxa_cartao, 0)
@@ -351,70 +355,70 @@ export default function FinanceiroPage() {
 
   const controleCalc = useMemo(() => {
     if (!dre || !parametros) return null
-    
+
     const { faturamentoBruto, lucroBruto } = dre
     const diasRestantes = diasUteisTotais - diaUtilAtual
     const performanceDiaria = diaUtilAtual > 0 ? lucroBruto / diaUtilAtual : 0
-    
+
     const faturamentoProjetado = diaUtilAtual > 0 ? (faturamentoBruto / diaUtilAtual) * diasUteisTotais : 0
     const lucroBrutoProjetado = diaUtilAtual > 0 ? (lucroBruto / diaUtilAtual) * diasUteisTotais : 0
     const resultadoProjetado = lucroBrutoProjetado - despesasFixasPeriodo
-    
+
     const metaResultadoLiquido = parametros.meta_resultado_liquido_mensal * mesesSelecionados.length
     const metaLucroBruto = metaResultadoLiquido + despesasFixasPeriodo
     const lucroBrutoFaltante = Math.max(0, metaLucroBruto - lucroBruto)
-    
-    return { 
-      faturamentoAcumulado: faturamentoBruto, 
-      lucroBrutoAcumulado: lucroBruto, 
-      diasRestantes, 
-      performanceDiaria, 
-      faturamentoProjetado, 
-      lucroBrutoProjetado, 
-      resultadoProjetado, 
+
+    return {
+      faturamentoAcumulado: faturamentoBruto,
+      lucroBrutoAcumulado: lucroBruto,
+      diasRestantes,
+      performanceDiaria,
+      faturamentoProjetado,
+      lucroBrutoProjetado,
+      resultadoProjetado,
       metaResultadoLiquido,
-      metaLucroBruto, 
-      lucroBrutoFaltante 
+      metaLucroBruto,
+      lucroBrutoFaltante
     }
   }, [dre, parametros, diasUteisTotais, diaUtilAtual, despesasFixasPeriodo, mesesSelecionados])
 
   const metasCalculadas = useMemo(() => {
     if (!controleCalc || !parametros) return []
-    
+
     const { metaLucroBruto } = controleCalc
     const servicosAtivos = servicosCalculados.filter(s => s.margemContribuicao > 0)
     if (servicosAtivos.length === 0) return []
-    
+
     const metaLucroBrutoPorServico = metaLucroBruto / servicosAtivos.length
 
     return servicosAtivos.map(servico => {
-      const metaUnidades = servico.margemContribuicao > 0 
-        ? Math.ceil(metaLucroBrutoPorServico / servico.margemContribuicao) 
+      const metaUnidades = servico.margemContribuicao > 0
+        ? Math.ceil(metaLucroBrutoPorServico / servico.margemContribuicao)
         : 0
-      
+
       const realizado = vendas.reduce((sum, v) => {
         const servicosVenda = v.servicos?.filter((s: any) => s.servicos?.nome === servico.nome) || []
         return sum + servicosVenda.length
       }, 0)
-      
+
       const cobertura = metaUnidades > 0 ? (realizado / metaUnidades) * 100 : 0
       const gap = metaUnidades - realizado
       const projecao = diaUtilAtual > 0 ? Math.round((realizado / diaUtilAtual) * diasUteisTotais) : 0
-      
-      return { 
-        servico: servico.nome, 
-        metaUnidades, 
-        realizado, 
-        cobertura, 
-        gap, 
-        projecao 
+
+      return {
+        servico: servico.nome,
+        metaUnidades,
+        realizado,
+        cobertura,
+        gap,
+        projecao
       }
     })
   }, [controleCalc, parametros, servicosCalculados, vendas, diaUtilAtual, diasUteisTotais])
 
   const tituloPeriodo = useMemo(() => {
-    if (mesesSelecionados.length === 1) return `${MESES[mesesSelecionados[0]-1]} ${anoSelecionado}`
-    return `${mesesSelecionados.map(m => MESES[m-1]).join(', ')} / ${anoSelecionado}`
+    if (mesesSelecionados.length === 1) return `${MESES[mesesSelecionados[0] - 1]} ${anoSelecionado}`
+    return `${mesesSelecionados.map(m => MESES[m - 1]).join(', ')} / ${anoSelecionado}`
   }, [mesesSelecionados, anoSelecionado])
 
   // ✅ ARRAY DE ABAS ATUALIZADO COM GESTÃO DE SKUs
@@ -443,8 +447,8 @@ export default function FinanceiroPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900">
       <div className="container mx-auto px-4 py-6">
-        <HeaderUniversal 
-          titulo="Dashboard Financeiro" 
+        <HeaderUniversal
+          titulo="Dashboard Financeiro"
           descricao="Gestão completa de receitas, despesas e indicadores"
           icone={DollarSign}
         />
@@ -454,11 +458,10 @@ export default function FinanceiroPage() {
             <button
               key={aba.id}
               onClick={() => setAbaAtiva(aba.id)}
-              className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all text-sm ${
-                abaAtiva === aba.id
-                  ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white shadow-lg'
-                  : 'bg-white dark:bg-slate-800/50 text-clinic-cyan hover:bg-gray-100 dark:hover:bg-slate-700/50 border border-gray-200 dark:border-clinic-cyan/20'
-              }`}
+              className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all text-sm ${abaAtiva === aba.id
+                ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white shadow-lg'
+                : 'bg-white dark:bg-slate-800/50 text-clinic-cyan hover:bg-gray-100 dark:hover:bg-slate-700/50 border border-gray-200 dark:border-clinic-cyan/20'
+                }`}
             >
               {aba.label}
             </button>
@@ -467,7 +470,7 @@ export default function FinanceiroPage() {
 
         <div className="space-y-6">
           {['vendas', 'metas', 'controle', 'dre'].includes(abaAtiva) && (
-            <FiltroPeriodo 
+            <FiltroPeriodo
               ano={anoSelecionado}
               setAno={setAnoSelecionado}
               mesesSelecionados={mesesSelecionados}
@@ -476,13 +479,14 @@ export default function FinanceiroPage() {
           )}
 
           {abaAtiva === 'servicos' && (
-            <AbaServicos 
+            <AbaServicos
               servicos={servicosCalculados}
               mostrarForm={mostrarFormServico}
               setMostrarForm={setMostrarFormServico}
               novoServico={novoServico}
               setNovoServico={setNovoServico}
               onAdicionar={handleAdicionarServico}
+              lotes={lotes} // ✅ NOVO
             />
           )}
 
@@ -497,12 +501,12 @@ export default function FinanceiroPage() {
               onSave={handleSaveSKU}
               onCancel={handleCancelEditSKU}
               feedback={feedbackSKU}
-              loading={loading}
+              loading={loadingSKUs}
             />
           )}
 
           {abaAtiva === 'parametros' && parametros && parametrosCalculados && (
-            <AbaParametros 
+            <AbaParametros
               parametros={parametros}
               calculados={parametrosCalculados}
               onUpdate={handleUpdateParametros}
@@ -515,7 +519,7 @@ export default function FinanceiroPage() {
           )}
 
           {abaAtiva === 'despesas' && (
-            <AbaDespesas 
+            <AbaDespesas
               despesas={despesas}
               total={totalDespesasFixas}
               mostrarForm={mostrarFormDespesa}
@@ -535,14 +539,14 @@ export default function FinanceiroPage() {
           )}
 
           {abaAtiva === 'controle' && controleCalc && parametros && (
-            <AbaControle 
-              controle={controleCalc} 
-              diasUteis={diasUteisTotais} 
-              diaAtual={diaUtilAtual} 
+            <AbaControle
+              controle={controleCalc}
+              diasUteis={diasUteisTotais}
+              diaAtual={diaUtilAtual}
               metaResultadoMensal={metaTemporaria ?? parametros.meta_resultado_liquido_mensal}
               setMetaResultadoMensal={setMetaTemporaria}
               onBlurMeta={handleUpdateMetaMensal}
-              tituloPeriodo={tituloPeriodo} 
+              tituloPeriodo={tituloPeriodo}
               mesesSelecionadosCount={mesesSelecionados.length}
             />
           )}
@@ -563,8 +567,8 @@ const FiltroPeriodo = ({ ano, setAno, mesesSelecionados, onMesToggle }: any) => 
     <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
       <div>
         <label className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2 block">Ano</label>
-        <select 
-          value={ano} 
+        <select
+          value={ano}
           onChange={(e) => setAno(Number(e.target.value))}
           className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-cyan"
         >
@@ -581,11 +585,10 @@ const FiltroPeriodo = ({ ano, setAno, mesesSelecionados, onMesToggle }: any) => 
               <button
                 key={mesNumero}
                 onClick={() => onMesToggle(mesNumero)}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white'
-                    : 'bg-gray-100 dark:bg-clinic-gray-700 text-gray-700 dark:text-clinic-gray-400 hover:bg-gray-200 dark:hover:bg-clinic-gray-600'
-                }`}
+                className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${isSelected
+                  ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white'
+                  : 'bg-gray-100 dark:bg-clinic-gray-700 text-gray-700 dark:text-clinic-gray-400 hover:bg-gray-200 dark:hover:bg-clinic-gray-600'
+                  }`}
               >
                 {nome}
               </button>
@@ -617,11 +620,10 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
 
     {/* Feedback */}
     {feedback && (
-      <div className={`mb-6 p-4 rounded-lg border ${
-        feedback.tipo === 'success' 
-          ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30 text-green-700 dark:text-green-400' 
-          : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400'
-      }`}>
+      <div className={`mb-6 p-4 rounded-lg border ${feedback.tipo === 'success'
+        ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30 text-green-700 dark:text-green-400'
+        : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-400'
+        }`}>
         {feedback.mensagem}
       </div>
     )}
@@ -736,83 +738,158 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
     {/* Estatísticas */}
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
       <FinanceCard title="Total de SKUs" value={skus.length} variant="cyan" />
-      <FinanceCard 
-        title="Categorias Ativas" 
-        value={new Set(skus.map((s: SKU) => s.classe_terapeutica)).size} 
-        variant="green" 
+      <FinanceCard
+        title="Categorias Ativas"
+        value={new Set(skus.map((s: SKU) => s.classe_terapeutica)).size}
+        variant="green"
       />
-      <FinanceCard 
-        title="SKUs Ativos" 
-        value={skus.filter((s: SKU) => s.status_estoque === 'Ativo').length} 
+      <FinanceCard
+        title="SKUs Ativos"
+        value={skus.filter((s: SKU) => s.status_estoque === 'Ativo').length}
       />
     </div>
   </div>
 )
 
-const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar }: any) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Catálogo de Serviços</h2>
-      <Button onClick={() => setMostrarForm(!mostrarForm)}>
-        {mostrarForm ? '✕ Cancelar' : '+ Novo Serviço'}
-      </Button>
-    </div>
+const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar, lotes }: any) => {
+  // Estado local para insumos selecionados
+  const [insumos, setInsumos] = useState<{ id_lote: number; quantidade: number }[]>([])
 
-    {mostrarForm && (
-      <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
-        <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Adicionar Novo Serviço</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <Input label="Nome do Serviço" value={novoServico.nome} onChange={(v: string) => setNovoServico({...novoServico, nome: v})} />
-          <Input label="Preço" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({...novoServico, preco: v})} />
-          <Input label="Custo Insumos" type="number" value={novoServico.custo_insumos} onChange={(v: number) => setNovoServico({...novoServico, custo_insumos: v})} />
-        </div>
-        <Button onClick={onAdicionar}>Salvar Serviço</Button>
+  // Atualizar custo total quando insumos mudam
+  useEffect(() => {
+    const custoTotal = insumos.reduce((acc, insumo) => {
+      const lote = lotes.find((l: any) => l.id_lote === insumo.id_lote)
+      if (lote && lote.skus) {
+        return acc + (lote.skus.preco_unitario * insumo.quantidade)
+      }
+      return acc
+    }, 0)
+    setNovoServico({ ...novoServico, custo_insumos: custoTotal })
+  }, [insumos, lotes])
+
+  const handleAddInsumo = () => {
+    setInsumos([...insumos, { id_lote: 0, quantidade: 0 }])
+  }
+
+  const handleRemoveInsumo = (index: number) => {
+    const newInsumos = [...insumos]
+    newInsumos.splice(index, 1)
+    setInsumos(newInsumos)
+  }
+
+  const handleUpdateInsumo = (index: number, field: 'id_lote' | 'quantidade', value: number) => {
+    const newInsumos = [...insumos]
+    newInsumos[index] = { ...newInsumos[index], [field]: value }
+    setInsumos(newInsumos)
+  }
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A'
+    const date = new Date(dateString)
+    return `${date.getMonth() + 1}/${date.getFullYear()}`
+  }
+
+  return (
+    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Catálogo de Serviços</h2>
+        <Button onClick={() => setMostrarForm(!mostrarForm)}>
+          {mostrarForm ? '✕ Cancelar' : '+ Novo Serviço'}
+        </Button>
       </div>
-    )}
 
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Serviço</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Preço</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Custo Insumos</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {servicos.map((s: ServicoCalculado) => (
-            <tr key={s.id} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
-              <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{s.nome}</td>
-              <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan">{formatCurrency(s.preco)}</td>
-              <td className="px-4 py-3 text-right text-gray-600 dark:text-clinic-gray-400">{formatCurrency(s.custo_insumos)}</td>
-              <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(s.margemContribuicao)}</td>
-              <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatPercent(s.margemContribuicaoPct)}</td>
+      {mostrarForm && (
+        <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
+          <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Adicionar Novo Serviço</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <Input label="Nome do Serviço" value={novoServico.nome} onChange={(v: string) => setNovoServico({ ...novoServico, nome: v })} />
+            <Input label="Preço de Venda" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({ ...novoServico, preco: v })} />
+          </div>
+
+          <div className="mb-4">
+            <label className="text-sm font-bold text-cyan-700 dark:text-clinic-cyan mb-2 block">Ficha Técnica (Insumos)</label>
+            <div className="space-y-2">
+              {insumos.map((insumo, index) => (
+                <div key={index} className="flex gap-2 items-center">
+                  <select
+                    value={insumo.id_lote}
+                    onChange={(e) => handleUpdateInsumo(index, 'id_lote', Number(e.target.value))}
+                    className="flex-1 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white text-sm"
+                  >
+                    <option value={0}>Selecione um insumo...</option>
+                    {lotes.map((lote: any) => (
+                      <option key={lote.id_lote} value={lote.id_lote}>
+                        {lote.skus?.nome_produto} | ID: {lote.skus?.id_sku} - Val: {formatDate(lote.validade)} - Qtd: {lote.quantidade_disponivel}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    value={insumo.quantidade}
+                    onChange={(e) => handleUpdateInsumo(index, 'quantidade', Number(e.target.value))}
+                    placeholder="Qtd"
+                    className="w-24 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white text-sm"
+                  />
+                  <button onClick={() => handleRemoveInsumo(index)} className="text-red-500 hover:text-red-700 text-sm">Remover</button>
+                </div>
+              ))}
+              <button onClick={handleAddInsumo} className="text-cyan-600 dark:text-clinic-cyan text-sm font-semibold hover:underline">+ Adicionar Insumo</button>
+            </div>
+            <div className="mt-2 text-right">
+              <span className="text-sm text-gray-600 dark:text-clinic-gray-400">Custo Total Insumos: </span>
+              <span className="font-bold text-gray-900 dark:text-clinic-white">{formatCurrency(novoServico.custo_insumos)}</span>
+            </div>
+          </div>
+
+          <Button onClick={onAdicionar}>Salvar Serviço</Button>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Serviço</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Preço</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Custo Insumos</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">%</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {servicos.map((s: ServicoCalculado) => (
+              <tr key={s.id} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
+                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{s.nome}</td>
+                <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan">{formatCurrency(s.preco)}</td>
+                <td className="px-4 py-3 text-right text-gray-600 dark:text-clinic-gray-400">{formatCurrency(s.custo_insumos)}</td>
+                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(s.margemContribuicao)}</td>
+                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatPercent(s.margemContribuicaoPct)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoProfissional, setNovoProfissional, onAdicionarProfissional, onRemoverProfissional }: any) => (
   <div className="space-y-6">
     <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Parâmetros Dinâmicos</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Input label="Nº de Salas" type="number" value={parametros.numero_salas} 
+        <Input label="Nº de Salas" type="number" value={parametros.numero_salas}
           onChange={(v: number) => onUpdate({ numero_salas: v })} />
-        <Input label="Horas Trabalho/Dia" type="number" value={parametros.horas_trabalho_dia} 
+        <Input label="Horas Trabalho/Dia" type="number" value={parametros.horas_trabalho_dia}
           onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} />
-        <Input label="Duração Serviço (h)" type="number" value={parametros.duracao_media_servico_horas} 
+        <Input label="Duração Serviço (h)" type="number" value={parametros.duracao_media_servico_horas}
           onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} />
-        <Input label="MOD Padrão" type="number" value={parametros.mod_padrao} 
+        <Input label="MOD Padrão" type="number" value={parametros.mod_padrao}
           onChange={(v: number) => onUpdate({ mod_padrao: v })} />
-        <Input label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct} 
+        <Input label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct}
           onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} />
-        <Input label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct} 
+        <Input label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct}
           onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} />
       </div>
     </div>
@@ -820,8 +897,8 @@ const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoPr
     <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Equipe de Profissionais</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 border border-gray-200 dark:border-clinic-cyan/20 rounded-lg">
-        <Input label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({...novoProfissional, nome: v})} />
-        <Input label="Horas Semanais" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({...novoProfissional, horasSemanais: v})} />
+        <Input label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} />
+        <Input label="Horas Semanais" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} />
         <Button onClick={onAdicionarProfissional} className="self-end">Adicionar</Button>
       </div>
       <div className="space-y-2">
@@ -865,7 +942,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Categoria</label>
-            <select value={novaDespesa.categoria} onChange={(e) => setNovaDespesa({...novaDespesa, categoria: e.target.value})}
+            <select value={novaDespesa.categoria} onChange={(e) => setNovaDespesa({ ...novaDespesa, categoria: e.target.value })}
               className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white">
               <option>Infraestrutura</option>
               <option>Pessoal</option>
@@ -873,8 +950,8 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
               <option>Marketing</option>
             </select>
           </div>
-          <Input label="Item" value={novaDespesa.item} onChange={(v: string) => setNovaDespesa({...novaDespesa, item: v})} />
-          <Input label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number) => setNovaDespesa({...novaDespesa, valor: v})} />
+          <Input label="Item" value={novaDespesa.item} onChange={(v: string) => setNovaDespesa({ ...novaDespesa, item: v })} />
+          <Input label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number) => setNovaDespesa({ ...novaDespesa, valor: v })} />
         </div>
         <Button onClick={onAdicionar}>Salvar Despesa</Button>
       </div>
@@ -958,11 +1035,10 @@ const AbaMetas = ({ metas, tituloPeriodo }: any) => (
                 <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan font-semibold">{m.metaUnidades}</td>
                 <td className="px-4 py-3 text-right text-blue-600 dark:text-blue-400 font-semibold">{m.realizado}</td>
                 <td className="px-4 py-3 text-right">
-                  <span className={`font-bold ${
-                    m.cobertura >= 100 ? 'text-green-600 dark:text-green-400' : 
-                    m.cobertura >= 70 ? 'text-yellow-600 dark:text-yellow-400' : 
-                    'text-red-600 dark:text-red-400'
-                  }`}>
+                  <span className={`font-bold ${m.cobertura >= 100 ? 'text-green-600 dark:text-green-400' :
+                    m.cobertura >= 70 ? 'text-yellow-600 dark:text-yellow-400' :
+                      'text-red-600 dark:text-red-400'
+                    }`}>
                     {formatPercent(m.cobertura)}
                   </span>
                 </td>
@@ -986,13 +1062,13 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let valor = e.target.value.replace(/\D/g, '')
-    
+
     if (valor === '') {
       setValorFormatado('R$ 0,00')
       setMetaResultadoMensal(0)
       return
     }
-    
+
     valor = valor.replace(/^0+/, '') || '0'
     const numeroDecimal = parseFloat(valor) / 100
     setValorFormatado(formatCurrency(numeroDecimal))
@@ -1019,12 +1095,12 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
               onChange={handleInputChange}
               onBlur={handleBlur}
               placeholder="R$ 0,00"
-              className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white" 
+              className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
             />
           </div>
         </div>
       </div>
-      
+
       <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Controle - {tituloPeriodo}</h2>
 
@@ -1048,7 +1124,7 @@ const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMe
           <FinanceCard
             title="Resultado Projetado"
             value={formatCurrency(controle.resultadoProjetado)}
-            variant={controle.resultadoProjetado >= 0 ? 'green' : 'red'} 
+            variant={controle.resultadoProjetado >= 0 ? 'green' : 'red'}
           />
         </div>
 
@@ -1084,7 +1160,7 @@ const AbaDRE = ({ dre, tituloPeriodo, parametros }: any) => (
 const DRELine = ({ label, value, isMain, isNegative, isSubTotal, isFinal }: any) => {
   let classes = "flex justify-between py-3"
   let valueClasses = "text-lg"
-  
+
   if (isMain) {
     classes += " border-b-2 border-cyan-500 dark:border-clinic-cyan"
     valueClasses = "text-xl font-bold text-cyan-600 dark:text-clinic-cyan"
@@ -1098,7 +1174,7 @@ const DRELine = ({ label, value, isMain, isNegative, isSubTotal, isFinal }: any)
     classes += ` px-4 rounded ${value >= 0 ? 'bg-green-50 dark:bg-green-500/10 border-b-4 border-green-500' : 'bg-red-50 dark:bg-red-500/10 border-b-4 border-red-500'}`
     valueClasses = `text-2xl font-bold ${value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`
   }
-  
+
   return (
     <div className={classes}>
       <span className={`font-semibold text-gray-900 dark:text-clinic-white ${isFinal ? 'text-lg' : ''}`}>{label}</span>

@@ -142,10 +142,17 @@ export const supabaseApi = {
     }
   },
 
-  async createServico(servico: { nome: string; preco: number; custo_insumos: number }) {
+  async createServico(servico: {
+    nome: string;
+    preco: number;
+    custo_insumos: number;
+    insumos?: Array<{ id_lote: number; quantidade_utilizada: number }>
+  }) {
     try {
       const servicoCompleto = ensureClinicFilter({
-        ...servico,
+        nome: servico.nome,
+        preco: servico.preco,
+        custo_insumos: servico.custo_insumos,
         custo_equip: 0,
         ativo: true
       })
@@ -158,6 +165,31 @@ export const supabaseApi = {
 
       if (error) throw error
       console.log('✅ SERVIÇO CRIADO:', data.nome)
+
+      // Se houver insumos, criar registros e reduzir quantidades
+      if (servico.insumos && servico.insumos.length > 0) {
+        for (const insumo of servico.insumos) {
+          // Criar registro de insumo do serviço
+          const { error: insumoError } = await supabase
+            .from('servico_insumos')
+            .insert({
+              id_servico: data.id,
+              id_lote: insumo.id_lote,
+              quantidade_utilizada: insumo.quantidade_utilizada,
+              criado_em: new Date().toISOString()
+            })
+
+          if (insumoError) {
+            console.error('❌ ERRO ao criar insumo:', insumoError)
+            throw insumoError
+          }
+
+          // Reduzir quantidade do lote
+          await this.reduzirQuantidadeLote(insumo.id_lote, insumo.quantidade_utilizada)
+        }
+        console.log(`✅ ${servico.insumos.length} INSUMOS PROCESSADOS`)
+      }
+
       return data
     } catch (error) {
       console.error('💥 ERRO createServico:', error)
@@ -457,37 +489,6 @@ export const supabaseApi = {
       return data || []
     } catch (error) {
       console.error('💥 ERRO getSKUs:', error)
-      throw error // Propagate error to be handled by caller
-    }
-  },
-
-  /**
-   * ✅ NOVA FUNÇÃO: Buscar lotes disponíveis com info do SKU
-   */
-  async getLotesDisponiveis() {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('lotes')
-        .select(`
-        *,
-        skus:id_sku (
-          id_sku,
-          nome_produto,
-          preco_unitario
-        )
-      `)
-        .eq('id_clinica', clinicId)
-        .gt('quantidade_disponivel', 0)
-        .order('validade', { ascending: true })
-
-      if (error) throw error
-      console.log(`📦 LOTES DISPONÍVEIS: ${data?.length || 0}`)
-      return data || []
-    } catch (error) {
-      console.error('💥 ERRO getLotesDisponiveis:', error)
       return []
     }
   },
@@ -516,6 +517,85 @@ export const supabaseApi = {
       return data
     } catch (error) {
       console.error('💥 ERRO updateSKU:', error)
+      throw error
+    }
+  },
+
+  /**
+   * ✅ NOVA FUNÇÃO: Buscar lotes disponíveis com informações do SKU
+   */
+  async getLotesDisponiveis() {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      const { data, error } = await supabase
+        .from('lotes')
+        .select(`
+        id_lote,
+        id_sku,
+        quantidade_disponivel,
+        validade,
+        data_entrada,
+        skus:id_sku (
+          id_sku,
+          nome_produto,
+          fabricante,
+          classe_terapeutica
+        )
+      `)
+        .eq('id_clinica', clinicId)
+        .gt('quantidade_disponivel', 0)
+        .order('validade', { ascending: true })
+
+      if (error) throw error
+      console.log(`📦 LOTES DISPONÍVEIS: ${data?.length || 0}`)
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getLotesDisponiveis:', error)
+      return []
+    }
+  },
+
+  /**
+   * ✅ NOVA FUNÇÃO: Reduzir quantidade de um lote
+   */
+  async reduzirQuantidadeLote(id_lote: number, quantidade: number) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      // Buscar lote atual
+      const { data: lote, error: loteError } = await supabase
+        .from('lotes')
+        .select('quantidade_disponivel')
+        .eq('id_lote', id_lote)
+        .eq('id_clinica', clinicId)
+        .single()
+
+      if (loteError) throw loteError
+      if (!lote) throw new Error('Lote não encontrado')
+
+      const novaQuantidade = lote.quantidade_disponivel - quantidade
+
+      if (novaQuantidade < 0) {
+        throw new Error('Quantidade insuficiente no lote')
+      }
+
+      // Atualizar quantidade
+      const { data, error } = await supabase
+        .from('lotes')
+        .update({ quantidade_disponivel: novaQuantidade })
+        .eq('id_lote', id_lote)
+        .eq('id_clinica', clinicId)
+        .select()
+        .single()
+
+      if (error) throw error
+      console.log(`✅ LOTE ${id_lote} ATUALIZADO: ${lote.quantidade_disponivel} → ${novaQuantidade}`)
+      return data
+    } catch (error) {
+      console.error('💥 ERRO reduzirQuantidadeLote:', error)
       throw error
     }
   },

@@ -14,7 +14,7 @@ export interface Database {
         }
         Update: Partial<Omit<Servico, 'id' | 'id_clinica'>>
       }
-      
+
       despesas: {
         Row: Despesa
         Insert: Omit<Despesa, 'id' | 'criado_em' | 'atualizado_em'> & {
@@ -25,7 +25,7 @@ export interface Database {
         }
         Update: Partial<Omit<Despesa, 'id' | 'id_clinica'>>
       }
-      
+
       profissionais: {
         Row: Profissional
         Insert: Omit<Profissional, 'id' | 'criado_em'> & {
@@ -35,7 +35,7 @@ export interface Database {
         }
         Update: Partial<Omit<Profissional, 'id' | 'id_clinica'>>
       }
-      
+
       parametros: {
         Row: Parametros
         Insert: Omit<Parametros, 'atualizado_em'> & {
@@ -43,7 +43,7 @@ export interface Database {
         }
         Update: Partial<Omit<Parametros, 'id_clinica'>>
       }
-      
+
       vendas: {
         Row: Venda
         Insert: Omit<Venda, 'id' | 'criado_em'> & {
@@ -52,13 +52,21 @@ export interface Database {
         }
         Update: Partial<Omit<Venda, 'id' | 'id_clinica'>>
       }
-      
+
       venda_servicos: {
         Row: VendaServico
         Insert: Omit<VendaServico, 'id'> & {
           id?: number
         }
         Update: Partial<Omit<VendaServico, 'id'>>
+      }
+
+      servico_insumos: {
+        Row: ServicoInsumo
+        Insert: Omit<ServicoInsumo, 'id'> & {
+          id?: number
+        }
+        Update: Partial<Omit<ServicoInsumo, 'id'>>
       }
 
       // Clínicas
@@ -501,7 +509,7 @@ export interface Database {
           id_clinica?: number
         }
 
-        
+
       }
     }
   }
@@ -577,6 +585,14 @@ export interface VendaServico {
   custo_insumos_no_momento: number
   mod_aplicado_no_momento: number
   custo_equip_no_momento: number
+}
+
+export interface ServicoInsumo {
+  id: number
+  id_servico: number
+  id_lote: number
+  quantidade_utilizada: number
+  criado_em: string
 }
 
 export interface ServicoCalculado extends Servico {

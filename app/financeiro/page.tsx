@@ -4,9 +4,9 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { DollarSign, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado, Lote } from '@/types/database'
+import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado } from '@/types/database'
 
-// =========== CONSTANTES ===========
+// ============ CONSTANTES ============
 const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 const ANOS_DISPONIVEIS = Array.from({ length: 11 }, (_, i) => 2025 + i)
 const FERIADOS_2025 = ['2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18', '2025-04-21', '2025-05-01', '2025-06-19', '2025-09-07', '2025-10-12', '2025-11-02', '2025-11-15', '2025-11-20', '2025-12-25']
@@ -81,7 +81,6 @@ export default function FinanceiroPage() {
   const [anoSelecionado, setAnoSelecionado] = useState(2025)
   const [mesesSelecionados, setMesesSelecionados] = useState([new Date().getMonth() + 1])
   const [loading, setLoading] = useState(false)
-  const [loadingSKUs, setLoadingSKUs] = useState(false)
 
   // Estados de dados
   const [servicos, setServicos] = useState<Servico[]>([])
@@ -90,11 +89,16 @@ export default function FinanceiroPage() {
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
   const [skus, setSKUs] = useState<SKU[]>([]) // ✅ NOVO
-  const [lotes, setLotes] = useState<any[]>([]) // ✅ NOVO: Lotes para ficha técnica
+  const [lotes, setLotes] = useState<any[]>([]) // ✅ NOVO: Lotes disponíveis
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
-  const [novoServico, setNovoServico] = useState({ nome: '', preco: 0, custo_insumos: 0 })
+  const [novoServico, setNovoServico] = useState({
+    nome: '',
+    preco: 0,
+    custo_insumos: 0,
+    insumos: [] as Array<{ id_lote: number; quantidade_utilizada: number }>
+  })
   const [mostrarFormDespesa, setMostrarFormDespesa] = useState(false)
   const [novaDespesa, setNovaDespesa] = useState({ categoria: 'Infraestrutura', item: '', valor: 0 })
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', horasSemanais: 40 })
@@ -119,23 +123,24 @@ export default function FinanceiroPage() {
     if (abaAtiva === 'skus') {
       loadSKUs() // ✅ NOVO
     }
+    if (abaAtiva === 'servicos') {
+      loadLotes() // ✅ NOVO: Carregar lotes quando abrir aba de serviços
+    }
   }, [abaAtiva, anoSelecionado, mesesSelecionados])
 
   const loadData = async () => {
     try {
       setLoading(true)
-      const [servicosData, despesasData, profissionaisData, parametrosData, lotesData] = await Promise.all([
+      const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
         supabaseApi.getServicos(),
         supabaseApi.getDespesas(),
         supabaseApi.getProfissionais(),
-        supabaseApi.getParametros(),
-        supabaseApi.getLotesDisponiveis()
+        supabaseApi.getParametros()
       ])
       setServicos(servicosData)
       setDespesas(despesasData)
       setProfissionais(profissionaisData)
       setParametros(parametrosData)
-      setLotes(lotesData)
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
     } finally {
@@ -155,14 +160,24 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Carregar SKUs
   const loadSKUs = async () => {
     try {
-      setLoadingSKUs(true)
+      setLoading(true)
       const skusData = await supabaseApi.getSKUs()
       setSKUs(skusData)
     } catch (error) {
       console.error('Erro ao carregar SKUs:', error)
       showFeedbackSKU('error', 'Falha ao carregar produtos')
     } finally {
-      setLoadingSKUs(false)
+      setLoading(false)
+    }
+  }
+
+  // ✅ NOVA FUNÇÃO: Carregar lotes disponíveis
+  const loadLotes = async () => {
+    try {
+      const lotesData = await supabaseApi.getLotesDisponiveis()
+      setLotes(lotesData)
+    } catch (error) {
+      console.error('Erro ao carregar lotes:', error)
     }
   }
 
@@ -190,7 +205,7 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Salvar SKU
   const handleSaveSKU = async (id_sku: number) => {
     try {
-      setLoadingSKUs(true)
+      setLoading(true)
 
       const fatorDivisao = parseFloat(editFormSKU.fator_divisao || '1')
       if (isNaN(fatorDivisao) || fatorDivisao <= 0) {
@@ -211,7 +226,7 @@ export default function FinanceiroPage() {
       console.error('Erro ao atualizar SKU:', error)
       showFeedbackSKU('error', 'Falha ao atualizar SKU')
     } finally {
-      setLoadingSKUs(false)
+      setLoading(false)
     }
   }
 
@@ -219,12 +234,19 @@ export default function FinanceiroPage() {
   const handleAdicionarServico = async () => {
     if (!novoServico.nome || novoServico.preco <= 0) return
     try {
-      await supabaseApi.createServico(novoServico)
-      setNovoServico({ nome: '', preco: 0, custo_insumos: 0 })
+      await supabaseApi.createServico({
+        nome: novoServico.nome,
+        preco: novoServico.preco,
+        custo_insumos: novoServico.custo_insumos,
+        insumos: novoServico.insumos
+      })
+      setNovoServico({ nome: '', preco: 0, custo_insumos: 0, insumos: [] })
       setMostrarFormServico(false)
       loadData()
+      loadLotes() // Recarregar lotes após criar serviço
     } catch (error) {
       console.error('Erro ao criar serviço:', error)
+      alert('Erro ao criar serviço. Verifique se há quantidade suficiente nos lotes.')
     }
   }
 
@@ -486,7 +508,7 @@ export default function FinanceiroPage() {
               novoServico={novoServico}
               setNovoServico={setNovoServico}
               onAdicionar={handleAdicionarServico}
-              lotes={lotes} // ✅ NOVO
+              lotes={lotes}
             />
           )}
 
@@ -501,7 +523,7 @@ export default function FinanceiroPage() {
               onSave={handleSaveSKU}
               onCancel={handleCancelEditSKU}
               feedback={feedbackSKU}
-              loading={loadingSKUs}
+              loading={loading}
             />
           )}
 
@@ -752,42 +774,43 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
 )
 
 const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar, lotes }: any) => {
-  // Estado local para insumos selecionados
-  const [insumos, setInsumos] = useState<{ id_lote: number; quantidade: number }[]>([])
+  const [insumoSelecionado, setInsumoSelecionado] = React.useState<number | null>(null)
+  const [quantidadeInsumo, setQuantidadeInsumo] = React.useState<number>(0)
 
-  // Atualizar custo total quando insumos mudam
-  useEffect(() => {
-    const custoTotal = insumos.reduce((acc, insumo) => {
-      const lote = lotes.find((l: any) => l.id_lote === insumo.id_lote)
-      if (lote && lote.skus) {
-        return acc + (lote.skus.preco_unitario * insumo.quantidade)
-      }
-      return acc
-    }, 0)
-    setNovoServico({ ...novoServico, custo_insumos: custoTotal })
-  }, [insumos, lotes])
+  const handleAdicionarInsumo = () => {
+    if (!insumoSelecionado || quantidadeInsumo <= 0) {
+      alert('Selecione um insumo e informe a quantidade')
+      return
+    }
 
-  const handleAddInsumo = () => {
-    setInsumos([...insumos, { id_lote: 0, quantidade: 0 }])
+    const lote = lotes.find((l: any) => l.id_lote === insumoSelecionado)
+    if (!lote) return
+
+    if (quantidadeInsumo > lote.quantidade_disponivel) {
+      alert(`Quantidade insuficiente! Disponível: ${lote.quantidade_disponivel}`)
+      return
+    }
+
+    setNovoServico({
+      ...novoServico,
+      insumos: [...novoServico.insumos, {
+        id_lote: insumoSelecionado,
+        quantidade_utilizada: quantidadeInsumo
+      }]
+    })
+
+    setInsumoSelecionado(null)
+    setQuantidadeInsumo(0)
   }
 
-  const handleRemoveInsumo = (index: number) => {
-    const newInsumos = [...insumos]
-    newInsumos.splice(index, 1)
-    setInsumos(newInsumos)
+  const handleRemoverInsumo = (index: number) => {
+    setNovoServico({
+      ...novoServico,
+      insumos: novoServico.insumos.filter((_: any, i: number) => i !== index)
+    })
   }
 
-  const handleUpdateInsumo = (index: number, field: 'id_lote' | 'quantidade', value: number) => {
-    const newInsumos = [...insumos]
-    newInsumos[index] = { ...newInsumos[index], [field]: value }
-    setInsumos(newInsumos)
-  }
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'N/A'
-    const date = new Date(dateString)
-    return `${date.getMonth() + 1}/${date.getFullYear()}`
-  }
+  const loteInfo = insumoSelecionado ? lotes.find((l: any) => l.id_lote === insumoSelecionado) : null
 
   return (
     <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
@@ -802,47 +825,113 @@ const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNo
         <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Adicionar Novo Serviço</h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          {/* Informações básicas do serviço */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <Input label="Nome do Serviço" value={novoServico.nome} onChange={(v: string) => setNovoServico({ ...novoServico, nome: v })} />
-            <Input label="Preço de Venda" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({ ...novoServico, preco: v })} />
+            <Input label="Preço" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({ ...novoServico, preco: v })} />
+            <Input label="Custo Insumos" type="number" value={novoServico.custo_insumos} onChange={(v: number) => setNovoServico({ ...novoServico, custo_insumos: v })} />
           </div>
 
-          <div className="mb-4">
-            <label className="text-sm font-bold text-cyan-700 dark:text-clinic-cyan mb-2 block">Ficha Técnica (Insumos)</label>
-            <div className="space-y-2">
-              {insumos.map((insumo, index) => (
-                <div key={index} className="flex gap-2 items-center">
-                  <select
-                    value={insumo.id_lote}
-                    onChange={(e) => handleUpdateInsumo(index, 'id_lote', Number(e.target.value))}
-                    className="flex-1 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white text-sm"
-                  >
-                    <option value={0}>Selecione um insumo...</option>
-                    {lotes.map((lote: any) => (
-                      <option key={lote.id_lote} value={lote.id_lote}>
-                        {lote.skus?.nome_produto} | ID: {lote.skus?.id_sku} - Val: {formatDate(lote.validade)} - Qtd: {lote.quantidade_disponivel}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    value={insumo.quantidade}
-                    onChange={(e) => handleUpdateInsumo(index, 'quantidade', Number(e.target.value))}
-                    placeholder="Qtd"
-                    className="w-24 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white text-sm"
-                  />
-                  <button onClick={() => handleRemoveInsumo(index)} className="text-red-500 hover:text-red-700 text-sm">Remover</button>
+          {/* Seção de Insumos (Ficha Técnica) */}
+          <div className="border-t border-cyan-200 dark:border-clinic-cyan/30 pt-6 mt-6">
+            <h4 className="text-md font-bold text-cyan-700 dark:text-clinic-cyan mb-4">📋 Ficha Técnica - Insumos</h4>
+
+            {/* Adicionar Insumo */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              {/* Campo 1: Selecionar Insumo */}
+              <div>
+                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Selecionar Insumo</label>
+                <select
+                  value={insumoSelecionado || ''}
+                  onChange={(e) => setInsumoSelecionado(Number(e.target.value))}
+                  className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
+                >
+                  <option value="">Selecione...</option>
+                  {lotes.map((lote: any) => (
+                    <option key={lote.id_lote} value={lote.id_lote}>
+                      {lote.skus?.nome_produto || 'Produto'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Campo 2: Validade e Quantidade Disponível */}
+              <div>
+                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Validade / Qtd. Disponível</label>
+                <div className="bg-gray-100 dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white">
+                  {loteInfo ? (
+                    <div className="text-sm">
+                      <div className="font-semibold">{new Date(loteInfo.validade).toLocaleDateString('pt-BR')}</div>
+                      <div className="text-xs text-gray-600 dark:text-clinic-gray-400">Disponível: {loteInfo.quantidade_disponivel}</div>
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">-</span>
+                  )}
                 </div>
-              ))}
-              <button onClick={handleAddInsumo} className="text-cyan-600 dark:text-clinic-cyan text-sm font-semibold hover:underline">+ Adicionar Insumo</button>
+              </div>
+
+              {/* Campo 3: Quantidade Utilizada */}
+              <div>
+                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Quantidade Utilizada</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={quantidadeInsumo}
+                  onChange={(e) => setQuantidadeInsumo(Number(e.target.value))}
+                  className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
+                  placeholder="0"
+                />
+              </div>
+
+              {/* Botão Adicionar */}
+              <div className="flex items-end">
+                <button
+                  onClick={handleAdicionarInsumo}
+                  className="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors"
+                >
+                  + Adicionar Insumo
+                </button>
+              </div>
             </div>
-            <div className="mt-2 text-right">
-              <span className="text-sm text-gray-600 dark:text-clinic-gray-400">Custo Total Insumos: </span>
-              <span className="font-bold text-gray-900 dark:text-clinic-white">{formatCurrency(novoServico.custo_insumos)}</span>
-            </div>
+
+            {/* Lista de Insumos Adicionados */}
+            {novoServico.insumos.length > 0 && (
+              <div className="mt-4">
+                <h5 className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2">Insumos Adicionados:</h5>
+                <div className="space-y-2">
+                  {novoServico.insumos.map((insumo: any, index: number) => {
+                    const lote = lotes.find((l: any) => l.id_lote === insumo.id_lote)
+                    return (
+                      <div key={index} className="flex items-center justify-between bg-white dark:bg-clinic-gray-700 border border-gray-200 dark:border-clinic-cyan/20 rounded-lg px-4 py-2">
+                        <div className="flex-1">
+                          <span className="font-semibold text-gray-900 dark:text-clinic-white">
+                            {lote?.skus?.nome_produto || 'Produto'}
+                          </span>
+                          <span className="text-sm text-gray-600 dark:text-clinic-gray-400 ml-4">
+                            Quantidade: {insumo.quantidade_utilizada}
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-clinic-gray-500 ml-4">
+                            Validade: {lote ? new Date(lote.validade).toLocaleDateString('pt-BR') : '-'}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => handleRemoverInsumo(index)}
+                          className="ml-4 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm transition-colors"
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          <Button onClick={onAdicionar}>Salvar Serviço</Button>
+          <div className="mt-6">
+            <Button onClick={onAdicionar}>Salvar Serviço</Button>
+          </div>
         </div>
       )}
 

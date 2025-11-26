@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { DollarSign, Save, X } from 'lucide-react'
+import { DollarSign, Save, X, Plus, Trash2, Search, Calendar, User, CreditCard } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado } from '@/types/database'
@@ -89,16 +89,10 @@ export default function FinanceiroPage() {
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
   const [skus, setSKUs] = useState<SKU[]>([]) // ✅ NOVO
-  const [lotes, setLotes] = useState<any[]>([]) // ✅ NOVO: Lotes disponíveis
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
-  const [novoServico, setNovoServico] = useState({
-    nome: '',
-    preco: 0,
-    custo_insumos: 0,
-    insumos: [] as Array<{ id_lote: number; quantidade_utilizada: number }>
-  })
+  const [novoServico, setNovoServico] = useState({ nome: '', preco: 0, custo_insumos: 0 })
   const [mostrarFormDespesa, setMostrarFormDespesa] = useState(false)
   const [novaDespesa, setNovaDespesa] = useState({ categoria: 'Infraestrutura', item: '', valor: 0 })
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', horasSemanais: 40 })
@@ -107,77 +101,75 @@ export default function FinanceiroPage() {
   const [editandoSKU, setEditandoSKU] = useState<number | null>(null)
   const [editFormSKU, setEditFormSKU] = useState<Partial<SKU>>({})
   const [feedbackSKU, setFeedbackSKU] = useState<{ tipo: 'success' | 'error', mensagem: string } | null>(null)
+  const [loadingSKUs, setLoadingSKUs] = useState(false) // ✅ NOVO: Estado de loading local para SKUs
+
+  // ✅ ESTADO PARA INSUMOS DO NOVO SERVIÇO
+  const [lotesDisponiveis, setLotesDisponiveis] = useState<any[]>([])
+  const [novosInsumos, setNovosInsumos] = useState<{ id_lote: number, quantidade: number }[]>([])
+  const [pacientes, setPacientes] = useState<any[]>([]) // ✅ ESTADO DE PACIENTES
 
   // Estado temporário para meta
   const [metaTemporaria, setMetaTemporaria] = useState<number | null>(null)
 
-  // Carregar dados
-  useEffect(() => {
-    loadData()
-  }, [])
+ // Declarar funções ANTES dos useEffect
+const loadData = useCallback(async () => {
+  try {
+    setLoading(true)
+    const [servicosData, despesasData, profissionaisData, parametrosData, skusData, lotesData, pacientesData] = await Promise.all([
+      supabaseApi.getServicos(),
+      supabaseApi.getDespesas(),
+      supabaseApi.getProfissionais(),
+      supabaseApi.getParametros(),
+      supabaseApi.getSKUs(),
+      supabaseApi.getLotesDisponiveis(),
+      supabaseApi.getPacientes(1000)
+    ])
 
-  useEffect(() => {
-    if (['vendas', 'metas', 'controle', 'dre'].includes(abaAtiva)) {
-      loadVendas()
-    }
-    if (abaAtiva === 'skus') {
-      loadSKUs() // ✅ NOVO
-    }
-    if (abaAtiva === 'servicos') {
-      loadLotes() // ✅ NOVO: Carregar lotes quando abrir aba de serviços
-    }
-  }, [abaAtiva, anoSelecionado, mesesSelecionados])
-
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
-        supabaseApi.getServicos(),
-        supabaseApi.getDespesas(),
-        supabaseApi.getProfissionais(),
-        supabaseApi.getParametros()
-      ])
-      setServicos(servicosData)
-      setDespesas(despesasData)
-      setProfissionais(profissionaisData)
-      setParametros(parametrosData)
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error)
-    } finally {
-      setLoading(false)
-    }
+    setServicos(servicosData)
+    setDespesas(despesasData)
+    setProfissionais(profissionaisData)
+    setParametros(parametrosData)
+    setSKUs(skusData)
+    setLotesDisponiveis(lotesData)
+    setPacientes(pacientesData)
+  } catch (error) {
+    console.error('Erro ao carregar dados:', error)
+  } finally {
+    setLoading(false)
   }
+}, [])
 
-  const loadVendas = async () => {
-    try {
-      const vendasData = await supabaseApi.getVendas(anoSelecionado, mesesSelecionados)
-      setVendas(vendasData)
-    } catch (error) {
-      console.error('Erro ao carregar vendas:', error)
-    }
+const loadVendas = useCallback(async () => {
+  try {
+    const vendasData = await supabaseApi.getVendas(anoSelecionado, mesesSelecionados)
+    setVendas(vendasData)
+  } catch (error) {
+    console.error('Erro ao carregar vendas:', error)
   }
+}, [anoSelecionado, mesesSelecionados])
+
+// Carregar dados
+useEffect(() => {
+  loadData()
+}, [loadData])
+
+useEffect(() => {
+  if (['vendas', 'metas', 'controle', 'dre'].includes(abaAtiva)) {
+    loadVendas()
+  }
+}, [abaAtiva, loadVendas])
 
   // ✅ NOVA FUNÇÃO: Carregar SKUs
   const loadSKUs = async () => {
     try {
-      setLoading(true)
+      setLoadingSKUs(true)
       const skusData = await supabaseApi.getSKUs()
       setSKUs(skusData)
     } catch (error) {
       console.error('Erro ao carregar SKUs:', error)
       showFeedbackSKU('error', 'Falha ao carregar produtos')
     } finally {
-      setLoading(false)
-    }
-  }
-
-  // ✅ NOVA FUNÇÃO: Carregar lotes disponíveis
-  const loadLotes = async () => {
-    try {
-      const lotesData = await supabaseApi.getLotesDisponiveis()
-      setLotes(lotesData)
-    } catch (error) {
-      console.error('Erro ao carregar lotes:', error)
+      setLoadingSKUs(false)
     }
   }
 
@@ -205,7 +197,7 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Salvar SKU
   const handleSaveSKU = async (id_sku: number) => {
     try {
-      setLoading(true)
+      setLoadingSKUs(true)
 
       const fatorDivisao = parseFloat(editFormSKU.fator_divisao || '1')
       if (isNaN(fatorDivisao) || fatorDivisao <= 0) {
@@ -221,32 +213,45 @@ export default function FinanceiroPage() {
       showFeedbackSKU('success', 'SKU atualizado com sucesso!')
       setEditandoSKU(null)
       setEditFormSKU({})
-      loadSKUs()
+      loadSKUs() // Recarregar apenas SKUs
     } catch (error) {
       console.error('Erro ao atualizar SKU:', error)
       showFeedbackSKU('error', 'Falha ao atualizar SKU')
     } finally {
-      setLoading(false)
+      setLoadingSKUs(false)
     }
   }
 
   // Handlers existentes
   const handleAdicionarServico = async () => {
-    if (!novoServico.nome || novoServico.preco <= 0) return
+    if (!novoServico.nome || !novoServico.preco) return
+
     try {
-      await supabaseApi.createServico({
-        nome: novoServico.nome,
-        preco: novoServico.preco,
-        custo_insumos: novoServico.custo_insumos,
-        insumos: novoServico.insumos
-      })
-      setNovoServico({ nome: '', preco: 0, custo_insumos: 0, insumos: [] })
+      // 1. Criar o serviço
+      const servicoCriado = await supabaseApi.createServico(novoServico)
+
+      // 2. Processar insumos se houver
+      if (novosInsumos.length > 0) {
+        for (const insumo of novosInsumos) {
+          // Salvar relacionamento
+          await supabaseApi.createServicoInsumo({
+            id_servico: servicoCriado.id,
+            id_lote: insumo.id_lote,
+            quantidade_usada: insumo.quantidade
+          })
+
+          // Reduzir estoque
+          await supabaseApi.reduzirQuantidadeLote(insumo.id_lote, insumo.quantidade)
+        }
+      }
+
+      setServicos([...servicos, servicoCriado])
+      setNovoServico({ nome: '', preco: 0, custo_insumos: 0 })
+      setNovosInsumos([]) // Limpar insumos
       setMostrarFormServico(false)
-      loadData()
-      loadLotes() // Recarregar lotes após criar serviço
+      loadData() // Recarregar para atualizar estoques
     } catch (error) {
       console.error('Erro ao criar serviço:', error)
-      alert('Erro ao criar serviço. Verifique se há quantidade suficiente nos lotes.')
     }
   }
 
@@ -312,6 +317,23 @@ export default function FinanceiroPage() {
       return [...prev, mes].sort((a, b) => a - b)
     })
   }, [])
+
+  // ✅ NOVA FUNÇÃO: Salvar Venda
+  const handleSalvarVenda = async (venda: any) => {
+    try {
+      await supabaseApi.createVenda({
+        id_paciente: venda.id_paciente,
+        data_venda: venda.data,
+        metodo_pagamento: venda.metodo_pagamento,
+        parcelas: venda.parcelas,
+        servicos: venda.servicos.map((s: any) => s.id)
+      })
+
+      loadVendas() // Recarregar vendas
+    } catch (error) {
+      console.error('Erro ao salvar venda:', error)
+    }
+  }
 
   // Cálculos
   const diasUteisTotais = useMemo(() =>
@@ -508,7 +530,9 @@ export default function FinanceiroPage() {
               novoServico={novoServico}
               setNovoServico={setNovoServico}
               onAdicionar={handleAdicionarServico}
-              lotes={lotes}
+              lotesDisponiveis={lotesDisponiveis}
+              novosInsumos={novosInsumos}
+              setNovosInsumos={setNovosInsumos}
             />
           )}
 
@@ -553,7 +577,13 @@ export default function FinanceiroPage() {
           )}
 
           {abaAtiva === 'vendas' && (
-            <AbaVendas vendas={vendas} tituloPeriodo={tituloPeriodo} />
+            <AbaVendas
+              vendas={vendas}
+              tituloPeriodo={tituloPeriodo}
+              onNovaVenda={handleSalvarVenda}
+              pacientes={pacientes}
+              servicos={servicos}
+            />
           )}
 
           {abaAtiva === 'metas' && metasCalculadas && (
@@ -650,17 +680,7 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
       </div>
     )}
 
-    {/* Legenda */}
-    <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-4 mb-6">
-      <h3 className="text-cyan-700 dark:text-clinic-cyan font-semibold mb-2">📋 Sobre os Campos</h3>
-      <ul className="space-y-2 text-sm text-gray-700 dark:text-clinic-gray-300">
-        <li><strong className="text-gray-900 dark:text-clinic-white">Categoria:</strong> Classifica o tipo de produto para organização de vendas</li>
-        <li><strong className="text-gray-900 dark:text-clinic-white">Fator de Divisão:</strong> Usado para calcular o preço por dose/aplicação</li>
-        <li className="text-gray-600 dark:text-clinic-gray-400 italic">
-          💡 Exemplo: Dysport 500u com fator 2 = cada unidade no sistema representa 0,5u real
-        </li>
-      </ul>
-    </div>
+
 
     {loading && !editandoId ? (
       <div className="text-center py-12">
@@ -773,44 +793,46 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
   </div>
 )
 
-const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar, lotes }: any) => {
-  const [insumoSelecionado, setInsumoSelecionado] = React.useState<number | null>(null)
-  const [quantidadeInsumo, setQuantidadeInsumo] = React.useState<number>(0)
+const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar, lotesDisponiveis, novosInsumos, setNovosInsumos }: any) => {
+  const [hoveredService, setHoveredService] = React.useState<number | null>(null)
+  const [insumosHover, setInsumosHover] = React.useState<any[]>([])
+  const [loadingHover, setLoadingHover] = React.useState(false)
 
-  const handleAdicionarInsumo = () => {
-    if (!insumoSelecionado || quantidadeInsumo <= 0) {
-      alert('Selecione um insumo e informe a quantidade')
-      return
+  React.useEffect(() => {
+    let isMounted = true
+    if (hoveredService) {
+      setLoadingHover(true)
+      supabaseApi.getServicoInsumos(hoveredService)
+        .then(data => {
+          if (isMounted) setInsumosHover(data)
+        })
+        .finally(() => {
+          if (isMounted) setLoadingHover(false)
+        })
+    } else {
+      setInsumosHover([])
     }
+    return () => { isMounted = false }
+  }, [hoveredService])
 
-    const lote = lotes.find((l: any) => l.id_lote === insumoSelecionado)
-    if (!lote) return
-
-    if (quantidadeInsumo > lote.quantidade_disponivel) {
-      alert(`Quantidade insuficiente! Disponível: ${lote.quantidade_disponivel}`)
-      return
-    }
-
-    setNovoServico({
-      ...novoServico,
-      insumos: [...novoServico.insumos, {
-        id_lote: insumoSelecionado,
-        quantidade_utilizada: quantidadeInsumo
-      }]
-    })
-
-    setInsumoSelecionado(null)
-    setQuantidadeInsumo(0)
+  const handleAddInsumo = () => {
+    setNovosInsumos([...novosInsumos, { id_lote: 0, quantidade: 0 }])
   }
 
-  const handleRemoverInsumo = (index: number) => {
-    setNovoServico({
-      ...novoServico,
-      insumos: novoServico.insumos.filter((_: any, i: number) => i !== index)
-    })
+  const handleRemoveInsumo = (index: number) => {
+    const newInsumos = [...novosInsumos]
+    newInsumos.splice(index, 1)
+    setNovosInsumos(newInsumos)
   }
 
-  const loteInfo = insumoSelecionado ? lotes.find((l: any) => l.id_lote === insumoSelecionado) : null
+  const handleUpdateInsumo = (index: number, field: string, value: any) => {
+    const newInsumos = [...novosInsumos]
+    newInsumos[index] = { ...newInsumos[index], [field]: value }
+    setNovosInsumos(newInsumos)
+
+    // Opcional: Calcular custo automaticamente se desejar
+    // Mas manteremos o campo manual por enquanto conforme o original
+  }
 
   return (
     <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
@@ -825,113 +847,59 @@ const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNo
         <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
           <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Adicionar Novo Serviço</h3>
 
-          {/* Informações básicas do serviço */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <Input label="Nome do Serviço" value={novoServico.nome} onChange={(v: string) => setNovoServico({ ...novoServico, nome: v })} />
             <Input label="Preço" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({ ...novoServico, preco: v })} />
-            <Input label="Custo Insumos" type="number" value={novoServico.custo_insumos} onChange={(v: number) => setNovoServico({ ...novoServico, custo_insumos: v })} />
+            <Input label="Custo Insumos (Estimado)" type="number" value={novoServico.custo_insumos} onChange={(v: number) => setNovoServico({ ...novoServico, custo_insumos: v })} />
           </div>
 
-          {/* Seção de Insumos (Ficha Técnica) */}
-          <div className="border-t border-cyan-200 dark:border-clinic-cyan/30 pt-6 mt-6">
-            <h4 className="text-md font-bold text-cyan-700 dark:text-clinic-cyan mb-4">📋 Ficha Técnica - Insumos</h4>
+          <div className="mb-6">
+            <label className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2 block">Insumos Utilizados</label>
 
-            {/* Adicionar Insumo */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              {/* Campo 1: Selecionar Insumo */}
-              <div>
-                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Selecionar Insumo</label>
-                <select
-                  value={insumoSelecionado || ''}
-                  onChange={(e) => setInsumoSelecionado(Number(e.target.value))}
-                  className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
-                >
-                  <option value="">Selecione...</option>
-                  {lotes.map((lote: any) => (
-                    <option key={lote.id_lote} value={lote.id_lote}>
-                      {lote.skus?.nome_produto || 'Produto'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Campo 2: Validade e Quantidade Disponível */}
-              <div>
-                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Validade / Qtd. Disponível</label>
-                <div className="bg-gray-100 dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white">
-                  {loteInfo ? (
-                    <div className="text-sm">
-                      <div className="font-semibold">{new Date(loteInfo.validade).toLocaleDateString('pt-BR')}</div>
-                      <div className="text-xs text-gray-600 dark:text-clinic-gray-400">Disponível: {loteInfo.quantidade_disponivel}</div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">-</span>
-                  )}
+            {novosInsumos.map((insumo: any, index: number) => (
+              <div key={index} className="flex items-end gap-4 mb-3">
+                <div className="flex-grow">
+                  <label className="text-xs text-gray-600 dark:text-clinic-gray-400 mb-1 block">Selecione o Insumo</label>
+                  <select
+                    value={insumo.id_lote}
+                    onChange={(e) => handleUpdateInsumo(index, 'id_lote', Number(e.target.value))}
+                    className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-sm text-gray-900 dark:text-clinic-white"
+                  >
+                    <option value={0}>Selecione um lote...</option>
+                    {lotesDisponiveis.map((lote: any) => (
+                      <option key={lote.id_lote} value={lote.id_lote}>
+                        {lote.skus?.nome_produto} ({new Date(lote.validade).toLocaleDateString('pt-BR').slice(3)}) - Disp: {lote.quantidade_disponivel}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </div>
-
-              {/* Campo 3: Quantidade Utilizada */}
-              <div>
-                <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Quantidade Utilizada</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={quantidadeInsumo}
-                  onChange={(e) => setQuantidadeInsumo(Number(e.target.value))}
-                  className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
-                  placeholder="0"
-                />
-              </div>
-
-              {/* Botão Adicionar */}
-              <div className="flex items-end">
+                <div className="w-32">
+                  <Input
+                    label="Qtd Usada"
+                    type="number"
+                    value={insumo.quantidade}
+                    onChange={(v: number) => handleUpdateInsumo(index, 'quantidade', v)}
+                  />
+                </div>
                 <button
-                  onClick={handleAdicionarInsumo}
-                  className="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors"
+                  onClick={() => handleRemoveInsumo(index)}
+                  className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg mb-1"
                 >
-                  + Adicionar Insumo
+                  <Trash2 className="w-5 h-5" />
                 </button>
               </div>
-            </div>
+            ))}
 
-            {/* Lista de Insumos Adicionados */}
-            {novoServico.insumos.length > 0 && (
-              <div className="mt-4">
-                <h5 className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2">Insumos Adicionados:</h5>
-                <div className="space-y-2">
-                  {novoServico.insumos.map((insumo: any, index: number) => {
-                    const lote = lotes.find((l: any) => l.id_lote === insumo.id_lote)
-                    return (
-                      <div key={index} className="flex items-center justify-between bg-white dark:bg-clinic-gray-700 border border-gray-200 dark:border-clinic-cyan/20 rounded-lg px-4 py-2">
-                        <div className="flex-1">
-                          <span className="font-semibold text-gray-900 dark:text-clinic-white">
-                            {lote?.skus?.nome_produto || 'Produto'}
-                          </span>
-                          <span className="text-sm text-gray-600 dark:text-clinic-gray-400 ml-4">
-                            Quantidade: {insumo.quantidade_utilizada}
-                          </span>
-                          <span className="text-xs text-gray-500 dark:text-clinic-gray-500 ml-4">
-                            Validade: {lote ? new Date(lote.validade).toLocaleDateString('pt-BR') : '-'}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => handleRemoverInsumo(index)}
-                          className="ml-4 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-sm transition-colors"
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            <button
+              onClick={handleAddInsumo}
+              className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 mt-2"
+            >
+              <Plus className="w-4 h-4" />
+              Adicionar Insumo
+            </button>
           </div>
 
-          <div className="mt-6">
-            <Button onClick={onAdicionar}>Salvar Serviço</Button>
-          </div>
+          <Button onClick={onAdicionar}>Salvar Serviço</Button>
         </div>
       )}
 
@@ -948,8 +916,37 @@ const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNo
           </thead>
           <tbody>
             {servicos.map((s: ServicoCalculado) => (
-              <tr key={s.id} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
-                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{s.nome}</td>
+              <tr
+                key={s.id}
+                className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5 relative group"
+                onMouseEnter={() => setHoveredService(s.id)}
+                onMouseLeave={() => setHoveredService(null)}
+              >
+                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white relative">
+                  {s.nome}
+                  {/* Tooltip de Insumos */}
+                  {hoveredService === s.id && (
+                    <div className="absolute left-0 top-full mt-2 z-50 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-4 pointer-events-none">
+                      <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Insumos Utilizados</h4>
+                      {loadingHover ? (
+                        <div className="text-center py-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-clinic-cyan border-t-transparent mx-auto"></div>
+                        </div>
+                      ) : insumosHover.length > 0 ? (
+                        <ul className="space-y-2">
+                          {insumosHover.map((item: any, idx: number) => (
+                            <li key={idx} className="text-xs text-gray-700 dark:text-gray-300 flex justify-between">
+                              <span>{item.lotes?.skus?.nome_produto}</span>
+                              <span className="font-mono font-bold">{item.quantidade_usada}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">Nenhum insumo vinculado</p>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan">{formatCurrency(s.preco)}</td>
                 <td className="px-4 py-3 text-right text-gray-600 dark:text-clinic-gray-400">{formatCurrency(s.custo_insumos)}</td>
                 <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(s.margemContribuicao)}</td>
@@ -1071,35 +1068,249 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
   </div>
 )
 
-const AbaVendas = ({ vendas, tituloPeriodo }: any) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Vendas - {tituloPeriodo}</h2>
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Data</th>
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Paciente</th>
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Pagamento</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Total</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem</th>
-          </tr>
-        </thead>
-        <tbody>
-          {vendas.map((v: any) => (
-            <tr key={v.id} className="border-b border-gray-100 dark:border-clinic-cyan/10">
-              <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{new Date(v.data_venda).toLocaleDateString('pt-BR')}</td>
-              <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{v.pacientes?.nome_completo || 'N/A'}</td>
-              <td className="px-4 py-3 text-gray-600 dark:text-clinic-gray-400">{v.metodo_pagamento}</td>
-              <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan font-bold">{formatCurrency(v.preco_total)}</td>
-              <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(v.margem_total)}</td>
+const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, pacientes, servicos }: any) => {
+  const [mostrarForm, setMostrarForm] = useState(false)
+  const [buscaPaciente, setBuscaPaciente] = useState('')
+  const [novaVenda, setNovaVenda] = useState({
+    data: new Date().toISOString().split('T')[0],
+    id_paciente: 0,
+    metodo_pagamento: 'Dinheiro',
+    parcelas: 1,
+    servicos: [] as any[]
+  })
+
+  const pacientesFiltrados = useMemo(() => {
+    if (!buscaPaciente) return pacientes.slice(0, 10)
+    return pacientes.filter((p: any) =>
+      p.nome_completo.toLowerCase().includes(buscaPaciente.toLowerCase())
+    ).slice(0, 10)
+  }, [pacientes, buscaPaciente])
+
+  const servicosPorCategoria = useMemo(() => {
+    const grupos: Record<string, any[]> = {}
+    servicos.forEach((s: any) => {
+      const cat = s.categoria || 'Geral'
+      if (!grupos[cat]) grupos[cat] = []
+      grupos[cat].push(s)
+    })
+    return grupos
+  }, [servicos])
+
+  const handleAddServico = (servicoId: string) => {
+    const servico = servicos.find((s: any) => s.id === Number(servicoId))
+    if (servico) {
+      setNovaVenda(prev => ({
+        ...prev,
+        servicos: [...prev.servicos, servico]
+      }))
+    }
+  }
+
+  const handleRemoveServico = (index: number) => {
+    setNovaVenda(prev => ({
+      ...prev,
+      servicos: prev.servicos.filter((_, i) => i !== index)
+    }))
+  }
+
+  const totalVenda = novaVenda.servicos.reduce((acc, s) => acc + s.preco, 0)
+
+  const handleSalvar = () => {
+    if (!novaVenda.id_paciente || novaVenda.servicos.length === 0) return
+    onNovaVenda({ ...novaVenda, total: totalVenda })
+    setMostrarForm(false)
+    setNovaVenda({
+      data: new Date().toISOString().split('T')[0],
+      id_paciente: 0,
+      metodo_pagamento: 'Dinheiro',
+      parcelas: 1,
+      servicos: []
+    })
+    setBuscaPaciente('')
+  }
+
+  return (
+    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Vendas - {tituloPeriodo}</h2>
+        <Button onClick={() => setMostrarForm(!mostrarForm)}>
+          {mostrarForm ? '✕ Cancelar' : '+ Nova Venda'}
+        </Button>
+      </div>
+
+      {mostrarForm && (
+        <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
+          <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Registrar Nova Venda</h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Coluna 1: Dados da Venda */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Data</label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="date"
+                    value={novaVenda.data}
+                    onChange={e => setNovaVenda({ ...novaVenda, data: e.target.value })}
+                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Paciente</label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Buscar paciente..."
+                    value={buscaPaciente}
+                    onChange={e => setBuscaPaciente(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-cyan-500 mb-2"
+                  />
+                  {buscaPaciente && (
+                    <div className="absolute z-10 w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {pacientesFiltrados.map((p: any) => (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            setNovaVenda({ ...novaVenda, id_paciente: p.id })
+                            setBuscaPaciente(p.nome_completo)
+                          }}
+                          className={`px-4 py-2 cursor-pointer hover:bg-cyan-50 dark:hover:bg-cyan-900/30 ${novaVenda.id_paciente === p.id ? 'bg-cyan-100 dark:bg-cyan-900/50' : ''}`}
+                        >
+                          <div className="font-medium text-gray-900 dark:text-white">{p.nome_completo}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">CPF: {p.cpf}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Pagamento</label>
+                <div className="flex gap-4">
+                  <select
+                    value={novaVenda.metodo_pagamento}
+                    onChange={e => setNovaVenda({ ...novaVenda, metodo_pagamento: e.target.value })}
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2"
+                  >
+                    <option value="Dinheiro">Dinheiro</option>
+                    <option value="Pix">Pix</option>
+                    <option value="Cartão de Débito">Cartão de Débito</option>
+                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    <option value="Crédito">Crédito (Parcelado)</option>
+                  </select>
+
+                  {novaVenda.metodo_pagamento === 'Crédito' && (
+                    <select
+                      value={novaVenda.parcelas}
+                      onChange={e => setNovaVenda({ ...novaVenda, parcelas: Number(e.target.value) })}
+                      className="w-24 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2"
+                    >
+                      {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                        <option key={n} value={n}>{n}x</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Coluna 2: Serviços */}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Adicionar Serviço</label>
+                <select
+                  onChange={e => {
+                    handleAddServico(e.target.value)
+                    e.target.value = ''
+                  }}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white px-4 py-2"
+                >
+                  <option value="">Selecione um serviço...</option>
+                  {Object.entries(servicosPorCategoria).map(([categoria, items]) => (
+                    <optgroup key={categoria} label={categoria}>
+                      {items.map((s: any) => (
+                        <option key={s.id} value={s.id}>{s.nome} - {formatCurrency(s.preco)}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 min-h-[200px]">
+                <h4 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Serviços Selecionados</h4>
+                {novaVenda.servicos.length === 0 ? (
+                  <p className="text-gray-400 text-center py-8">Nenhum serviço adicionado</p>
+                ) : (
+                  <div className="space-y-2">
+                    {novaVenda.servicos.map((s, idx) => (
+                      <div key={idx} className="flex justify-between items-center bg-gray-50 dark:bg-gray-700/50 p-2 rounded">
+                        <div>
+                          <div className="font-medium text-gray-900 dark:text-white">{s.nome}</div>
+                          <div className="text-xs text-gray-500">{s.categoria || 'Geral'}</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-cyan-600 dark:text-cyan-400">{formatCurrency(s.preco)}</span>
+                          <button onClick={() => handleRemoveServico(idx)} className="text-red-500 hover:text-red-700">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
+                <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
+                <span className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">{formatCurrency(totalVenda)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => setMostrarForm(false)}>Cancelar</Button>
+            <Button onClick={handleSalvar} disabled={!novaVenda.id_paciente || novaVenda.servicos.length === 0}>
+              Confirmar Venda
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Data</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Paciente</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Pagamento</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Total</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {vendas.map((v: any) => (
+              <tr key={v.id} className="border-b border-gray-100 dark:border-clinic-cyan/10">
+                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{new Date(v.data_venda).toLocaleDateString('pt-BR')}</td>
+                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{v.pacientes?.nome_completo || 'N/A'}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-clinic-gray-400">
+                  {v.metodo_pagamento}
+                  {v.parcelas > 1 && ` (${v.parcelas}x)`}
+                </td>
+                <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan font-bold">{formatCurrency(v.preco_total)}</td>
+                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(v.margem_total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 const AbaMetas = ({ metas, tituloPeriodo }: any) => (
   <div className="space-y-6">

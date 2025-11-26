@@ -62,11 +62,27 @@ export interface Database {
       }
 
       servico_insumos: {
-        Row: ServicoInsumo
-        Insert: Omit<ServicoInsumo, 'id'> & {
-          id?: number
+        Row: {
+          id: number
+          id_servico: number
+          id_lote: number
+          quantidade_usada: number
+          id_clinica: number
         }
-        Update: Partial<Omit<ServicoInsumo, 'id'>>
+        Insert: {
+          id?: number
+          id_servico: number
+          id_lote: number
+          quantidade_usada: number
+          id_clinica: number
+        }
+        Update: {
+          id?: number
+          id_servico?: number
+          id_lote?: number
+          quantidade_usada?: number
+          id_clinica?: number
+        }
       }
 
       // Clínicas
@@ -519,6 +535,7 @@ export interface Servico {
   id: number
   id_clinica: number
   nome: string
+  categoria?: string // Adicionado conforme solicitação
   preco: number
   custo_insumos: number
   custo_equip: number
@@ -585,14 +602,6 @@ export interface VendaServico {
   custo_insumos_no_momento: number
   mod_aplicado_no_momento: number
   custo_equip_no_momento: number
-}
-
-export interface ServicoInsumo {
-  id: number
-  id_servico: number
-  id_lote: number
-  quantidade_utilizada: number
-  criado_em: string
 }
 
 export interface ServicoCalculado extends Servico {

@@ -511,6 +511,7 @@ export interface Database {
 }
 
 export interface Servico {
+  [x: string]: any
   id: number
   id_clinica: number
   nome: string

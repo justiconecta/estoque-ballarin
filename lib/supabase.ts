@@ -117,8 +117,6 @@ export const supabaseApi = {
     }
   },
 
-  // lib/supabase.ts - ADICIONAR AO supabaseApi EXISTENTE
-
   // ============ MÓDULO FINANCEIRO - SERVIÇOS ============
 
   async getServicos() {
@@ -134,8 +132,41 @@ export const supabaseApi = {
         .order('nome', { ascending: true })
 
       if (error) throw error
-      console.log(`📋 SERVIÇOS ENCONTRADOS: ${data?.length || 0}`)
-      return data || []
+
+      // ✅ FIX: Validar e normalizar dados dos serviços
+      const servicosValidados = (data || []).map(servico => ({
+        ...servico,
+        // Garantir valores numéricos
+        preco: Number(servico.preco) || 0,
+        custo_insumos: Number(servico.custo_insumos) || 0,
+        custo_equip: Number(servico.custo_equip) || 0,
+        // Garantir categoria preenchida
+        categoria: servico.categoria?.trim() || 'Outros'
+      }))
+
+      // ✅ DEBUG: Log de serviços com problemas
+      const servicosSemPreco = servicosValidados.filter(s => s.preco === 0)
+      if (servicosSemPreco.length > 0) {
+        console.warn(`⚠️ ${servicosSemPreco.length} serviços sem preço:`, 
+          servicosSemPreco.map(s => s.nome))
+      }
+
+      const servicosSemCategoria = servicosValidados.filter(s => !s.categoria || s.categoria === 'Outros')
+      if (servicosSemCategoria.length > 0) {
+        console.warn(`⚠️ ${servicosSemCategoria.length} serviços sem categoria definida:`, 
+          servicosSemCategoria.map(s => s.nome))
+      }
+
+      console.log(`📋 SERVIÇOS ENCONTRADOS: ${servicosValidados.length}`)
+      console.log('📊 Breakdown por categoria:', 
+        servicosValidados.reduce((acc, s) => {
+          const cat = s.categoria || 'Outros'
+          acc[cat] = (acc[cat] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+      )
+
+      return servicosValidados
     } catch (error) {
       console.error('💥 ERRO getServicos:', error)
       return []
@@ -580,6 +611,7 @@ export const supabaseApi = {
         preco_final: precoFinal,
         margem_percentual: margemPercentual,
         margem_percentual_final: margemPercentualFinal,
+        margem_total_final: margemTotalFinal,
         valor_entrada: valorEntrada,
         valor_parcelado: valorParcelado
       })

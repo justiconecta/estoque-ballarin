@@ -1,4 +1,5 @@
-// types/database.ts - VERSÃO DEFINITIVA COM SCHEMA 100% REAL
+// types/database.ts - VERSÃO CORRIGIDA COM SCHEMA 100% REAL
+// ✅ FIX: Campo skus.preco_unitario → valor_venda (alinhado com banco)
 
 export interface Database {
   public: {
@@ -97,6 +98,7 @@ export interface Database {
           data_cadastro?: string
         }
       }
+
       // Usuários
       usuarios_internos: {
         Row: {
@@ -127,27 +129,28 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // ✅ PACIENTES COM SCHEMA 100% REAL BASEADO NA SUA TABELA
+
+      // ✅ PACIENTES COM SCHEMA 100% REAL
       pacientes: {
         Row: {
           id_paciente: number
-          nome_completo: string | null     // ✅ CORRIGIDO: era 'nome'
+          nome_completo: string | null
           cpf: string | null
-          data_nascimento: string | null   // date
+          data_nascimento: string | null
           celular: string | null
           email: string | null
           genero: string | null
-          endereco_completo: string | null // text
+          endereco_completo: string | null
           origem_lead: string | null
           status_paciente: string | null
           termo_aceite_dados: boolean | null
-          data_ultima_atualizacao: string | null  // timestamp
+          data_ultima_atualizacao: string | null
           consulta_agendada: boolean | null
           id_clinica: number | null
         }
         Insert: {
           id_paciente?: number
-          nome_completo?: string | null     // ✅ CORRIGIDO
+          nome_completo?: string | null
           cpf?: string | null
           data_nascimento?: string | null
           celular?: string | null
@@ -163,7 +166,7 @@ export interface Database {
         }
         Update: {
           id_paciente?: number
-          nome_completo?: string | null     // ✅ CORRIGIDO
+          nome_completo?: string | null
           cpf?: string | null
           data_nascimento?: string | null
           celular?: string | null
@@ -178,6 +181,7 @@ export interface Database {
           id_clinica?: number | null
         }
       }
+
       // Consultas
       consultas: {
         Row: {
@@ -229,16 +233,18 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Outras tabelas mantidas...
+
+      // ✅ SKUs - CORRIGIDO: valor_venda em vez de preco_unitario
       skus: {
         Row: {
           id_sku: number
           nome_produto: string
           fabricante: string
           classe_terapeutica: string
-          preco_unitario: number
+          valor_venda: number           // ✅ CORRIGIDO: era preco_unitario
           status_estoque: string
           data_cadastro: string
+          fator_divisao: string         // ✅ ADICIONADO
           id_clinica: number
         }
         Insert: {
@@ -246,9 +252,10 @@ export interface Database {
           nome_produto: string
           fabricante: string
           classe_terapeutica: string
-          preco_unitario: number
+          valor_venda: number           // ✅ CORRIGIDO
           status_estoque?: string
           data_cadastro?: string
+          fator_divisao?: string        // ✅ ADICIONADO
           id_clinica: number
         }
         Update: {
@@ -256,12 +263,15 @@ export interface Database {
           nome_produto?: string
           fabricante?: string
           classe_terapeutica?: string
-          preco_unitario?: number
+          valor_venda?: number          // ✅ CORRIGIDO
           status_estoque?: string
           data_cadastro?: string
+          fator_divisao?: string        // ✅ ADICIONADO
           id_clinica?: number
         }
       }
+
+      // Lotes - preco_unitario aqui é CUSTO do lote (correto)
       lotes: {
         Row: {
           id_lote: number
@@ -269,7 +279,7 @@ export interface Database {
           quantidade_disponivel: number
           validade: string
           data_entrada: string
-          preco_unitario: number // ✅ NOVO
+          preco_unitario: number        // Custo unitário do lote
           id_clinica: number
         }
         Insert: {
@@ -278,7 +288,7 @@ export interface Database {
           quantidade_disponivel: number
           validade: string
           data_entrada?: string
-          preco_unitario: number // ✅ NOVO
+          preco_unitario: number
           id_clinica: number
         }
         Update: {
@@ -287,10 +297,12 @@ export interface Database {
           quantidade_disponivel?: number
           validade?: string
           data_entrada?: string
-          preco_unitario?: number // ✅ NOVO
+          preco_unitario?: number
           id_clinica?: number
         }
       }
+
+      // Movimentações
       movimentacoes_estoque: {
         Row: {
           id_movimentacao: number
@@ -323,7 +335,8 @@ export interface Database {
           id_clinica?: number
         }
       }
-      // Tabelas adicionais para completude
+
+      // Orçamentos
       orcamentos: {
         Row: {
           id_orcamento: number
@@ -362,59 +375,49 @@ export interface Database {
           id_clinica?: number
         }
       }
+
+      // Procedimentos
       procedimentos: {
         Row: {
           id_procedimento: number
-          id_orcamento: number
-          nome_procedimento: string
-          valor_procedimento: number
-          status_procedimento: string
-          data_realizacao: string | null
+          id_consulta: number
+          id_paciente: number
+          id_sku: number
+          data_procedimento: string
+          area_aplicacao: string
+          quantidade_unidades: number
+          preco_cobrado: number
+          observacoes: string | null
           id_clinica: number
         }
         Insert: {
           id_procedimento?: number
-          id_orcamento: number
-          nome_procedimento: string
-          valor_procedimento: number
-          status_procedimento: string
-          data_realizacao?: string | null
+          id_consulta: number
+          id_paciente: number
+          id_sku: number
+          data_procedimento: string
+          area_aplicacao: string
+          quantidade_unidades: number
+          preco_cobrado: number
+          observacoes?: string | null
           id_clinica: number
         }
         Update: {
           id_procedimento?: number
-          id_orcamento?: number
-          nome_procedimento?: string
-          valor_procedimento?: number
-          status_procedimento?: string
-          data_realizacao?: string | null
+          id_consulta?: number
+          id_paciente?: number
+          id_sku?: number
+          data_procedimento?: string
+          area_aplicacao?: string
+          quantidade_unidades?: number
+          preco_cobrado?: number
+          observacoes?: string | null
           id_clinica?: number
         }
       }
-      dashboard_agregados: {
-        Row: {
-          id_dashboard: number
-          tipo_agregado: string
-          dados_json: any
-          data_geracao: string
-          id_clinica: number
-        }
-        Insert: {
-          id_dashboard?: number
-          tipo_agregado: string
-          dados_json: any
-          data_geracao?: string
-          id_clinica: number
-        }
-        Update: {
-          id_dashboard?: number
-          tipo_agregado?: string
-          dados_json?: any
-          data_geracao?: string
-          id_clinica?: number
-        }
-      }
-      google_review: {
+
+      // Reviews
+      reviews_google: {
         Row: {
           id_review: number
           autor: string
@@ -440,6 +443,8 @@ export interface Database {
           id_clinica?: number
         }
       }
+
+      // Resumos Diários
       resumos_diarios_paciente: {
         Row: {
           id_resumo_di: number
@@ -472,6 +477,8 @@ export interface Database {
           id_clinica?: number
         }
       }
+
+      // Resumos Semanais
       resumos_semanais_paciente: {
         Row: {
           id_resumo_sem: number
@@ -503,12 +510,12 @@ export interface Database {
           data_geracao?: string
           id_clinica?: number
         }
-
-
       }
     }
   }
 }
+
+// ============ INTERFACES DE DOMÍNIO ============
 
 export interface Servico {
   [x: string]: any
@@ -544,7 +551,7 @@ export interface Profissional {
 }
 
 export interface Parametros {
-  id_clinica: number // PK
+  id_clinica: number
   numero_salas: number
   horas_trabalho_dia: number
   duracao_media_servico_horas: number
@@ -569,14 +576,12 @@ export interface Venda {
   custo_taxa_cartao: number
   valor_entrada: number
   valor_parcelado: number
-
-  // ✅ NOVOS CAMPOS
   margem_percentual: number
   margem_percentual_final: number
+  margem_total_final: number
   desconto_valor: number
   desconto_percentual: number
   preco_final: number
-
   criado_em: string
 }
 
@@ -589,7 +594,7 @@ export interface VendaInsumo {
   valor_venda_total: number
 }
 
-// Deprecated but kept for compatibility if needed temporarily
+// Deprecated - mantido para compatibilidade
 export interface VendaServico {
   id: number
   id_venda: number
@@ -612,14 +617,14 @@ export interface VendaDetalhada extends Venda {
     cpf: string
   }
   insumos?: VendaInsumo[]
-  // Legacy support
   servicos?: VendaServico[]
 }
 
-// Tipos derivados corrigidos
+// ============ TIPOS DERIVADOS ============
+
 export type Clinica = Database['public']['Tables']['clinicas']['Row']
 export type Usuario = Database['public']['Tables']['usuarios_internos']['Row']
-export type Paciente = Database['public']['Tables']['pacientes']['Row']  // ✅ Agora com nome_completo
+export type Paciente = Database['public']['Tables']['pacientes']['Row']
 export type Consulta = Database['public']['Tables']['consultas']['Row']
 export type Sku = Database['public']['Tables']['skus']['Row']
 export type Lote = Database['public']['Tables']['lotes']['Row']
@@ -629,15 +634,15 @@ export type Procedimento = Database['public']['Tables']['procedimentos']['Row']
 export type ResumosDiarios = Database['public']['Tables']['resumos_diarios_paciente']['Row']
 export type ResumosSemanais = Database['public']['Tables']['resumos_semanais_paciente']['Row']
 
-// Interfaces auxiliares corrigidas
+// ============ INTERFACES AUXILIARES ============
+
 export interface PacienteComConsultas extends Paciente {
   consultas?: Consulta[]
   total_consultas?: number
 }
 
-// ✅ FORM INTERFACE CORRIGIDA
 export interface PacienteForm {
-  nome_completo: string        // ✅ CORRIGIDO: era 'nome'
+  nome_completo: string
   cpf: string
   data_nascimento?: string
   genero?: string
@@ -648,7 +653,6 @@ export interface PacienteForm {
   status_paciente?: string
 }
 
-// Outros tipos mantidos
 export interface UsuarioComClinica extends Usuario {
   clinicas?: Clinica
 }

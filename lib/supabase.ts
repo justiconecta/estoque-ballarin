@@ -544,7 +544,7 @@ export const supabaseApi = {
       const insumosDetalhados = await Promise.all(venda.insumos.map(async (item) => {
         const { data: lote, error: loteError } = await supabase
           .from('lotes')
-          .select('*, skus:id_sku(id_sku, nome_produto, preco_unitario, classe_terapeutica)')
+          .select('*, skus:id_sku(id_sku, nome_produto, valor_venda, classe_terapeutica)')
           .eq('id_lote', item.id_lote)
           .single()
 
@@ -552,7 +552,8 @@ export const supabaseApi = {
 
         // Cálculos por Item
         const custoUnitario = lote.preco_unitario || 0
-        const valorVendaUnitario = lote.skus?.preco_unitario || 0 // Valor de venda do SKU
+        const valorVendaUnitario = lote.skus?.valor_venda || 0
+
 
         const custoTotalItem = custoUnitario * item.quantidade
         const valorVendaTotalItem = valorVendaUnitario * item.quantidade

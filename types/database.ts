@@ -53,36 +53,12 @@ export interface Database {
         Update: Partial<Omit<Venda, 'id' | 'id_clinica'>>
       }
 
-      venda_servicos: {
-        Row: VendaServico
-        Insert: Omit<VendaServico, 'id'> & {
+      venda_insumos: {
+        Row: VendaInsumo
+        Insert: Omit<VendaInsumo, 'id'> & {
           id?: number
         }
-        Update: Partial<Omit<VendaServico, 'id'>>
-      }
-
-      servico_insumos: {
-        Row: {
-          id: number
-          id_servico: number
-          id_lote: number
-          quantidade_usada: number
-          id_clinica: number
-        }
-        Insert: {
-          id?: number
-          id_servico: number
-          id_lote: number
-          quantidade_usada: number
-          id_clinica: number
-        }
-        Update: {
-          id?: number
-          id_servico?: number
-          id_lote?: number
-          quantidade_usada?: number
-          id_clinica?: number
-        }
+        Update: Partial<Omit<VendaInsumo, 'id'>>
       }
 
       // Clínicas
@@ -293,6 +269,7 @@ export interface Database {
           quantidade_disponivel: number
           validade: string
           data_entrada: string
+          preco_unitario: number // ✅ NOVO
           id_clinica: number
         }
         Insert: {
@@ -301,6 +278,7 @@ export interface Database {
           quantidade_disponivel: number
           validade: string
           data_entrada?: string
+          preco_unitario: number // ✅ NOVO
           id_clinica: number
         }
         Update: {
@@ -309,6 +287,7 @@ export interface Database {
           quantidade_disponivel?: number
           validade?: string
           data_entrada?: string
+          preco_unitario?: number // ✅ NOVO
           id_clinica?: number
         }
       }
@@ -535,7 +514,6 @@ export interface Servico {
   id: number
   id_clinica: number
   nome: string
-  categoria?: string // Adicionado conforme solicitação
   preco: number
   custo_insumos: number
   custo_equip: number
@@ -590,9 +568,27 @@ export interface Venda {
   custo_taxa_cartao: number
   valor_entrada: number
   valor_parcelado: number
+
+  // ✅ NOVOS CAMPOS
+  margem_percentual: number
+  margem_percentual_final: number
+  desconto_valor: number
+  desconto_percentual: number
+  preco_final: number
+
   criado_em: string
 }
 
+export interface VendaInsumo {
+  id: number
+  id_venda: number
+  id_lote: number
+  quantidade: number
+  custo_total: number
+  valor_venda_total: number
+}
+
+// Deprecated but kept for compatibility if needed temporarily
 export interface VendaServico {
   id: number
   id_venda: number
@@ -614,7 +610,9 @@ export interface VendaDetalhada extends Venda {
     nome_completo: string
     cpf: string
   }
-  servicos: VendaServico[]
+  insumos?: VendaInsumo[]
+  // Legacy support
+  servicos?: VendaServico[]
 }
 
 // Tipos derivados corrigidos

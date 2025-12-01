@@ -186,116 +186,6 @@ export const supabaseApi = {
     }
   },
 
-  async getLotesDisponiveis() {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('lotes')
-        .select(`
-        *,
-        skus:id_sku (
-          nome_produto,
-          classe_terapeutica,
-          fator_divisao
-        )
-      `)
-        .eq('id_clinica', clinicId)
-        .gt('quantidade_disponivel', 0)
-        .order('validade', { ascending: true })
-
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO getLotesDisponiveis:', error)
-      return []
-    }
-  },
-
-  async reduzirQuantidadeLote(id_lote: number, quantidade: number) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      // Primeiro busca o lote atual
-      const { data: lote, error: fetchError } = await supabase
-        .from('lotes')
-        .select('quantidade_disponivel')
-        .eq('id_lote', id_lote)
-        .eq('id_clinica', clinicId)
-        .single()
-
-      if (fetchError) throw fetchError
-
-      const novaQuantidade = lote.quantidade_disponivel - quantidade
-
-      if (novaQuantidade < 0) {
-        throw new Error('Quantidade insuficiente no lote')
-      }
-
-      const { data, error } = await supabase
-        .from('lotes')
-        .update({ quantidade_disponivel: novaQuantidade })
-        .eq('id_lote', id_lote)
-        .eq('id_clinica', clinicId)
-        .select()
-        .single()
-
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO reduzirQuantidadeLote:', error)
-      throw error
-    }
-  },
-
-  async createServicoInsumo(insumo: { id_servico: number; id_lote: number; quantidade_usada: number }) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('servico_insumos')
-        .insert({ ...insumo, id_clinica: clinicId })
-        .select()
-        .single()
-
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO createServicoInsumo:', error)
-      throw error
-    }
-  },
-
-  async getServicoInsumos(id_servico: number) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('servico_insumos')
-        .select(`
-        *,
-        lotes:id_lote (
-          validade,
-          skus:id_sku (
-            nome_produto
-          )
-        )
-      `)
-        .eq('id_servico', id_servico)
-        .eq('id_clinica', clinicId)
-
-      if (error) throw error
-      return data
-    } catch (error) {
-      console.error('💥 ERRO getServicoInsumos:', error)
-      return []
-    }
-  },
-
   // ============ MÓDULO FINANCEIRO - DESPESAS ============
 
   async getDespesas() {
@@ -602,56 +492,94 @@ export const supabaseApi = {
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
-    metodo_pagamento: string
+    metodo_pagamento: 'PIX' | 'Débito' | 'Crédito'
     parcelas?: number
-    servicos: number[] // IDs dos serviços
+    desconto_valor?: number
+    valor_entrada?: number // Valor em R$
+    insumos: {
+      id_lote: number
+      quantidade: number
+    }[]
   }) {
     try {
       const clinicId = getCurrentClinicId()
       if (!clinicId) throw new Error('Clínica não identificada')
 
-      // Buscar serviços selecionados
-      const { data: servicosData } = await supabase
-        .from('servicos')
-        .select('*')
-        .in('id', venda.servicos)
-        .eq('id_clinica', clinicId)
-
-      if (!servicosData || servicosData.length === 0) {
-        throw new Error('Serviços não encontrados')
+      if (!venda.insumos || venda.insumos.length === 0) {
+        throw new Error('Nenhum insumo selecionado para a venda')
       }
 
-      // Buscar parâmetros
+      // 1. Buscar dados dos lotes e SKUs para cálculos
+      const insumosDetalhados = await Promise.all(venda.insumos.map(async (item) => {
+        const { data: lote, error: loteError } = await supabase
+          .from('lotes')
+          .select('*, skus:id_sku(id_sku, nome_produto, preco_unitario, classe_terapeutica)')
+          .eq('id_lote', item.id_lote)
+          .single()
+
+        if (loteError || !lote) throw new Error(`Lote ${item.id_lote} não encontrado`)
+
+        // Cálculos por Item
+        const custoUnitario = lote.preco_unitario || 0
+        const valorVendaUnitario = lote.skus?.preco_unitario || 0 // Valor de venda do SKU
+
+        const custoTotalItem = custoUnitario * item.quantidade
+        const valorVendaTotalItem = valorVendaUnitario * item.quantidade
+
+        return {
+          ...item,
+          lote,
+          custoTotalItem,
+          valorVendaTotalItem
+        }
+      }))
+
+      // 2. Calcular Totais da Venda
+      const precoTotal = insumosDetalhados.reduce((acc, item) => acc + item.valorVendaTotalItem, 0)
+      const custoTotal = insumosDetalhados.reduce((acc, item) => acc + item.custoTotalItem, 0)
+
+      const descontoValor = venda.desconto_valor || 0
+      const precoFinal = precoTotal - descontoValor
+      const descontoPercentual = precoTotal > 0 ? (descontoValor / precoTotal) * 100 : 0
+
+      // Margens
+      const margemTotal = precoTotal - custoTotal
+      const margemPercentual = precoTotal > 0 ? (margemTotal / precoTotal) * 100 : 0
+
+      const margemTotalFinal = precoFinal - custoTotal
+      const margemPercentualFinal = precoFinal > 0 ? (margemTotalFinal / precoFinal) * 100 : 0
+
+      // Pagamento e Parcelamento
       const parametros = await this.getParametros()
-
-      // Calcular totais
-      const precoTotal = servicosData.reduce((sum, s) => sum + s.preco, 0)
-      const custoInsumosTotal = servicosData.reduce((sum, s) => sum + s.custo_insumos, 0)
-
       let custoTaxaCartao = 0
-      let valorEntrada = precoTotal
-      let valorParcelado = 0
 
       if (venda.metodo_pagamento === 'Crédito') {
-        custoTaxaCartao = precoTotal * (parametros.taxa_cartao_pct / 100)
-        valorEntrada = precoTotal * 0.30
-        valorParcelado = precoTotal * 0.70
+        custoTaxaCartao = precoFinal * (parametros.taxa_cartao_pct / 100)
       }
 
-      const custoTotal = custoInsumosTotal + parametros.mod_padrao + custoTaxaCartao
-      const margemTotal = precoTotal - custoTotal
+      const valorEntrada = venda.valor_entrada || 0
+      const valorParcelado = Math.max(0, precoFinal - valorEntrada)
+      const numeroParcelas = venda.metodo_pagamento === 'Crédito' ? (venda.parcelas || 1) : null
 
-      // Criar venda
+      // 3. Criar Venda
       const vendaCompleta = ensureClinicFilter({
         id_paciente: venda.id_paciente,
         id_usuario_responsavel: null,
         data_venda: venda.data_venda,
         metodo_pagamento: venda.metodo_pagamento,
-        parcelas: venda.metodo_pagamento === 'Crédito' ? (venda.parcelas || 1) : null,
+        parcelas: numeroParcelas,
+
         preco_total: precoTotal,
         custo_total: custoTotal,
         margem_total: margemTotal,
         custo_taxa_cartao: custoTaxaCartao,
+
+        // Novos Campos
+        desconto_valor: descontoValor,
+        desconto_percentual: descontoPercentual,
+        preco_final: precoFinal,
+        margem_percentual: margemPercentual,
+        margem_percentual_final: margemPercentualFinal,
         valor_entrada: valorEntrada,
         valor_parcelado: valorParcelado
       })
@@ -664,25 +592,34 @@ export const supabaseApi = {
 
       if (vendaError) throw vendaError
 
-      // Criar venda_servicos
-      const vendaServicos = servicosData.map(s => ({
-        id_venda: vendaCriada.id,
-        id_servico: s.id,
-        quantidade: 1,
-        preco_no_momento: s.preco,
-        custo_insumos_no_momento: s.custo_insumos,
-        mod_aplicado_no_momento: parametros.mod_padrao,
-        custo_equip_no_momento: s.custo_equip
-      }))
+      // 4. Inserir Itens da Venda (venda_insumos) e Baixar Estoque
+      for (const item of insumosDetalhados) {
+        // Inserir na tabela de relacionamento
+        await supabase.from('venda_insumos').insert({
+          id_venda: vendaCriada.id,
+          id_lote: item.id_lote,
+          quantidade: item.quantidade,
+          custo_total: item.custoTotalItem,
+          valor_venda_total: item.valorVendaTotalItem
+        })
 
-      const { error: servicosError } = await supabase
-        .from('venda_servicos')
-        .insert(vendaServicos)
+        // Baixar Estoque
+        const novaQuantidade = item.lote.quantidade_disponivel - item.quantidade
+        await this.updateLoteQuantidade(item.id_lote, novaQuantidade)
 
-      if (servicosError) throw servicosError
+        // Registrar Movimentação de Saída
+        await this.createMovimentacao({
+          id_lote: item.id_lote,
+          tipo_movimentacao: 'SAIDA',
+          quantidade: item.quantidade,
+          usuario: 'Sistema (Venda)',
+          observacao: `Venda #${vendaCriada.id}`
+        })
+      }
 
-      console.log('✅ VENDA CRIADA:', vendaCriada.id)
+      console.log('✅ VENDA CRIADA COM INSUMOS:', vendaCriada.id)
       return vendaCriada
+
     } catch (error) {
       console.error('💥 ERRO createVenda:', error)
       throw error

@@ -334,7 +334,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                                                 <tr key={item.id_lote} className="border-t border-gray-200 dark:border-gray-700">
                                                     <td className="py-2">{item.nome_produto}</td>
                                                     <td className="py-2 text-right">{item.quantidade}</td>
-                                                    <td className="py-2 text-right">R$ {item.preco_unitario_venda.toFixed(2)}</td>
+                                                    <td className="py-2 text-right">R$ {(item.preco_unitario_venda || 0).toFixed(2)}</td>
                                                     <td className="py-2 text-right font-medium">R$ {(item.preco_unitario_venda * item.quantidade).toFixed(2)}</td>
                                                 </tr>
                                             ))}

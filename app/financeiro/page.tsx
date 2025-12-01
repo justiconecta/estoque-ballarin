@@ -156,14 +156,11 @@ export default function FinanceiroPage() {
   // ✅ NOVA FUNÇÃO: Carregar SKUs
   const loadSKUs = async () => {
     try {
-      setLoading(true)
       const skusData = await supabaseApi.getSKUs()
       setSKUs(skusData)
     } catch (error) {
       console.error('Erro ao carregar SKUs:', error)
       showFeedbackSKU('error', 'Falha ao carregar produtos')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -533,12 +530,6 @@ export default function FinanceiroPage() {
             />
           )}
 
-          {abaAtiva === 'vendas' && (
-            <AbaVendas vendas={vendas} tituloPeriodo={tituloPeriodo} onNovaVenda={function (): void {
-              throw new Error('Function not implemented.')
-            } } />
-          )}
-
           {abaAtiva === 'metas' && metasCalculadas && (
             <AbaMetas metas={metasCalculadas} tituloPeriodo={tituloPeriodo} />
           )}
@@ -657,24 +648,7 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
       </div>
     )}
 
-    {/* Legenda */}
-    <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-4 mb-6">
-      <h3 className="text-cyan-700 dark:text-clinic-cyan font-semibold mb-2">📋 Sobre os Campos</h3>
-      <ul className="space-y-2 text-sm text-gray-700 dark:text-clinic-gray-300">
-        <li><strong className="text-gray-900 dark:text-clinic-white">Categoria:</strong> Classifica o tipo de produto para organização de vendas</li>
-        <li><strong className="text-gray-900 dark:text-clinic-white">Fator de Divisão:</strong> Usado para calcular o preço por dose/aplicação</li>
-        <li className="text-gray-600 dark:text-clinic-gray-400 italic">
-          💡 Exemplo: Dysport 500u com fator 2 = cada unidade no sistema representa 0,5u real
-        </li>
-      </ul>
-    </div>
-
-    {loading && !editandoId ? (
-      <div className="text-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
-        <p className="text-gray-600 dark:text-clinic-gray-400">Carregando SKUs...</p>
-      </div>
-    ) : skus.length === 0 ? (
+    {skus.length === 0 ? (
       <div className="text-center py-12">
         <p className="text-gray-600 dark:text-clinic-gray-400">Nenhum SKU cadastrado</p>
       </div>

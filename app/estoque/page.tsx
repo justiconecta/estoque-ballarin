@@ -372,10 +372,7 @@ export default function EstoquePage() {
                             className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg px-10 py-2 text-clinic-white focus:outline-none focus:border-clinic-cyan"
                             required
                           />
-                        </div>
-                        <p className="text-xs text-clinic-gray-400">
-                          O preço unitário será calculado automaticamente: Valor ÷ Quantidade ÷ Fator Divisão
-                        </p>
+                        </div>                    
                       </div>
 
                       <div className="space-y-1">

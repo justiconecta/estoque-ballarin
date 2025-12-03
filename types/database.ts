@@ -1,5 +1,4 @@
-// types/database.ts - VERSÃO CORRIGIDA COM SCHEMA 100% REAL
-// ✅ FIX: Campo skus.preco_unitario → valor_venda (alinhado com banco)
+// types/database.ts
 
 export interface Database {
   public: {
@@ -241,10 +240,10 @@ export interface Database {
           nome_produto: string
           fabricante: string
           classe_terapeutica: string
-          valor_venda: number           // ✅ CORRIGIDO: era preco_unitario
+          valor_venda: number
           status_estoque: string
           data_cadastro: string
-          fator_divisao: string         // ✅ ADICIONADO
+          fator_divisao: string
           id_clinica: number
         }
         Insert: {
@@ -252,10 +251,10 @@ export interface Database {
           nome_produto: string
           fabricante: string
           classe_terapeutica: string
-          valor_venda: number           // ✅ CORRIGIDO
+          valor_venda: number
           status_estoque?: string
           data_cadastro?: string
-          fator_divisao?: string        // ✅ ADICIONADO
+          fator_divisao?: string
           id_clinica: number
         }
         Update: {
@@ -263,10 +262,10 @@ export interface Database {
           nome_produto?: string
           fabricante?: string
           classe_terapeutica?: string
-          valor_venda?: number          // ✅ CORRIGIDO
+          valor_venda?: number
           status_estoque?: string
           data_cadastro?: string
-          fator_divisao?: string        // ✅ ADICIONADO
+          fator_divisao?: string
           id_clinica?: number
         }
       }
@@ -279,7 +278,7 @@ export interface Database {
           quantidade_disponivel: number
           validade: string
           data_entrada: string
-          preco_unitario: number        // Custo unitário do lote
+          preco_unitario: number
           id_clinica: number
         }
         Insert: {
@@ -447,30 +446,30 @@ export interface Database {
       // Resumos Diários
       resumos_diarios_paciente: {
         Row: {
-          id_resumo_di: number
+          id_resumo_diario: number
           cpf: string
           nome_paciente: string | null
-          resumo_interacao: string
+          resumo_interacoes: string
           status_processamento: string
           data_resumo: string
           data_criacao: string
           id_clinica: number
         }
         Insert: {
-          id_resumo_di?: number
+          id_resumo_diario?: number
           cpf: string
           nome_paciente?: string | null
-          resumo_interacao: string
+          resumo_interacoes: string
           status_processamento: string
           data_resumo: string
           data_criacao?: string
           id_clinica: number
         }
         Update: {
-          id_resumo_di?: number
+          id_resumo_diario?: number
           cpf?: string
           nome_paciente?: string | null
-          resumo_interacao?: string
+          resumo_interacoes?: string
           status_processamento?: string
           data_resumo?: string
           data_criacao?: string
@@ -530,9 +529,11 @@ export interface Servico {
   atualizado_em: string
 }
 
+// ✅ ATUALIZADO: Campo tipo adicionado
 export interface Despesa {
   id: number
   id_clinica: number
+  tipo: 'Despesa Fixa' | 'Custo Fixo' | 'Despesa Variável' | 'Custo Variável'
   categoria: string
   item: string
   valor_mensal: number
@@ -673,3 +674,13 @@ export interface MovimentacaoDetalhada extends Movimentacao {
     }
   }
 }
+
+// ✅ TIPOS DE DESPESA - Enum para uso no frontend
+export type TipoDespesa = 'Despesa Fixa' | 'Custo Fixo' | 'Despesa Variável' | 'Custo Variável'
+
+export const TIPOS_DESPESA: TipoDespesa[] = [
+  'Despesa Fixa',
+  'Custo Fixo', 
+  'Despesa Variável',
+  'Custo Variável'
+]

@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  // ✅ CRÍTICO: Habilita classes dark: baseadas na classe 'dark' no HTML
+  darkMode: 'class',
+  
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -10,17 +13,13 @@ module.exports = {
       colors: {
         // Paleta Estética Clínica Ballarin
         'clinic': {
-          'black': '#000000',        // Fundo principal
-          'white': '#ffffff',        // Texto principal
-          'cyan': '#12f6ff',         // Destaque principal
-          'cyan-dark': '#03c8d9',    // Destaque secundário
-          'cyan-light': '#7dd3fc',   // Variação clara
-          
-          // Gradientes automáticos
+          'black': '#000000',
+          'white': '#ffffff',
+          'cyan': '#12f6ff',
+          'cyan-dark': '#03c8d9',
+          'cyan-light': '#7dd3fc',
           'primary': '#12f6ff',
           'secondary': '#03c8d9',
-          
-          // Tons de cinza com base no preto
           'gray': {
             50: '#f8fafc',
             100: '#f1f5f9',
@@ -30,11 +29,11 @@ module.exports = {
             500: '#64748b',
             600: '#475569',
             700: '#334155',
-            750: '#1e293b',   // Cinza médio
-            800: '#1e1e1e',   // Cinza escuro baseado no preto
-            850: '#151515',   // Cinza mais escuro
-            900: '#0a0a0a',   // Quase preto
-            950: '#000000'    // Preto puro
+            750: '#1e293b',
+            800: '#1e1e1e',
+            850: '#151515',
+            900: '#0a0a0a',
+            950: '#000000'
           }
         }
       },

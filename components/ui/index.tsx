@@ -1,7 +1,9 @@
 import React from 'react'
 import { LucideIcon } from 'lucide-react'
 
-// Button Component
+// ============================================
+// BUTTON COMPONENT
+// ============================================
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'success' | 'danger'
   size?: 'sm' | 'md' | 'lg'
@@ -22,7 +24,7 @@ export const Button: React.FC<ButtonProps> = ({
   const baseClasses = 'font-medium rounded-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center'
   
   const variants = {
-    primary: 'bg-clinic-cyan text-clinic-black hover:bg-clinic-cyan-dark focus:ring-clinic-cyan shadow-lg hover:shadow-clinic',
+    primary: 'bg-clinic-cyan text-clinic-black hover:opacity-90 focus:ring-clinic-cyan shadow-lg',
     secondary: 'bg-clinic-gray-700 text-clinic-white hover:bg-clinic-gray-600 focus:ring-clinic-gray-500 border border-clinic-gray-600',
     success: 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 shadow-lg',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-lg'
@@ -58,7 +60,9 @@ export const Button: React.FC<ButtonProps> = ({
 // Export da Navbar
 export { Navbar } from './navbar'
 
-// Input Component  
+// ============================================
+// INPUT COMPONENT
+// ============================================
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
   error?: string
@@ -79,7 +83,8 @@ export const Input: React.FC<InputProps> = ({
       )}
       <input
         className={`
-          block w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 
+          block w-full px-3 py-2 
+          bg-clinic-gray-800 border border-clinic-gray-600 
           rounded-md text-clinic-white placeholder-clinic-gray-400
           focus:outline-none focus:ring-2 focus:ring-clinic-cyan focus:border-clinic-cyan
           transition-all duration-200
@@ -95,7 +100,9 @@ export const Input: React.FC<InputProps> = ({
   )
 }
 
-// Select Component
+// ============================================
+// SELECT COMPONENT
+// ============================================
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string
   error?: string
@@ -118,7 +125,8 @@ export const Select: React.FC<SelectProps> = ({
       )}
       <select
         className={`
-          block w-full px-3 py-2 bg-clinic-gray-800 border border-clinic-gray-600 
+          block w-full px-3 py-2 
+          bg-clinic-gray-800 border border-clinic-gray-600 
           rounded-md text-clinic-white
           focus:outline-none focus:ring-2 focus:ring-clinic-cyan focus:border-clinic-cyan
           transition-all duration-200
@@ -140,7 +148,9 @@ export const Select: React.FC<SelectProps> = ({
   )
 }
 
-// Card Component
+// ============================================
+// CARD COMPONENT - USA CSS VARIABLES PARA TEMA
+// ============================================
 interface CardProps {
   children: React.ReactNode
   title?: string
@@ -149,10 +159,24 @@ interface CardProps {
 
 export const Card: React.FC<CardProps> = ({ children, title, className = '' }) => {
   return (
-    <div className={`bg-clinic-gray-800 rounded-xl shadow-clinic border border-clinic-gray-700 ${className}`}>
+    <div 
+      className={`rounded-xl shadow-clinic border ${className}`}
+      style={{
+        backgroundColor: 'var(--bg-card)',
+        borderColor: 'var(--border-secondary)'
+      }}
+    >
       {title && (
-        <div className="px-6 py-4 border-b border-clinic-gray-700">
-          <h3 className="text-lg font-semibold text-clinic-white">{title}</h3>
+        <div 
+          className="px-6 py-4 border-b"
+          style={{ borderColor: 'var(--border-secondary)' }}
+        >
+          <h3 
+            className="text-lg font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {title}
+          </h3>
         </div>
       )}
       <div className="p-6">{children}</div>
@@ -160,7 +184,9 @@ export const Card: React.FC<CardProps> = ({ children, title, className = '' }) =
   )
 }
 
-// Modal Component
+// ============================================
+// MODAL COMPONENT
+// ============================================
 interface ModalProps {
   isOpen: boolean
   onClose: () => void
@@ -173,9 +199,23 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div className="bg-clinic-gray-800 rounded-lg shadow-clinic-lg border border-clinic-gray-700 w-full max-w-md animate-slide-up">
-        <div className="px-6 py-4 border-b border-clinic-gray-700 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-clinic-white">{title}</h3>
+      <div 
+        className="rounded-lg shadow-clinic-lg w-full max-w-md animate-slide-up"
+        style={{
+          backgroundColor: 'var(--bg-card)',
+          border: '1px solid var(--border-secondary)'
+        }}
+      >
+        <div 
+          className="px-6 py-4 border-b flex justify-between items-center"
+          style={{ borderColor: 'var(--border-secondary)' }}
+        >
+          <h3 
+            className="text-lg font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {title}
+          </h3>
           <button
             onClick={onClose}
             className="text-clinic-gray-400 hover:text-clinic-white transition-colors p-1"
@@ -190,4 +230,6 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
     </div>
   )
 }
+
+// Export do HeaderUniversal
 export { HeaderUniversal } from './HeaderUniversal'

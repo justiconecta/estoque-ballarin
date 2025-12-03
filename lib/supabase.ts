@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { Database } from '@/types/database'
+import { Database, TipoDespesa } from '@/types/database'
 
 // Configuração Supabase
 const SUPABASE_URL = 'https://jlprybnxjqzaqzsxxnuh.supabase.co'
@@ -136,36 +136,13 @@ export const supabaseApi = {
       // ✅ FIX: Validar e normalizar dados dos serviços
       const servicosValidados = (data || []).map(servico => ({
         ...servico,
-        // Garantir valores numéricos
         preco: Number(servico.preco) || 0,
         custo_insumos: Number(servico.custo_insumos) || 0,
         custo_equip: Number(servico.custo_equip) || 0,
-        // Garantir categoria preenchida
         categoria: servico.categoria?.trim() || 'Outros'
       }))
 
-      // ✅ DEBUG: Log de serviços com problemas
-      const servicosSemPreco = servicosValidados.filter(s => s.preco === 0)
-      if (servicosSemPreco.length > 0) {
-        console.warn(`⚠️ ${servicosSemPreco.length} serviços sem preço:`, 
-          servicosSemPreco.map(s => s.nome))
-      }
-
-      const servicosSemCategoria = servicosValidados.filter(s => !s.categoria || s.categoria === 'Outros')
-      if (servicosSemCategoria.length > 0) {
-        console.warn(`⚠️ ${servicosSemCategoria.length} serviços sem categoria definida:`, 
-          servicosSemCategoria.map(s => s.nome))
-      }
-
       console.log(`📋 SERVIÇOS ENCONTRADOS: ${servicosValidados.length}`)
-      console.log('📊 Breakdown por categoria:', 
-        servicosValidados.reduce((acc, s) => {
-          const cat = s.categoria || 'Outros'
-          acc[cat] = (acc[cat] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-      )
-
       return servicosValidados
     } catch (error) {
       console.error('💥 ERRO getServicos:', error)
@@ -240,10 +217,19 @@ export const supabaseApi = {
     }
   },
 
-  async createDespesa(despesa: { categoria: string; item: string; valor_mensal: number }) {
+  // ✅ ATUALIZADO: Incluindo campo tipo na criação de despesa
+  async createDespesa(despesa: {
+    tipo?: TipoDespesa
+    categoria: string
+    item: string
+    valor_mensal: number
+  }) {
     try {
       const despesaCompleta = ensureClinicFilter({
-        ...despesa,
+        tipo: despesa.tipo || 'Despesa Fixa', // Default para compatibilidade
+        categoria: despesa.categoria,
+        item: despesa.item,
+        valor_mensal: despesa.valor_mensal,
         ativo: true
       })
 
@@ -254,7 +240,7 @@ export const supabaseApi = {
         .single()
 
       if (error) throw error
-      console.log('✅ DESPESA CRIADA:', data.item)
+      console.log('✅ DESPESA CRIADA:', data.item, '- Tipo:', data.tipo)
       return data
     } catch (error) {
       console.error('💥 ERRO createDespesa:', error)
@@ -428,12 +414,12 @@ export const supabaseApi = {
       const { data, error } = await supabase
         .from('vendas')
         .select(`
-        *,
-        pacientes:id_paciente (
-          nome_completo,
-          cpf
-        )
-      `)
+          *,
+          pacientes:id_paciente (
+            nome_completo,
+            cpf
+          )
+        `)
         .eq('id_clinica', clinicId)
         .gte('data_venda', dataInicio)
         .lte('data_venda', dataFim)
@@ -447,11 +433,11 @@ export const supabaseApi = {
           const { data: servicos } = await supabase
             .from('venda_servicos')
             .select(`
-            *,
-            servicos:id_servico (
-              nome
-            )
-          `)
+              *,
+              servicos:id_servico (
+                nome
+              )
+            `)
             .eq('id_venda', venda.id)
 
           return {
@@ -470,7 +456,7 @@ export const supabaseApi = {
   },
 
   /**
-   * ✅ NOVA FUNÇÃO: Buscar todos os SKUs da clínica
+   * ✅ Buscar todos os SKUs da clínica
    */
   async getSKUs() {
     try {
@@ -493,7 +479,7 @@ export const supabaseApi = {
   },
 
   /**
-   * ✅ NOVA FUNÇÃO: Atualizar categoria e fator_divisao de um SKU
+   * ✅ Atualizar categoria e fator_divisao de um SKU
    */
   async updateSKU(id_sku: number, updates: {
     classe_terapeutica?: string
@@ -526,7 +512,7 @@ export const supabaseApi = {
     metodo_pagamento: 'PIX' | 'Débito' | 'Crédito'
     parcelas?: number
     desconto_valor?: number
-    valor_entrada?: number // Valor em R$
+    valor_entrada?: number
     insumos: {
       id_lote: number
       quantidade: number
@@ -553,7 +539,6 @@ export const supabaseApi = {
         // Cálculos por Item
         const custoUnitario = lote.preco_unitario || 0
         const valorVendaUnitario = lote.skus?.valor_venda || 0
-
 
         const custoTotalItem = custoUnitario * item.quantidade
         const valorVendaTotalItem = valorVendaUnitario * item.quantidade
@@ -606,7 +591,7 @@ export const supabaseApi = {
         margem_total: margemTotal,
         custo_taxa_cartao: custoTaxaCartao,
 
-        // Novos Campos
+        // Campos calculados
         desconto_valor: descontoValor,
         desconto_percentual: descontoPercentual,
         preco_final: precoFinal,
@@ -684,12 +669,12 @@ export const supabaseApi = {
       const { data, error } = await supabase
         .from('usuarios_internos')
         .select(`
-        role, 
-        id_clinica,
-        clinicas:id_clinica (
-          nome_clinica
-        )
-      `)
+          role, 
+          id_clinica,
+          clinicas:id_clinica (
+            nome_clinica
+          )
+        `)
         .eq('usuario', usuario)
         .single()
 
@@ -697,13 +682,6 @@ export const supabaseApi = {
         console.error('❌ isAdminGeral: Erro SQL:', error)
         return false
       }
-
-      console.log('📊 isAdminGeral: Dados do usuário:', {
-        usuario,
-        role: data.role,
-        id_clinica: data.id_clinica,
-        clinica: data.clinicas?.[0]?.nome_clinica
-      })
 
       const isRoleAdmin = data.role === 'admin'
       const nomeClinica = data.clinicas?.[0]?.nome_clinica || ''
@@ -751,7 +729,7 @@ export const supabaseApi = {
 
       const clinicaCompleta = {
         ...clinica,
-        plano: 'basico', // padrão fixo
+        plano: 'basico',
         ativa: true,
         data_cadastro: new Date().toISOString()
       }
@@ -775,11 +753,11 @@ export const supabaseApi = {
   async createAdminClinica(clinicaId: number, adminData: {
     nome_completo: string
     email: string
-    usuario_base: string // será transformado em admin.{usuario_base}
+    usuario_base: string
   }) {
     try {
       const usuarioAdmin = `admin.${adminData.usuario_base}`
-      const senhaInicial = `${adminData.usuario_base}123` // Senha temporária
+      const senhaInicial = `${adminData.usuario_base}123`
 
       console.log(`👤 CRIANDO ADMIN PARA CLÍNICA ${clinicaId}:`, usuarioAdmin)
 
@@ -836,25 +814,24 @@ export const supabaseApi = {
 
       if (!clinicId) throw new Error('Clínica não identificada')
 
-      // ✅ QUERY COM CAMPOS CORRETOS DA TABELA REAL
       const { data, error } = await supabase
         .from('pacientes')
         .select(`
-        id_paciente,
-        nome_completo,
-        cpf,
-        data_nascimento,
-        celular,
-        email,
-        genero,
-        endereco_completo,
-        origem_lead,
-        status_paciente,
-        termo_aceite_dados,
-        data_ultima_atualizacao,
-        consulta_agendada,
-        id_clinica
-      `)
+          id_paciente,
+          nome_completo,
+          cpf,
+          data_nascimento,
+          celular,
+          email,
+          genero,
+          endereco_completo,
+          origem_lead,
+          status_paciente,
+          termo_aceite_dados,
+          data_ultima_atualizacao,
+          consulta_agendada,
+          id_clinica
+        `)
         .eq('id_clinica', clinicId)
         .order('data_ultima_atualizacao', { ascending: false, nullsFirst: false })
         .limit(limit)
@@ -870,17 +847,6 @@ export const supabaseApi = {
       }
 
       console.log(`📊 PACIENTES ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
-      if (data && data.length > 0) {
-        console.log('📋 PRIMEIRO PACIENTE (debug):', {
-          id: data[0].id_paciente,
-          nome: data[0].nome_completo,
-          cpf: data[0].cpf,
-          celular: data[0].celular,
-          genero: data[0].genero,
-          status: data[0].status_paciente
-        })
-      }
-
       return data || []
     } catch (error) {
       console.error('💥 ERRO GERAL getPacientes:', error)
@@ -888,13 +854,13 @@ export const supabaseApi = {
     }
   },
 
-  // CRIAR PACIENTE (corrigido com nome_completo)
+  // CRIAR PACIENTE
   async createPaciente(paciente: {
-    nome_completo: string    // ✅ CORRIGIDO: era 'nome'
+    nome_completo: string
     cpf: string
     data_nascimento?: string
-    genero?: string          // ✅ Mantido correto
-    celular?: string         // ✅ Mantido correto  
+    genero?: string
+    celular?: string
     email?: string
     origem_lead?: string
     endereco_completo?: string
@@ -928,13 +894,13 @@ export const supabaseApi = {
     }
   },
 
-  // ATUALIZAR PACIENTE (corrigido com nome_completo)
+  // ATUALIZAR PACIENTE
   async updatePaciente(id: number, updates: {
-    nome_completo?: string   // ✅ CORRIGIDO: era 'nome'
+    nome_completo?: string
     cpf?: string
     data_nascimento?: string
-    genero?: string          // ✅ Mantido correto
-    celular?: string         // ✅ Mantido correto
+    genero?: string
+    celular?: string
     email?: string
     origem_lead?: string
     endereco_completo?: string
@@ -944,7 +910,6 @@ export const supabaseApi = {
       const clinicId = getCurrentClinicId()
       if (!clinicId) throw new Error('Clínica não identificada')
 
-      // Adicionar timestamp de atualização
       const updatesWithTimestamp = {
         ...updates,
         data_ultima_atualizacao: new Date().toISOString()
@@ -956,7 +921,7 @@ export const supabaseApi = {
         .from('pacientes')
         .update(updatesWithTimestamp)
         .eq('id_paciente', id)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
+        .eq('id_clinica', clinicId)
         .select()
         .single()
 
@@ -969,7 +934,7 @@ export const supabaseApi = {
     }
   },
 
-  // BUSCAR PACIENTES PARA DASHBOARD IA (corrigido)
+  // BUSCAR PACIENTES PARA DASHBOARD IA
   async searchPacientes(searchTerm: string) {
     try {
       const clinicId = getCurrentClinicId()
@@ -977,14 +942,13 @@ export const supabaseApi = {
 
       console.log(`🔍 BUSCANDO PACIENTES IA: "${searchTerm}"`)
 
-      // Limpar e formatar termo de busca
-      const cleanTerm = searchTerm.replace(/[^\d]/g, '') // Remove formatação CPF
+      const cleanTerm = searchTerm.replace(/[^\d]/g, '')
 
       const { data, error } = await supabase
         .from('pacientes')
-        .select('id_paciente, nome_completo, cpf, data_nascimento, celular')  // ✅ CORRIGIDO
+        .select('id_paciente, nome_completo, cpf, data_nascimento, celular')
         .eq('id_clinica', clinicId)
-        .or(`nome_completo.ilike.%${searchTerm}%,cpf.eq.${cleanTerm}`)        // ✅ CORRIGIDO
+        .or(`nome_completo.ilike.%${searchTerm}%,cpf.eq.${cleanTerm}`)
         .limit(10)
 
       if (error) throw error
@@ -997,7 +961,7 @@ export const supabaseApi = {
     }
   },
 
-  // ============ PRODUTOS/ESTOQUE (MANTIDO DO CÓDIGO ANTERIOR) ============
+  // ============ PRODUTOS/ESTOQUE ============
 
   // Produtos com FILTRO RIGOROSO
   async getProdutos() {
@@ -1111,7 +1075,7 @@ export const supabaseApi = {
         .from('lotes')
         .update({ quantidade_disponivel: novaQuantidade })
         .eq('id_lote', id_lote)
-        .eq('id_clinica', clinicId) // VALIDAÇÃO DUPLA
+        .eq('id_clinica', clinicId)
         .select()
         .single()
 
@@ -1124,9 +1088,9 @@ export const supabaseApi = {
   },
 
   /**
- * ✅ NOVA FUNÇÃO: Criar lote com cálculo automático de preço unitário
- * Fórmula: preco_unitario = (valor_total_compra / quantidade_disponivel) / fator_divisao
- */
+   * ✅ Criar lote com cálculo automático de preço unitário
+   * Fórmula: preco_unitario = (valor_total_compra / quantidade_disponivel) / fator_divisao
+   */
   async createLoteComValor(lote: {
     id_sku: number
     quantidade_disponivel: number
@@ -1147,26 +1111,26 @@ export const supabaseApi = {
 
       if (skuError) throw new Error('SKU não encontrado')
 
-      // 2. Calcular preço unitário
+      // 2. Calcular preco_unitario
       const fatorDivisao = parseFloat(skuData.fator_divisao || '1')
-      const precoUnitario = (lote.valor_total_compra / lote.quantidade_disponivel) / fatorDivisao
+      const precoPorUnidade = lote.valor_total_compra / lote.quantidade_disponivel
+      const precoUnitario = precoPorUnidade / fatorDivisao
 
-      console.log('💰 CÁLCULO PREÇO UNITÁRIO:', {
+      console.log('📊 CÁLCULO PREÇO UNITÁRIO:', {
         valor_total: lote.valor_total_compra,
         quantidade: lote.quantidade_disponivel,
         fator_divisao: fatorDivisao,
-        preco_unitario: precoUnitario.toFixed(2)
+        preco_unitario: precoUnitario
       })
 
       // 3. Criar lote com preço calculado
-      const loteCompleto = {
+      const loteCompleto = ensureClinicFilter({
         id_sku: lote.id_sku,
         quantidade_disponivel: lote.quantidade_disponivel,
         validade: lote.validade,
         preco_unitario: precoUnitario,
-        data_entrada: new Date().toISOString(),
-        id_clinica: clinicId
-      }
+        data_entrada: new Date().toISOString()
+      })
 
       const { data, error } = await supabase
         .from('lotes')
@@ -1175,12 +1139,7 @@ export const supabaseApi = {
         .single()
 
       if (error) throw error
-
-      console.log('✅ LOTE CRIADO COM PREÇO UNITÁRIO:', {
-        id_lote: data.id_lote,
-        preco_unitario: data.preco_unitario
-      })
-
+      console.log('✅ LOTE CRIADO COM VALOR:', data.id_lote)
       return data
     } catch (error) {
       console.error('💥 ERRO createLoteComValor:', error)
@@ -1188,286 +1147,59 @@ export const supabaseApi = {
     }
   },
 
-  // Histórico com FILTRO RIGOROSO
-  async getMovimentacoes(limit = 50) {
+  // ============ RESUMOS DIÁRIOS E SEMANAIS ============
+
+  async getResumosDiariosPaciente(cpf: string) {
     try {
       const clinicId = getCurrentClinicId()
       if (!clinicId) return []
 
-      const { data: movimentacoes, error } = await supabase
-        .from('movimentacoes_estoque')
-        .select('*')
-        .eq('id_clinica', clinicId)
-        .order('data_movimentacao', { ascending: false })
-        .limit(limit)
-
-      if (error) throw error
-
-      const movimentacoesDetalhadas = await Promise.all(
-        (movimentacoes || []).map(async (mov) => {
-          const { data: lote } = await supabase
-            .from('lotes')
-            .select('id_sku, validade')
-            .eq('id_lote', mov.id_lote)
-            .eq('id_clinica', clinicId) // FILTRO DUPLO
-            .single()
-
-          let nomeProduto = 'Produto não encontrado'
-          if (lote) {
-            const { data: sku } = await supabase
-              .from('skus')
-              .select('nome_produto')
-              .eq('id_sku', lote.id_sku)
-              .eq('id_clinica', clinicId) // FILTRO DUPLO
-              .single()
-
-            if (sku) {
-              nomeProduto = sku.nome_produto
-            }
-          }
-
-          return {
-            ...mov,
-            lotes: {
-              id_sku: lote?.id_sku || 0,
-              validade: lote?.validade || '',
-              skus: {
-                nome_produto: nomeProduto
-              }
-            }
-          }
-        })
-      )
-
-      return movimentacoesDetalhadas
-    } catch (error) {
-      console.error('💥 ERRO getMovimentacoes:', error)
-      return []
-    }
-  },
-  async getResumosDiariosPaciente(cpf: string) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) {
-        console.log('❌ ID da clínica não encontrado')
-        return []
-      }
-
       const cpfLimpo = cpf.replace(/\D/g, '')
-      console.log(`📅 BUSCANDO RESUMOS DIÁRIOS: CPF=${cpfLimpo}, Clínica=${clinicId}`)
 
       const { data, error } = await supabase
         .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        nome_paciente,
-        resumo_interacoes,
-        status_processamento,
-        data_resumo,
-        data_criacao,
-        id_clinica
-      `)
+        .select('*')
         .eq('cpf', cpfLimpo)
         .eq('id_clinica', clinicId)
         .order('data_resumo', { ascending: false })
+        .limit(30)
 
-      if (error) {
-        console.error('❌ ERRO ao buscar resumos diários:', error.message)
-        return []
-      }
-
-      const resumos = data || []
-      console.log(`📊 RESUMOS DIÁRIOS ENCONTRADOS: ${resumos.length}`)
-
-      // Log detalhado das datas encontradas
-      if (resumos.length > 0) {
-        console.log('📋 Resumos encontrados:', resumos.map(r => ({
-          id: r.id_resumo_diario,           // ✅ CORRETO
-          data_resumo: r.data_resumo,
-          data_criacao: r.data_criacao,
-          tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
-          tamanho: r.resumo_interacoes?.length || 0
-        })).slice(0, 5))
-      }
-
-      return resumos
+      if (error) throw error
+      return data || []
     } catch (error) {
-      console.error('💥 ERRO CRÍTICO getResumosDiariosPaciente:', error)
+      console.error('💥 ERRO getResumosDiariosPaciente:', error)
       return []
     }
   },
 
-  // ✅ BUSCAR RESUMOS SEMANAIS - COLUNAS CORRETAS
-  async getResumosSemanasPaciente(cpf: string) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) {
-        console.log('❌ ID da clínica não encontrado')
-        return []
-      }
-
-      const cpfLimpo = cpf.replace(/\D/g, '')
-      console.log(`📈 BUSCANDO RESUMOS SEMANAIS: CPF=${cpfLimpo}, Clínica=${clinicId}`)
-
-      const { data, error } = await supabase
-        .from('resumos_semanais_paciente')
-        .select(`
-        id_resumo_sem,
-        cpf,
-        nome_paciente,
-        data_inicio_semana,
-        data_fim_semana,
-        resumo_geral_semana,
-        data_geracao,
-        id_clinica
-      `)
-        .eq('cpf', cpfLimpo)
-        .eq('id_clinica', clinicId)
-        .order('data_inicio_semana', { ascending: false })
-
-      if (error) {
-        console.error('❌ ERRO ao buscar resumos semanais:', error.message)
-        return []
-      }
-
-      const resumos = data || []
-      console.log(`📈 RESUMOS SEMANAIS ENCONTRADOS: ${resumos.length}`)
-
-      return resumos
-    } catch (error) {
-      console.error('💥 ERRO CRÍTICO getResumosSemanasPaciente:', error)
-      return []
-    }
-  },
-
-  // ✅ BUSCAR RESUMO ESPECÍFICO - COLUNAS CORRETAS + BUSCA EXATA
   async getResumoEspecifico(cpf: string, dataResumo: string) {
     try {
       const clinicId = getCurrentClinicId()
-      if (!clinicId) {
-        console.log('❌ ID da clínica não encontrado')
-        return null
-      }
+      if (!clinicId) return null
 
       const cpfLimpo = cpf.replace(/\D/g, '')
-      console.log(`💬 BUSCA EXATA: CPF=${cpfLimpo}, Data=${dataResumo}, Clínica=${clinicId}`)
 
-      // ✅ BUSCA EXATA por data_resumo
-      const { data: resumoExato, error: errorExato } = await supabase
+      console.log(`🔍 BUSCANDO RESUMO: CPF=${cpfLimpo}, DATA=${dataResumo}`)
+
+      const { data, error } = await supabase
         .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        nome_paciente,
-        resumo_interacoes,
-        status_processamento,
-        data_resumo,
-        data_criacao,
-        id_clinica
-      `)
+        .select('*')
         .eq('cpf', cpfLimpo)
         .eq('id_clinica', clinicId)
         .eq('data_resumo', dataResumo)
         .single()
 
-      if (!errorExato && resumoExato) {
-        console.log('✅ CONVERSA ENCONTRADA (busca exata):', {
-          id: resumoExato.id_resumo_diario,             // ✅ CORRETO
-          data: resumoExato.data_resumo,
-          tem_conversa: resumoExato.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
-          tamanho: resumoExato.resumo_interacoes?.length || 0,
-          preview: resumoExato.resumo_interacoes?.substring(0, 100) + '...'
-        })
-        return resumoExato
+      if (error && error.code !== 'PGRST116') {
+        console.error('💥 ERRO getResumoEspecifico:', error)
+        return null
       }
 
-      console.log('⚠️ Busca exata falhou, tentando busca por range...')
-
-      // ✅ FALLBACK: Busca por range do dia
-      const dataInicio = dataResumo + 'T00:00:00.000Z'
-      const dataFim = dataResumo + 'T23:59:59.999Z'
-
-      const { data: resumoRange, error: errorRange } = await supabase
-        .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        nome_paciente,
-        resumo_interacoes,
-        status_processamento,
-        data_resumo,
-        data_criacao,
-        id_clinica
-      `)
-        .eq('cpf', cpfLimpo)
-        .eq('id_clinica', clinicId)
-        .gte('data_resumo', dataInicio)
-        .lte('data_resumo', dataFim)
-        .order('data_resumo', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (!errorRange && resumoRange) {
-        console.log('✅ CONVERSA ENCONTRADA (busca range):', {
-          id: resumoRange.id_resumo_diario,
-          data: resumoRange.data_resumo,
-          tem_conversa: resumoRange.resumo_interacoes ? 'SIM' : 'NÃO'
-        })
-        return resumoRange
+      if (data) {
+        console.log(`✅ RESUMO ENCONTRADO: ${data.data_resumo}`)
+        return data
       }
-
-      // ✅ ÚLTIMO RECURSO: Buscar por data_criacao
-      console.log('⚠️ Tentando busca por data_criacao...')
-
-      const { data: resumoFallback, error: errorFallback } = await supabase
-        .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        nome_paciente,
-        resumo_interacoes,
-        status_processamento,
-        data_resumo,
-        data_criacao,
-        id_clinica
-      `)
-        .eq('cpf', cpfLimpo)
-        .eq('id_clinica', clinicId)
-        .gte('data_criacao', dataInicio)
-        .lte('data_criacao', dataFim)
-        .order('data_criacao', { ascending: false })
-        .limit(1)
-        .single()
-
-      if (!errorFallback && resumoFallback) {
-        console.log('✅ CONVERSA ENCONTRADA (fallback data_criacao):', {
-          id: resumoFallback.id_resumo_diario,
-          data_resumo: resumoFallback.data_resumo,
-          data_criacao: resumoFallback.data_criacao
-        })
-        return resumoFallback
-      }
-
-      // ✅ DEBUG: Listar todas as datas disponíveis
-      const { data: todasAsDatas } = await supabase
-        .from('resumos_diarios_paciente')
-        .select('data_resumo, data_criacao, id_resumo_diario, resumo_interacoes')
-        .eq('cpf', cpfLimpo)
-        .eq('id_clinica', clinicId)
-        .order('data_resumo', { ascending: false })
-        .limit(10)
-
-      console.log('📅 DATAS DISPONÍVEIS PARA DEBUG:', todasAsDatas?.map(d => ({
-        id: d.id_resumo_diario,
-        data_resumo: d.data_resumo,
-        data_criacao: d.data_criacao,
-        tem_conteudo: d.resumo_interacoes ? 'SIM' : 'NÃO',
-        tamanho: d.resumo_interacoes?.length || 0
-      })) || [])
 
       console.log(`❌ DATA SOLICITADA "${dataResumo}" NÃO ENCONTRADA`)
-
       return null
 
     } catch (error) {
@@ -1476,73 +1208,7 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ FUNÇÃO DE DEBUG - COLUNAS CORRETAS
-  async debugResumosPaciente(cpf: string) {
-    try {
-      const clinicId = getCurrentClinicId()
-      const cpfLimpo = cpf.replace(/\D/g, '')
-
-      console.log('🔍 DEBUG RESUMOS PACIENTE:', { cpf: cpfLimpo, clinica: clinicId })
-
-      // Verificar dados sem filtro de clínica
-      const { data: semFiltro } = await supabase
-        .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        data_resumo,
-        data_criacao,
-        id_clinica,
-        resumo_interacoes
-      `)
-        .eq('cpf', cpfLimpo)
-        .limit(5)
-
-      console.log('📋 Dados sem filtro de clínica:', {
-        count: semFiltro?.length || 0,
-        samples: semFiltro?.map(r => ({
-          id: r.id_resumo_diario,              // ✅ CORRETO
-          data_resumo: r.data_resumo,
-          data_criacao: r.data_criacao,
-          clinica: r.id_clinica,
-          tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO', // ✅ CORRETO
-          tamanho: r.resumo_interacoes?.length || 0
-        })) || []
-      })
-
-      // Verificar dados com filtro de clínica
-      const { data: comFiltro } = await supabase
-        .from('resumos_diarios_paciente')
-        .select(`
-        id_resumo_diario,
-        cpf,
-        data_resumo,
-        data_criacao,
-        resumo_interacoes
-      `)
-        .eq('cpf', cpfLimpo)
-        .eq('id_clinica', clinicId)
-        .limit(5)
-
-      console.log('📋 Dados com filtro de clínica:', {
-        count: comFiltro?.length || 0,
-        samples: comFiltro?.map(r => ({
-          id: r.id_resumo_diario,
-          data_resumo: r.data_resumo,
-          data_criacao: r.data_criacao,
-          tem_conversa: r.resumo_interacoes ? 'SIM' : 'NÃO',
-          tamanho: r.resumo_interacoes?.length || 0
-        })) || []
-      })
-
-      return { semFiltro, comFiltro }
-
-    } catch (error) {
-      console.error('💥 ERRO DEBUG:', error)
-      return null
-    }
-  },
-  // ============ FUNÇÕES PARA PROCEDIMENTOS E OUTROS DADOS ============
+  // ============ OUTRAS FUNÇÕES ============
 
   // PROCEDIMENTOS (isolamento por clínica)
   async getProcedimentos(limit = 100) {
@@ -1554,7 +1220,7 @@ export const supabaseApi = {
         .from('procedimentos')
         .select('*')
         .eq('id_clinica', clinicId)
-        .order('data_realizacao', { ascending: false, nullsFirst: false })
+        .order('data_procedimento', { ascending: false })
         .limit(limit)
 
       if (error) throw error
@@ -1572,7 +1238,7 @@ export const supabaseApi = {
       if (!clinicId) return []
 
       const { data, error } = await supabase
-        .from('google_review')
+        .from('reviews_google')
         .select('*')
         .eq('id_clinica', clinicId)
         .order('data_review', { ascending: false })
@@ -1584,6 +1250,35 @@ export const supabaseApi = {
       console.error('💥 ERRO getGoogleReviews:', error)
       return []
     }
+  },
 
+  // MOVIMENTAÇÕES DE ESTOQUE
+  async getMovimentacoes(limit = 100) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      const { data, error } = await supabase
+        .from('movimentacoes_estoque')
+        .select(`
+          *,
+          lotes:id_lote (
+            id_sku,
+            validade,
+            skus:id_sku (
+              nome_produto
+            )
+          )
+        `)
+        .eq('id_clinica', clinicId)
+        .order('data_movimentacao', { ascending: false })
+        .limit(limit)
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getMovimentacoes:', error)
+      return []
+    }
   }
 }

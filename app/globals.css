@@ -3,522 +3,225 @@
 @tailwind utilities;
 
 /* ====================================
-   SISTEMA DE TEMA BALLARIN - COMPLETO
+   SISTEMA DE TEMA BALLARIN - SIMPLIFICADO
    ==================================== */
 
-/* VARIÁVEIS DE TEMA - Dark Mode (Padrão) */
-:root,
-[data-theme="dark"] {
-  /* Backgrounds */
-  --bg-primary: #000000;           /* Preto principal */
-  --bg-secondary: #1e293b;         /* Cinza escuro */
-  --bg-tertiary: #334155;          /* Cinza médio */
-  --bg-card: rgba(30, 41, 59, 0.8); /* Card com transparência */
-  --bg-header: rgba(30, 41, 59, 0.9); /* Header */
-  
-  /* Textos */
-  --text-primary: #ffffff;         /* Branco principal */
-  --text-secondary: #94a3b8;       /* Cinza claro */
-  --text-muted: #64748b;           /* Cinza médio */
-  
-  /* Borders */
-  --border-primary: #475569;       /* Border padrão */
-  --border-secondary: rgba(71, 85, 105, 0.5); /* Border suave */
-  
-  /* Accent Colors - Identidade Ballarin */
-  --accent-cyan: #12f6ff;          /* Cyan principal */
-  --accent-cyan-dark: #03c8d9;     /* Cyan escuro */
-  --accent-cyan-light: #7dd3fc;    /* Cyan claro */
-  
-  /* Estados */
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --info: #3b82f6;
-  
-  /* Hovers */
-  --hover-bg: rgba(18, 246, 255, 0.1);
-  --hover-border: rgba(18, 246, 255, 0.3);
+/* DARK MODE (Padrão) - Aplicado via classe .dark no <html> */
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-card: #1e293b;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --border-primary: #475569;
+  --border-secondary: #334155;
+  --accent-cyan: #12f6ff;
+  --accent-cyan-dark: #03c8d9;
 }
 
-/* Light Mode - Cores otimizadas para máxima legibilidade */
-[data-theme="light"] {
-  /* Backgrounds - Fundo branco limpo com contraste suave */
-  --bg-primary: #ffffff;           /* Branco puro */
-  --bg-secondary: #f1f5f9;         /* Cinza bem claro para cards */
-  --bg-tertiary: #e2e8f0;          /* Cinza claro para containers */
-  --bg-card: #ffffff;              /* Cards brancos com sombra */
-  --bg-header: #f8fafc;            /* Header cinza muito claro */
-  
-  /* Textos - Alto contraste para perfeita legibilidade */
-  --text-primary: #1e293b;         /* Cinza muito escuro (quase preto) */
-  --text-secondary: #334155;       /* Cinza escuro para subtítulos */
-  --text-muted: #64748b;           /* Cinza médio para texto secundário */
-  
-  /* Borders - Definidos mas sutis */
-  --border-primary: #d1d5db;       /* Border cinza médio */
-  --border-secondary: #e5e7eb;     /* Border cinza claro */
-  
-  /* Accent Colors - Cyan escuro para excelente contraste */
-  --accent-cyan: #0369a1;          /* Cyan bem escuro - perfeito contraste */
-  --accent-cyan-dark: #075985;     /* Cyan mais escuro ainda */
-  --accent-cyan-light: #0284c7;    /* Cyan médio-escuro */
-  
-  /* Estados com cores mais escuras para melhor visibilidade */
-  --success: #059669;              /* Verde escuro */
-  --warning: #d97706;              /* Laranja escuro */
-  --error: #dc2626;                /* Vermelho forte */
-  --info: #2563eb;                 /* Azul escuro */
-  
-  /* Hovers com fundo mais visível */
-  --hover-bg: rgba(3, 105, 161, 0.08);     /* Hover cyan bem sutil */
-  --hover-border: rgba(3, 105, 161, 0.25); /* Border hover mais forte */
+/* LIGHT MODE - Aplicado quando NÃO tem classe .dark */
+html:not(.dark) {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
+  --bg-card: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border-primary: #cbd5e1;
+  --border-secondary: #e2e8f0;
+  --accent-cyan: #0891b2;
+  --accent-cyan-dark: #0e7490;
 }
 
 /* ====================================
-   CLASSES UTILITÁRIAS RESPONSIVAS
+   OVERRIDE DAS CLASSES .bg-clinic-*
+   Permite que código legado funcione com o tema
    ==================================== */
 
-@layer utilities {
-  /* Backgrounds */
-  .bg-theme-primary { background-color: var(--bg-primary); }
-  .bg-theme-secondary { background-color: var(--bg-secondary); }
-  .bg-theme-tertiary { background-color: var(--bg-tertiary); }
-  .bg-theme-card { background-color: var(--bg-card); }
-  .bg-theme-header { background-color: var(--bg-header); }
-  
-  /* Textos */
-  .text-theme-primary { color: var(--text-primary); }
-  .text-theme-secondary { color: var(--text-secondary); }
-  .text-theme-muted { color: var(--text-muted); }
-  
-  /* Borders */
-  .border-theme-primary { border-color: var(--border-primary); }
-  .border-theme-secondary { border-color: var(--border-secondary); }
-  
-  /* Accent */
-  .text-theme-accent { color: var(--accent-cyan); }
-  .bg-theme-accent { background-color: var(--accent-cyan); }
-  .border-theme-accent { border-color: var(--accent-cyan); }
-  
-  /* Estados */
-  .text-theme-success { color: var(--success); }
-  .text-theme-warning { color: var(--warning); }
-  .text-theme-error { color: var(--error); }
-  .text-theme-info { color: var(--info); }
-  
-  /* Hover states */
-  .hover-theme-accent:hover {
-    background-color: var(--hover-bg);
-    border-color: var(--hover-border);
-  }
+/* Backgrounds */
+.bg-clinic-black {
+  background-color: var(--bg-primary);
+}
+
+.bg-clinic-gray-900 {
+  background-color: var(--bg-primary);
+}
+
+.bg-clinic-gray-800 {
+  background-color: var(--bg-secondary);
+}
+
+.bg-clinic-gray-800\/50 {
+  background-color: var(--bg-secondary);
+}
+
+.bg-clinic-gray-800\/80 {
+  background-color: var(--bg-secondary);
+  opacity: 0.95;
+}
+
+.bg-clinic-gray-750 {
+  background-color: var(--bg-secondary);
+}
+
+.bg-clinic-gray-700 {
+  background-color: var(--bg-tertiary);
+}
+
+.bg-clinic-gray-700\/50 {
+  background-color: var(--bg-tertiary);
+}
+
+/* Textos */
+.text-clinic-white {
+  color: var(--text-primary);
+}
+
+.text-clinic-gray-300 {
+  color: var(--text-secondary);
+}
+
+.text-clinic-gray-400 {
+  color: var(--text-muted);
+}
+
+.text-clinic-gray-500 {
+  color: var(--text-muted);
+}
+
+.text-clinic-cyan {
+  color: var(--accent-cyan);
+}
+
+/* Backgrounds Accent */
+.bg-clinic-cyan {
+  background-color: var(--accent-cyan);
+  color: #000000;
+}
+
+.bg-clinic-cyan\/10,
+.bg-clinic-cyan\/20 {
+  background-color: rgba(18, 246, 255, 0.1);
+}
+
+html:not(.dark) .bg-clinic-cyan\/10,
+html:not(.dark) .bg-clinic-cyan\/20 {
+  background-color: rgba(8, 145, 178, 0.1);
+}
+
+/* Borders */
+.border-clinic-gray-600 {
+  border-color: var(--border-primary);
+}
+
+.border-clinic-gray-700 {
+  border-color: var(--border-secondary);
+}
+
+.border-clinic-cyan {
+  border-color: var(--accent-cyan);
+}
+
+.border-clinic-cyan\/20,
+.border-clinic-cyan\/30 {
+  border-color: rgba(18, 246, 255, 0.2);
+}
+
+html:not(.dark) .border-clinic-cyan\/20,
+html:not(.dark) .border-clinic-cyan\/30 {
+  border-color: rgba(8, 145, 178, 0.2);
 }
 
 /* ====================================
-   TRANSIÇÕES SUAVES ENTRE TEMAS
+   GRADIENTES DO HEADER
    ==================================== */
 
-* {
-  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Dark mode - gradiente escuro */
+.dark .from-clinic-gray-800,
+.dark .via-clinic-gray-750,
+.dark .via-clinic-gray-700,
+.dark .to-clinic-gray-700 {
+  --tw-gradient-from: #1e293b;
+  --tw-gradient-to: #334155;
+}
+
+/* Light mode - gradiente claro */
+html:not(.dark) .from-clinic-gray-800,
+html:not(.dark) .via-clinic-gray-750,
+html:not(.dark) .via-clinic-gray-700,
+html:not(.dark) .to-clinic-gray-700,
+html:not(.dark) .bg-gradient-to-r.from-clinic-gray-800 {
+  background: linear-gradient(to right, #f8fafc, #f1f5f9, #f8fafc) !important;
 }
 
 /* ====================================
-   BODY E ELEMENTOS BASE
+   FORMULÁRIOS E INPUTS
    ==================================== */
 
-html,
-body {
+input, textarea, select {
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  transition: all 0.3s ease;
+  border-color: var(--border-primary);
 }
 
-/* Background decorativo responsivo ao tema */
-body {
-  background-image: 
-    radial-gradient(circle at 25% 25%, var(--accent-cyan)08 0%, transparent 50%),
-    radial-gradient(circle at 75% 75%, var(--accent-cyan-dark)06 0%, transparent 50%);
-  background-attachment: fixed;
-  min-height: 100vh;
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 2px rgba(18, 246, 255, 0.2);
 }
 
-/* Background específico para light theme - mais sutil */
-[data-theme="light"] body {
-  background-image: 
-    radial-gradient(circle at 25% 25%, var(--accent-cyan)03 0%, transparent 40%),
-    radial-gradient(circle at 75% 75%, var(--accent-cyan-dark)02 0%, transparent 40%);
-  background-color: #ffffff; /* Forçar fundo branco */
+html:not(.dark) input:focus,
+html:not(.dark) textarea:focus,
+html:not(.dark) select:focus {
+  box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
 }
 
-/* ====================================
-   OVERRIDE DAS CLASSES CLINIC EXISTENTES - ALTA ESPECIFICIDADE
-   ==================================== */
-
-/* Manter compatibilidade com código existente */
-.bg-clinic-black { background-color: var(--bg-primary) !important; }
-.bg-clinic-gray-800 { background-color: var(--bg-secondary) !important; }
-.bg-clinic-gray-700 { background-color: var(--bg-tertiary) !important; }
-.bg-clinic-gray-750 { background-color: var(--bg-card) !important; }
-
-.text-clinic-white { color: var(--text-primary) !important; }
-.text-clinic-gray-300 { color: var(--text-secondary) !important; }
-.text-clinic-gray-400 { color: var(--text-muted) !important; }
-
-.text-clinic-cyan { color: var(--accent-cyan) !important; }
-.bg-clinic-cyan { background-color: var(--accent-cyan) !important; }
-.border-clinic-cyan { border-color: var(--accent-cyan) !important; }
-
-.border-clinic-gray-600 { border-color: var(--border-primary) !important; }
-.border-clinic-gray-700 { border-color: var(--border-secondary) !important; }
-
-/* CORREÇÃO ESPECÍFICA PARA NAVBAR - LIGHT THEME */
-[data-theme="light"] {
-  /* Classes de background do navbar */
-  .bg-clinic-gray-800,
-  .bg-clinic-gray-700,
-  .bg-clinic-gray-750 {
-    background-color: var(--bg-card) !important;
-    color: var(--text-primary) !important;
-  }
-  
-  /* Gradientes do header */
-  .bg-gradient-to-r.from-clinic-gray-800.via-clinic-gray-700.to-clinic-gray-700,
-  .bg-gradient-to-r.from-clinic-gray-800.via-clinic-gray-750.to-clinic-gray-700 {
-    background: linear-gradient(135deg, 
-      rgba(248, 250, 252, 0.95) 0%, 
-      rgba(241, 245, 249, 0.90) 50%,
-      rgba(248, 250, 252, 0.95) 100%) !important;
-  }
-  
-  /* Container com backdrop blur */
-  .bg-clinic-gray-800\/80 {
-    background-color: rgba(248, 250, 252, 0.9) !important;
-  }
-  
-  /* Border colors */
-  .border-clinic-gray-600 {
-    border-color: rgba(203, 213, 225, 0.8) !important;
-  }
-  
-  /* Textos no navbar */
-  .text-clinic-white {
-    color: var(--text-primary) !important;
-    font-weight: 600 !important;
-  }
-  
-  .text-clinic-gray-300,
-  .text-clinic-gray-400 {
-    color: var(--text-secondary) !important;
-    font-weight: 500 !important;
-  }
-  
-  .text-clinic-cyan {
-    color: var(--accent-cyan) !important;
-    font-weight: 700 !important;
-  }
-  
-  .bg-clinic-cyan {
-    background-color: var(--accent-cyan) !important;
-    color: #ffffff !important;
-    font-weight: 600 !important;
-  }
-  
-  /* Cards e containers no light theme */
-  .bg-clinic-gray-800:not(header *),
-  .bg-clinic-gray-700:not(header *) {
-    background-color: var(--bg-card) !important;
-    border: 2px solid var(--border-secondary) !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
-  }
-  
-  /* Forçar header/navbar especificamente */
-  header,
-  header *,
-  .header-theme,
-  .header-theme * {
-    transition: all 0.3s ease !important;
-  }
-  
-  header .bg-clinic-gray-800,
-  header .bg-clinic-gray-700,
-  .header-theme .bg-clinic-gray-800,
-  .header-theme .bg-clinic-gray-700 {
-    background: rgba(248, 250, 252, 0.95) !important;
-    color: var(--text-primary) !important;
-  }
+::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 
 /* ====================================
-   SCROLLBAR RESPONSIVA AO TEMA
+   SCROLLBAR
    ==================================== */
 
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
   background: var(--bg-secondary);
-  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, var(--accent-cyan) 0%, var(--accent-cyan-dark) 100%);
+  background: var(--accent-cyan);
   border-radius: 4px;
-  transition: all 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, var(--accent-cyan-dark) 0%, var(--accent-cyan) 100%);
-  box-shadow: 0 0 10px var(--accent-cyan)30;
-}
-
-/* Firefox */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--accent-cyan) var(--bg-secondary);
+  background: var(--accent-cyan-dark);
 }
 
 /* ====================================
-   FORMULÁRIOS E INPUTS - CONTRASTE OTIMIZADO
-   ==================================== */
-
-input, textarea, select {
-  background-color: var(--bg-primary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-primary) !important;
-  border-width: 2px !important; /* Border mais forte para light theme */
-  font-weight: 500 !important;
-}
-
-input:focus, textarea:focus, select:focus {
-  outline: none !important;
-  box-shadow: 0 0 0 3px var(--accent-cyan)20 !important;
-  border-color: var(--accent-cyan) !important;
-  background-color: var(--bg-primary) !important;
-}
-
-/* Placeholder com melhor contraste */
-::placeholder {
-  color: var(--text-muted) !important;
-  opacity: 0.8 !important;
-  font-weight: 400 !important;
-}
-
-/* Estado disabled mais claro */
-input:disabled, textarea:disabled, select:disabled {
-  background-color: var(--bg-secondary) !important;
-  color: var(--text-muted) !important;
-  opacity: 0.7 !important;
-}
-
-/* Select dropdown específico */
-select {
-  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23334155' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 12px center !important;
-  background-size: 16px !important;
-  padding-right: 40px !important;
-}
-
-/* ====================================
-   NAVBAR E HEADER - CORREÇÃO LIGHT THEME
-   ==================================== */
-
-/* Header/Navbar específico - Força mudança no light theme */
-header,
-.header-theme,
-[class*="bg-gradient-to-r"] {
-  transition: all 0.3s ease !important;
-}
-
-/* Dark theme navbar (padrão) */
-[data-theme="dark"] header,
-[data-theme="dark"] .header-theme {
-  background: linear-gradient(135deg, 
-    rgba(30, 41, 59, 0.9) 0%, 
-    rgba(51, 65, 85, 0.8) 50%,
-    rgba(30, 41, 59, 0.9) 100%) !important;
-  border-color: rgba(71, 85, 105, 0.6) !important;
-  backdrop-filter: blur(20px) !important;
-}
-
-/* Light theme navbar - fundo claro */
-[data-theme="light"] header,
-[data-theme="light"] .header-theme {
-  background: linear-gradient(135deg, 
-    rgba(248, 250, 252, 0.95) 0%, 
-    rgba(241, 245, 249, 0.90) 50%,
-    rgba(248, 250, 252, 0.95) 100%) !important;
-  border-color: rgba(203, 213, 225, 0.8) !important;
-  backdrop-filter: blur(20px) !important;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-}
-
-/* Forçar navbar classes específicas no light theme */
-[data-theme="light"] .bg-gradient-to-r {
-  background: linear-gradient(135deg, 
-    #f8fafc 0%, 
-    #f1f5f9 50%, 
-    #f8fafc 100%) !important;
-}
-
-[data-theme="light"] .from-clinic-gray-800,
-[data-theme="light"] .via-clinic-gray-700,
-[data-theme="light"] .to-clinic-gray-700,
-[data-theme="light"] .via-clinic-gray-750 {
-  background: linear-gradient(135deg, 
-    #f8fafc 0%, 
-    #f1f5f9 50%, 
-    #f8fafc 100%) !important;
-}
-
-/* Containers de navegação no light theme */
-[data-theme="light"] .bg-clinic-gray-800\/80 {
-  background-color: rgba(248, 250, 252, 0.9) !important;
-  border-color: rgba(203, 213, 225, 0.8) !important;
-  backdrop-filter: blur(10px) !important;
-}
-
-/* Botões de navegação no navbar light theme */
-[data-theme="light"] header button,
-[data-theme="light"] .header-theme button {
-  color: var(--text-primary) !important;
-  font-weight: 600 !important;
-}
-
-[data-theme="light"] header .bg-clinic-cyan,
-[data-theme="light"] .header-theme .bg-clinic-cyan {
-  background-color: var(--accent-cyan) !important;
-  color: #ffffff !important;
-  font-weight: 700 !important;
-}
-
-.card-theme {
-  background-color: var(--bg-card);
-  border: 2px solid var(--border-secondary);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-[data-theme="light"] .card-theme {
-  box-shadow: 
-    0 4px 6px rgba(0, 0, 0, 0.07), 
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
-}
-
-.header-theme {
-  background: linear-gradient(135deg, var(--bg-header) 0%, var(--bg-secondary) 100%);
-  border: 2px solid var(--border-primary);
-}
-
-[data-theme="light"] .header-theme {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-}
-
-/* Cards com texto sempre legível */
-.card-content {
-  color: var(--text-primary);
-  line-height: 1.6;
-}
-
-.card-title {
-  color: var(--text-primary);
-  font-weight: 700;
-  font-size: 1.125rem;
-}
-
-.card-subtitle {
-  color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-/* Stats cards específicos */
-.stat-card {
-  background: var(--bg-card);
-  border: 2px solid var(--border-secondary);
-  color: var(--text-primary);
-}
-
-.stat-number {
-  color: var(--accent-cyan);
-  font-weight: 800;
-  font-size: 2rem;
-}
-
-.stat-label {
-  color: var(--text-secondary);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* ====================================
-   BOTÕES RESPONSIVOS AO TEMA
-   ==================================== */
-
-.btn-theme-primary {
-  background-color: var(--accent-cyan);
-  color: #ffffff; /* Sempre branco para máximo contraste */
-  border: 1px solid var(--accent-cyan);
-  font-weight: 600; /* Texto mais forte */
-}
-
-.btn-theme-primary:hover {
-  background-color: var(--accent-cyan-dark);
-  border-color: var(--accent-cyan-dark);
-  transform: translateY(-1px);
-  color: #ffffff; /* Manter branco no hover */
-}
-
-.btn-theme-secondary {
-  background-color: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border-primary);
-  font-weight: 500;
-}
-
-.btn-theme-secondary:hover {
-  background-color: var(--hover-bg);
-  border-color: var(--hover-border);
-  color: var(--accent-cyan);
-  font-weight: 600;
-}
-
-/* Botão de tema específico - sempre legível */
-.theme-toggle-btn {
-  background-color: var(--bg-card);
-  color: var(--text-primary);
-  border: 2px solid var(--border-primary);
-}
-
-.theme-toggle-btn:hover {
-  background-color: var(--accent-cyan);
-  color: #ffffff;
-  border-color: var(--accent-cyan);
-}
-
-/* ====================================
-   LOADING E ANIMAÇÕES
+   LOADING SPINNER
    ==================================== */
 
 .loading-spinner {
   width: 40px;
   height: 40px;
   border: 3px solid var(--border-primary);
-  border-top: 3px solid var(--accent-cyan);
+  border-top-color: var(--accent-cyan);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto;
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* ====================================
@@ -526,172 +229,30 @@ header,
    ==================================== */
 
 ::selection {
-  background-color: var(--accent-cyan)30;
-  color: var(--text-primary);
-}
-
-::-moz-selection {
-  background-color: var(--accent-cyan)30;
+  background-color: rgba(18, 246, 255, 0.3);
   color: var(--text-primary);
 }
 
 /* ====================================
-   FOCUS VISIBLE
+   BODY BASE
    ==================================== */
 
-.focus-visible {
-  outline: 2px solid var(--accent-cyan);
-  outline-offset: 2px;
-  border-radius: 4px;
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ====================================
-   RESPONSIVE ADJUSTMENTS
+   TRANSIÇÕES SUAVES PARA MUDANÇA DE TEMA
    ==================================== */
 
-@media (max-width: 768px) {
-  body {
-    font-size: 14px;
-  }
-  
-  .card-theme {
-    backdrop-filter: blur(5px);
-  }
+*, *::before, *::after {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
 
-/* ====================================
-   MODO ALTO CONTRASTE (Acessibilidade WCAG AAA)
-   ==================================== */
-
-@media (prefers-contrast: high) {
-  [data-theme="light"] {
-    --text-primary: #000000;        /* Preto puro */
-    --text-secondary: #1f2937;      /* Cinza muito escuro */
-    --text-muted: #374151;          /* Cinza escuro */
-    --accent-cyan: #1e40af;         /* Azul bem escuro */
-    --accent-cyan-dark: #1e3a8a;    /* Azul ainda mais escuro */
-    --border-primary: #6b7280;      /* Border mais forte */
-    --border-secondary: #9ca3af;    /* Border secundário mais visível */
-    --bg-secondary: #f3f4f6;        /* Fundo mais contrastante */
-  }
-  
-  [data-theme="dark"] {
-    --text-primary: #ffffff;        /* Branco puro */
-    --text-secondary: #e5e7eb;      /* Cinza bem claro */
-    --text-muted: #d1d5db;          /* Cinza claro */
-    --accent-cyan: #60a5fa;         /* Cyan mais claro */
-    --accent-cyan-dark: #3b82f6;    /* Cyan claro */
-    --border-primary: #d1d5db;      /* Border mais visível */
-    --border-secondary: #9ca3af;    /* Border secundário mais forte */
-  }
-}
-
-/* Forçar contraste máximo em todos os textos para light theme */
-[data-theme="light"] {
-  h1, h2, h3, h4, h5, h6 {
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-  }
-  
-  p, span, div {
-    color: var(--text-primary);
-  }
-  
-  .text-clinic-gray-300,
-  .text-clinic-gray-400 {
-    color: var(--text-secondary) !important;
-    font-weight: 600 !important;
-  }
-  
-  .text-clinic-white {
-    color: var(--text-primary) !important;
-  }
-  
-  /* Garantir que botões tenham contraste perfeito */
-  button {
-    font-weight: 600;
-  }
-  
-  .bg-clinic-cyan {
-    color: #ffffff !important; /* Sempre branco sobre cyan */
-  }
-  
-  /* Links sempre legíveis */
-  a {
-    color: var(--accent-cyan);
-    font-weight: 600;
-    text-decoration: underline;
-  }
-  
-  a:hover {
-    color: var(--accent-cyan-dark);
-    text-decoration: none;
-  }
-}
-
-/* ====================================
-   DEBUG & FORÇA NAVBAR LIGHT THEME
-   ==================================== */
-
-/* MÁXIMA ESPECIFICIDADE - NAVBAR LIGHT THEME */
-html[data-theme="light"] header,
-html[data-theme="light"] .header-theme,
-[data-theme="light"] header,
-[data-theme="light"] .header-theme {
-  background: linear-gradient(135deg, 
-    #f8fafc 0%, 
-    #f1f5f9 50%, 
-    #f8fafc 100%) !important;
-  border: 2px solid rgba(203, 213, 225, 0.8) !important;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07) !important;
-}
-
-/* Força todos os elementos com bg-gradient dentro do header */
-html[data-theme="light"] header .bg-gradient-to-r,
-[data-theme="light"] header .bg-gradient-to-r,
-html[data-theme="light"] .header-theme .bg-gradient-to-r,
-[data-theme="light"] .header-theme .bg-gradient-to-r {
-  background: linear-gradient(135deg, 
-    #f8fafc 0%, 
-    #f1f5f9 50%, 
-    #f8fafc 100%) !important;
-}
-
-/* Classes específicas do gradiente */
-html[data-theme="light"] .from-clinic-gray-800,
-html[data-theme="light"] .via-clinic-gray-700,
-html[data-theme="light"] .to-clinic-gray-700,
-html[data-theme="light"] .via-clinic-gray-750,
-[data-theme="light"] .from-clinic-gray-800,
-[data-theme="light"] .via-clinic-gray-700,
-[data-theme="light"] .to-clinic-gray-700,
-[data-theme="light"] .via-clinic-gray-750 {
-  background: #f8fafc !important;
-}
-
-/* Container de navegação */
-html[data-theme="light"] .bg-clinic-gray-800\/80,
-[data-theme="light"] .bg-clinic-gray-800\/80 {
-  background-color: rgba(248, 250, 252, 0.9) !important;
-  border-color: rgba(203, 213, 225, 0.8) !important;
-}
-
-/* FALLBACK - Se nada funcionar, usa esta regra */
-body[data-theme="light"] header,
-body[data-theme="light"] .header-theme,
-.light header,
-.light .header-theme {
-  background: #f8fafc !important;
-  border-color: #d1d5db !important;
-}
-
-/* ====================================
-   PREFERS REDUCED MOTION
-   ==================================== */
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-  }
+/* Desabilitar transição em elementos que não precisam */
+input, textarea, select, button {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }

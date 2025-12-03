@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { PlusCircle, TrendingUp, DollarSign, Users, Target, Activity, BarChart3, Calculator, Plus, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado } from '@/types/database'
+import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado, TipoDespesa, TIPOS_DESPESA } from '@/types/database'
 import NovaVendaModal from '@/components/NovaVendaModal'
 
 // ============ CONSTANTES ============
@@ -19,6 +19,14 @@ const CATEGORIAS_SKU = [
   'Bioregenerador',
   'Tecnologias',
   'Outros'
+]
+
+// ✅ TIPOS DE DESPESA
+const TIPOS_DESPESA_OPTIONS: TipoDespesa[] = [
+  'Despesa Fixa',
+  'Custo Fixo',
+  'Despesa Variável',
+  'Custo Variável'
 ]
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
@@ -36,25 +44,36 @@ interface SKU {
 }
 
 // ============ COMPONENTE CARD CUSTOMIZADO ============
-const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'cyan' | 'green' | 'red' | 'default' }) => {
-  const colors = {
-    cyan: 'bg-cyan-50 dark:bg-clinic-cyan/10 border-cyan-200 dark:border-clinic-cyan/30',
+const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'default' | 'cyan' | 'green' | 'red' }) => {
+  const variantClasses = {
+    default: 'bg-gray-100 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700',
+    cyan: 'bg-cyan-50 dark:bg-cyan-500/10 border-cyan-200 dark:border-cyan-500/30',
     green: 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30',
-    red: 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30',
-    default: 'bg-gray-100 dark:bg-clinic-gray-700/50 border-gray-200 dark:border-clinic-gray-600'
+    red: 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30'
   }
+
+  const textClasses = {
+    default: 'text-gray-900 dark:text-white',
+    cyan: 'text-cyan-700 dark:text-cyan-400',
+    green: 'text-green-700 dark:text-green-400',
+    red: 'text-red-700 dark:text-red-400'
+  }
+
   return (
-    <div className={`${colors[variant]} border rounded-lg p-4`}>
-      <p className="text-xs text-gray-600 dark:text-clinic-gray-400 mb-1">{title}</p>
-      <p className="text-xl font-bold text-gray-900 dark:text-clinic-white">{value}</p>
+    <div className={`rounded-xl p-4 border ${variantClasses[variant]}`}>
+      <p className="text-sm text-gray-500 dark:text-slate-400 mb-1">{title}</p>
+      <p className={`text-xl font-bold ${textClasses[variant]}`}>{value}</p>
     </div>
   )
 }
 
-const calcularDiasUteis = (ano: number, mes: number) => {
-  const ultimoDia = new Date(ano, mes, 0).getDate()
+// ============ FUNÇÕES AUXILIARES ============
+function calcularDiasUteis(ano: number, mes: number): number {
+  const primeiroDia = new Date(ano, mes - 1, 1)
+  const ultimoDia = new Date(ano, mes, 0)
   let diasUteis = 0
-  for (let dia = 1; dia <= ultimoDia; dia++) {
+
+  for (let dia = primeiroDia.getDate(); dia <= ultimoDia.getDate(); dia++) {
     const data = new Date(ano, mes - 1, dia)
     const diaSemana = data.getDay()
     const dataStr = `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
@@ -63,9 +82,12 @@ const calcularDiasUteis = (ano: number, mes: number) => {
   return diasUteis
 }
 
-const calcularDiaUtilAtual = (ano: number, mes: number) => {
+function calcularDiaUtilAtual(ano: number, mes: number): number {
   const hoje = new Date()
-  if (hoje.getFullYear() !== ano || hoje.getMonth() + 1 !== mes) return 0
+  if (hoje.getFullYear() !== ano || hoje.getMonth() + 1 !== mes) {
+    return hoje > new Date(ano, mes, 0) ? calcularDiasUteis(ano, mes) : 0
+  }
+
   let diaUtilAtual = 0
   for (let dia = 1; dia <= hoje.getDate(); dia++) {
     const data = new Date(ano, mes - 1, dia)
@@ -78,8 +100,8 @@ const calcularDiaUtilAtual = (ano: number, mes: number) => {
 
 // ============ COMPONENTE PRINCIPAL ============
 export default function FinanceiroPage() {
-  const [abaAtiva, setAbaAtiva] = useState('vendas') // Changed default from 'servicos'
-  const [anosSelecionados, setAnosSelecionados] = useState([2025]) // Multi-year support
+  const [abaAtiva, setAbaAtiva] = useState('vendas')
+  const [anosSelecionados, setAnosSelecionados] = useState([2025])
   const [mesesSelecionados, setMesesSelecionados] = useState([new Date().getMonth() + 1])
   const [loading, setLoading] = useState(false)
   const [showNovaVendaModal, setShowNovaVendaModal] = useState(false)
@@ -90,46 +112,57 @@ export default function FinanceiroPage() {
   const [profissionais, setProfissionais] = useState<Profissional[]>([])
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
-  const [skus, setSKUs] = useState<SKU[]>([]) // ✅ NOVO
+  const [skus, setSKUs] = useState<SKU[]>([])
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
   const [novoServico, setNovoServico] = useState({ nome: '', preco: 0, custo_insumos: 0 })
   const [mostrarFormDespesa, setMostrarFormDespesa] = useState(false)
-  const [novaDespesa, setNovaDespesa] = useState({ categoria: 'Infraestrutura', item: '', valor: 0 })
+  // ✅ ATUALIZADO: Incluindo tipo no estado
+  const [novaDespesa, setNovaDespesa] = useState<{
+    tipo: TipoDespesa
+    categoria: string
+    item: string
+    valor: number
+  }>({
+    tipo: 'Despesa Fixa',
+    categoria: 'Infraestrutura',
+    item: '',
+    valor: 0
+  })
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', horasSemanais: 40 })
 
-  // ✅ NOVO: Estados para edição de SKU
+  // Estados para SKUs
   const [editandoSKU, setEditandoSKU] = useState<number | null>(null)
-  const [editFormSKU, setEditFormSKU] = useState<Partial<SKU>>({})
-  const [feedbackSKU, setFeedbackSKU] = useState<{ tipo: 'success' | 'error', mensagem: string } | null>(null)
+  const [editFormSKU, setEditFormSKU] = useState<{ classe_terapeutica?: string; fator_divisao?: string }>({})
+  const [feedbackSKU, setFeedbackSKU] = useState<{ tipo: 'success' | 'error'; mensagem: string } | null>(null)
 
-  // Estado temporário para meta
+  // Estado para meta temporária
   const [metaTemporaria, setMetaTemporaria] = useState<number | null>(null)
 
-  // Carregar dados
+  // Load inicial
   useEffect(() => {
     loadData()
+    loadSKUs()
   }, [])
 
+  // Reload vendas quando mudar período
   useEffect(() => {
-    if (['vendas', 'metas', 'controle', 'dre'].includes(abaAtiva)) {
+    if (anosSelecionados.length > 0 && mesesSelecionados.length > 0) {
       loadVendas()
     }
-    if (abaAtiva === 'skus') {
-      loadSKUs()
-    }
-  }, [abaAtiva, anosSelecionados, mesesSelecionados])
+  }, [anosSelecionados, mesesSelecionados])
 
   const loadData = async () => {
+    setLoading(true)
     try {
-      setLoading(true)
       const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
         supabaseApi.getServicos(),
         supabaseApi.getDespesas(),
         supabaseApi.getProfissionais(),
         supabaseApi.getParametros()
       ])
+
       setServicos(servicosData)
       setDespesas(despesasData)
       setProfissionais(profissionaisData)
@@ -143,17 +176,14 @@ export default function FinanceiroPage() {
 
   const loadVendas = async () => {
     try {
-      // For multi-year support, we'll fetch for each year and merge
-      const allVendas = await Promise.all(
-        anosSelecionados.map(ano => supabaseApi.getVendas(ano, mesesSelecionados))
-      )
-      setVendas(allVendas.flat())
+      const ano = anosSelecionados[0] || 2025
+      const vendasData = await supabaseApi.getVendas(ano, mesesSelecionados)
+      setVendas(vendasData)
     } catch (error) {
       console.error('Erro ao carregar vendas:', error)
     }
   }
 
-  // ✅ NOVA FUNÇÃO: Carregar SKUs
   const loadSKUs = async () => {
     try {
       const skusData = await supabaseApi.getSKUs()
@@ -164,13 +194,11 @@ export default function FinanceiroPage() {
     }
   }
 
-  // ✅ NOVA FUNÇÃO: Feedback SKU
   const showFeedbackSKU = (tipo: 'success' | 'error', mensagem: string) => {
     setFeedbackSKU({ tipo, mensagem })
     setTimeout(() => setFeedbackSKU(null), 3000)
   }
 
-  // ✅ NOVA FUNÇÃO: Editar SKU
   const handleEditSKU = (sku: SKU) => {
     setEditandoSKU(sku.id_sku)
     setEditFormSKU({
@@ -179,13 +207,11 @@ export default function FinanceiroPage() {
     })
   }
 
-  // ✅ NOVA FUNÇÃO: Cancelar edição SKU
   const handleCancelEditSKU = () => {
     setEditandoSKU(null)
     setEditFormSKU({})
   }
 
-  // ✅ NOVA FUNÇÃO: Salvar SKU
   const handleSaveSKU = async (id_sku: number) => {
     try {
       setLoading(true)
@@ -213,7 +239,6 @@ export default function FinanceiroPage() {
     }
   }
 
-  // Handlers existentes
   const handleAdicionarServico = async () => {
     if (!novoServico.nome || novoServico.preco <= 0) return
     try {
@@ -226,11 +251,17 @@ export default function FinanceiroPage() {
     }
   }
 
+  // ✅ ATUALIZADO: Incluindo tipo na criação de despesa
   const handleAdicionarDespesa = async () => {
     if (!novaDespesa.item || novaDespesa.valor <= 0) return
     try {
-      await supabaseApi.createDespesa({ categoria: novaDespesa.categoria, item: novaDespesa.item, valor_mensal: novaDespesa.valor })
-      setNovaDespesa({ categoria: 'Infraestrutura', item: '', valor: 0 })
+      await supabaseApi.createDespesa({
+        tipo: novaDespesa.tipo,
+        categoria: novaDespesa.categoria,
+        item: novaDespesa.item,
+        valor_mensal: novaDespesa.valor
+      })
+      setNovaDespesa({ tipo: 'Despesa Fixa', categoria: 'Infraestrutura', item: '', valor: 0 })
       setMostrarFormDespesa(false)
       loadData()
     } catch (error) {
@@ -336,64 +367,43 @@ export default function FinanceiroPage() {
 
     const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
     const taxaOcupacao = horasProdutivasPotenciais > 0 ? (horasOcupadas / horasProdutivasPotenciais) * 100 : 0
-    const custoOciosidade = (horasProdutivasPotenciais - horasOcupadas) * custoHora
-
-    return { horasDaEquipe, horasDasSalas, horasProdutivasPotenciais, custoHora, horasOcupadas, taxaOcupacao, custoOciosidade }
-  }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
-
-  const dre = useMemo(() => {
-    if (!parametros) return null
-
-    const faturamentoBruto = vendas.reduce((sum, v) => sum + v.preco_total, 0)
-    const impostos = faturamentoBruto * (parametros.aliquota_impostos_pct / 100)
-    const taxasFinanceiras = vendas.reduce((sum, v) => sum + v.custo_taxa_cartao, 0)
-    const faturamentoLiquido = faturamentoBruto - impostos - taxasFinanceiras
-    const custosVariaveis = vendas.reduce((sum, v) => sum + (v.custo_total - v.custo_taxa_cartao), 0)
-    const lucroBruto = faturamentoLiquido - custosVariaveis
-    const resultadoOperacional = lucroBruto - despesasFixasPeriodo
-
-    return { faturamentoBruto, impostos, taxasFinanceiras, faturamentoLiquido, custosVariaveis, lucroBruto, despesasFixas: despesasFixasPeriodo, resultadoOperacional }
-  }, [vendas, parametros, despesasFixasPeriodo])
-
-  const controleCalc = useMemo(() => {
-    if (!dre || !parametros) return null
-
-    const { faturamentoBruto, lucroBruto } = dre
-    const diasRestantes = diasUteisTotais - diaUtilAtual
-    const performanceDiaria = diaUtilAtual > 0 ? lucroBruto / diaUtilAtual : 0
-
-    const faturamentoProjetado = diaUtilAtual > 0 ? (faturamentoBruto / diaUtilAtual) * diasUteisTotais : 0
-    const lucroBrutoProjetado = diaUtilAtual > 0 ? (lucroBruto / diaUtilAtual) * diasUteisTotais : 0
-    const resultadoProjetado = lucroBrutoProjetado - despesasFixasPeriodo
-
-    const metaResultadoLiquido = parametros.meta_resultado_liquido_mensal * mesesSelecionados.length
-    const metaLucroBruto = metaResultadoLiquido + despesasFixasPeriodo
-    const lucroBrutoFaltante = Math.max(0, metaLucroBruto - lucroBruto)
 
     return {
-      faturamentoAcumulado: faturamentoBruto,
-      lucroBrutoAcumulado: lucroBruto,
-      diasRestantes,
-      performanceDiaria,
-      faturamentoProjetado,
-      lucroBrutoProjetado,
-      resultadoProjetado,
-      metaResultadoLiquido,
-      metaLucroBruto,
-      lucroBrutoFaltante
+      horasDaEquipe,
+      horasDasSalas,
+      horasProdutivasPotenciais,
+      horasOcupadas,
+      custoHora,
+      taxaOcupacao
     }
-  }, [dre, parametros, diasUteisTotais, diaUtilAtual, despesasFixasPeriodo, mesesSelecionados])
+  }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
+
+  const controleCalc = useMemo(() => {
+    if (!parametros || !parametrosCalculados) return null
+
+    const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
+    const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
+    const lucroBruto = receitaBruta - custoInsumos
+    const impostos = receitaBruta * (parametros.aliquota_impostos_pct / 100)
+    const resultadoLiquido = lucroBruto - despesasFixasPeriodo - impostos
+
+    return {
+      receitaBruta,
+      custoInsumos,
+      lucroBruto,
+      despesasFixasPeriodo,
+      impostos,
+      resultadoLiquido
+    }
+  }, [parametros, parametrosCalculados, vendas, despesasFixasPeriodo])
 
   const metasCalculadas = useMemo(() => {
-    if (!controleCalc || !parametros) return []
+    if (!controleCalc || !parametros || servicosCalculados.length === 0) return []
 
-    const { metaLucroBruto } = controleCalc
-    const servicosAtivos = servicosCalculados.filter(s => s.margemContribuicao > 0)
-    if (servicosAtivos.length === 0) return []
+    const metaPorServico = parametros.meta_resultado_liquido_mensal / servicosCalculados.length
+    const metaLucroBrutoPorServico = metaPorServico + (despesasFixasPeriodo / servicosCalculados.length)
 
-    const metaLucroBrutoPorServico = metaLucroBruto / servicosAtivos.length
-
-    return servicosAtivos.map(servico => {
+    return servicosCalculados.map(servico => {
       const metaUnidades = servico.margemContribuicao > 0
         ? Math.ceil(metaLucroBrutoPorServico / servico.margemContribuicao)
         : 0
@@ -416,7 +426,7 @@ export default function FinanceiroPage() {
         projecao
       }
     })
-  }, [controleCalc, parametros, servicosCalculados, vendas, diaUtilAtual, diasUteisTotais])
+  }, [controleCalc, parametros, servicosCalculados, vendas, diaUtilAtual, diasUteisTotais, despesasFixasPeriodo])
 
   const tituloPeriodo = useMemo(() => {
     const anosTexto = anosSelecionados.length > 1 ? anosSelecionados.join(', ') : anosSelecionados[0]
@@ -424,9 +434,8 @@ export default function FinanceiroPage() {
     return `${mesesSelecionados.map((m: number) => MESES[m - 1]).join(', ')} / ${anosTexto}`
   }, [mesesSelecionados, anosSelecionados])
 
-  // ✅ ARRAY DE ABAS ATUALIZADO - SERVICOS REMOVIDO
   const abas = [
-    { id: 'vendas', label: 'Vendas' }, // First tab now
+    { id: 'vendas', label: 'Vendas' },
     { id: 'skus', label: 'Gestão de SKUs' },
     { id: 'parametros', label: 'Parâmetros' },
     { id: 'despesas', label: 'Despesas' },
@@ -435,12 +444,12 @@ export default function FinanceiroPage() {
     { id: 'dre', label: 'DRE' }
   ]
 
-  if (loading) {
+  if (loading && !servicos.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-clinic-gray-400">Carregando dashboard financeiro...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-slate-400">Carregando dashboard financeiro...</p>
         </div>
       </div>
     )
@@ -461,8 +470,8 @@ export default function FinanceiroPage() {
               key={aba.id}
               onClick={() => setAbaAtiva(aba.id)}
               className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all text-sm ${abaAtiva === aba.id
-                ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white shadow-lg'
-                : 'bg-white dark:bg-slate-800/50 text-clinic-cyan hover:bg-gray-100 dark:hover:bg-slate-700/50 border border-gray-200 dark:border-clinic-cyan/20'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
+                : 'bg-white dark:bg-slate-800/50 text-cyan-600 dark:text-cyan-400 hover:bg-gray-100 dark:hover:bg-slate-700/50 border border-gray-200 dark:border-slate-700'
                 }`}
             >
               {aba.label}
@@ -480,8 +489,6 @@ export default function FinanceiroPage() {
             />
           )}
 
-          {/* REMOVED: AbaServicos */}
-
           {abaAtiva === 'vendas' && (
             <AbaVendas
               vendas={vendas}
@@ -490,7 +497,6 @@ export default function FinanceiroPage() {
             />
           )}
 
-          {/* ✅ NOVA ABA GESTÃO DE SKUs */}
           {abaAtiva === 'skus' && (
             <AbaGestaoSKUs
               skus={skus}
@@ -540,74 +546,61 @@ export default function FinanceiroPage() {
               diasUteis={diasUteisTotais}
               diaAtual={diaUtilAtual}
               metaResultadoMensal={metaTemporaria ?? parametros.meta_resultado_liquido_mensal}
-              setMetaResultadoMensal={setMetaTemporaria}
-              onBlurMeta={handleUpdateMetaMensal}
-              tituloPeriodo={tituloPeriodo}
-              mesesSelecionadosCount={mesesSelecionados.length}
+              mesesSelecionados={mesesSelecionados}
+              onUpdateMeta={handleUpdateMetaMensal}
+              metaTemporaria={metaTemporaria}
+              setMetaTemporaria={setMetaTemporaria}
             />
           )}
 
-          {abaAtiva === 'dre' && dre && parametrosCalculados && (
-            <AbaDRE dre={dre} tituloPeriodo={tituloPeriodo} parametros={parametrosCalculados} />
+          {abaAtiva === 'dre' && controleCalc && (
+            <AbaDRE controle={controleCalc} tituloPeriodo={tituloPeriodo} />
           )}
         </div>
-      </div>
 
-      {/* Nova Venda Modal */}
-      <NovaVendaModal
-        isOpen={showNovaVendaModal}
-        onClose={() => setShowNovaVendaModal(false)}
-        onSuccess={() => {
-          setShowNovaVendaModal(false)
-          loadVendas()
-        }}
-      />
+        <NovaVendaModal
+          isOpen={showNovaVendaModal}
+          onClose={() => setShowNovaVendaModal(false)}
+          onSuccess={() => {
+            setShowNovaVendaModal(false)
+            loadVendas()
+          }}
+        />
+      </div>
     </div>
   )
 }
 
-// ============ SUBCOMPONENTES ============
+// ============ COMPONENTES AUXILIARES ============
 
-const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: { anos: number[], setAnos: (anos: number[]) => void, mesesSelecionados: number[], onMesToggle: (mes: number) => void }) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <h3 className="text-lg font-bold text-gray-900 dark:text-clinic-cyan mb-4">Filtro de Período</h3>
-    <div className="space-y-4">
+const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <div className="flex flex-wrap items-center gap-6">
       <div>
-        <label className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2 block">Anos (Multi-Select)</label>
-        <div className="flex flex-wrap gap-2">
-          {ANOS_DISPONIVEIS.map((a: number) => (
-            <button
-              key={a}
-              onClick={() => {
-                if (anos.includes(a)) {
-                  setAnos(anos.filter((y: number) => y !== a))
-                } else {
-                  setAnos([...anos, a].sort((a, b) => a - b))
-                }
-              }}
-              className={`px-3 py-1 rounded ${anos.includes(a)
-                ? 'bg-clinic-cyan text-white'
-                : 'bg-gray-100 dark:bg-clinic-gray-700 text-gray-700 dark:text-clinic-gray-300'
-                } transition`}
-            >
-              {a}
-            </button>
+        <label className="text-sm text-gray-600 dark:text-slate-400 mb-2 block">Ano</label>
+        <select
+          value={anos[0]}
+          onChange={(e) => setAnos([parseInt(e.target.value)])}
+          className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
+        >
+          {ANOS_DISPONIVEIS.map(ano => (
+            <option key={ano} value={ano}>{ano}</option>
           ))}
-        </div>
+        </select>
       </div>
-      <div>
-        <label className="text-sm font-semibold text-gray-700 dark:text-clinic-gray-400 mb-2 block">Meses</label>
-        <div className="grid grid-cols-6 lg:grid-cols-12 gap-2">
+      <div className="flex-1">
+        <label className="text-sm text-gray-600 dark:text-slate-400 mb-2 block">Meses (clique para selecionar múltiplos)</label>
+        <div className="flex flex-wrap gap-2">
           {MESES.map((nome, index) => {
-            const mesNumero = index + 1
-            const isSelected = mesesSelecionados.includes(mesNumero)
+            const mes = index + 1
+            const selecionado = mesesSelecionados.includes(mes)
             return (
               <button
-                key={mesNumero}
-                onClick={() => onMesToggle(mesNumero)}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all ${isSelected
-                  ? 'bg-gradient-to-r from-clinic-cyan to-blue-500 text-white'
-                  : 'bg-gray-100 dark:bg-clinic-gray-700 text-gray-700 dark:text-clinic-gray-400 hover:bg-gray-200 dark:hover:bg-clinic-gray-600'
+                key={mes}
+                onClick={() => onMesToggle(mes)}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${selecionado
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600'
                   }`}
               >
                 {nome}
@@ -620,25 +613,217 @@ const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: { anos
   </div>
 )
 
-const Input = ({ label, type = 'text', value, onChange, placeholder = '' }: any) => (
+const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '' }: any) => (
   <div>
-    <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">{label}</label>
+    <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">{label}</label>
     <input
       type={type}
       value={value}
       onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
       placeholder={placeholder}
-      className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
+      className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
     />
   </div>
 )
 
-// ✅ NOVO COMPONENTE: Aba Gestão de SKUs
-const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave, onCancel, feedback, loading }: any) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Gestão de SKUs</h2>
+// ✅ ABA DESPESAS ATUALIZADA COM CAMPO TIPO
+const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa, setNovaDespesa, onAdicionar }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <div className="flex justify-between items-center mb-4">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Despesas Fixas Mensais</h2>
+      <Button onClick={() => setMostrarForm(!mostrarForm)}>
+        {mostrarForm ? '✕ Cancelar' : '+ Nova Despesa'}
+      </Button>
+    </div>
 
-    {/* Feedback */}
+    {mostrarForm && (
+      <div className="bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 rounded-lg p-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          {/* ✅ NOVO: Campo Tipo */}
+          <div>
+            <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Tipo</label>
+            <select
+              value={novaDespesa.tipo}
+              onChange={(e) => setNovaDespesa({ ...novaDespesa, tipo: e.target.value })}
+              className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
+            >
+              {TIPOS_DESPESA_OPTIONS.map(tipo => (
+                <option key={tipo} value={tipo}>{tipo}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Categoria</label>
+            <select
+              value={novaDespesa.categoria}
+              onChange={(e) => setNovaDespesa({ ...novaDespesa, categoria: e.target.value })}
+              className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
+            >
+              <option>Infraestrutura</option>
+              <option>Pessoal</option>
+              <option>Administrativo</option>
+              <option>Marketing</option>
+              <option>Operacional</option>
+              <option>Financeiro</option>
+            </select>
+          </div>
+          <InputLocal label="Item" value={novaDespesa.item} onChange={(v: string) => setNovaDespesa({ ...novaDespesa, item: v })} />
+          <InputLocal label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number) => setNovaDespesa({ ...novaDespesa, valor: v })} />
+        </div>
+        <Button onClick={onAdicionar}>Salvar Despesa</Button>
+      </div>
+    )}
+
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 dark:border-slate-700">
+            {/* ✅ NOVO: Coluna Tipo */}
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Tipo</th>
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Categoria</th>
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Item</th>
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {despesas.map((d: Despesa) => (
+            <tr key={d.id} className="border-b border-gray-100 dark:border-slate-700/50">
+              {/* ✅ NOVO: Exibindo Tipo */}
+              <td className="px-4 py-3">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${d.tipo === 'Despesa Fixa' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
+                    d.tipo === 'Custo Fixo' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' :
+                      d.tipo === 'Despesa Variável' ? 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400' :
+                        'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'
+                  }`}>
+                  {d.tipo || 'Despesa Fixa'}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-gray-900 dark:text-white">{d.categoria}</td>
+              <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{d.item}</td>
+              <td className="px-4 py-3 text-right text-cyan-600 dark:text-cyan-400">{formatCurrency(d.valor_mensal)}</td>
+            </tr>
+          ))}
+          <tr className="bg-cyan-50 dark:bg-cyan-500/10 font-bold">
+            <td colSpan={3} className="px-4 py-3 text-cyan-700 dark:text-cyan-400">TOTAL</td>
+            <td className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">{formatCurrency(total)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+)
+
+// ✅ ABA VENDAS ATUALIZADA COM MARGENS E PARCELAS
+const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda }: { vendas: any[], tituloPeriodo: string, onNovaVenda: () => void }) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <div className="flex justify-between items-center mb-4">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Vendas - {tituloPeriodo}</h2>
+      <Button onClick={onNovaVenda}>
+        <Plus className="w-4 h-4 mr-2" /> Nova Venda
+      </Button>
+    </div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 dark:border-slate-700">
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Data</th>
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Paciente</th>
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Total</th>
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Desconto</th>
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Final</th>
+            {/* ✅ NOVO: Margem % Sem Desconto */}
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem % (s/desc)</th>
+            {/* ✅ NOVO: Margem % Com Desconto */}
+            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem % (c/desc)</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Pagamento</th>
+            {/* ✅ NOVO: Parcelas */}
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Parcelas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {vendas.length === 0 ? (
+            <tr>
+              <td colSpan={9} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
+                Nenhuma venda encontrada no período selecionado
+              </td>
+            </tr>
+          ) : (
+            vendas.map((v: any) => (
+              <tr key={v.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                <td className="px-4 py-3 text-gray-900 dark:text-white">
+                  {new Date(v.data_venda).toLocaleDateString('pt-BR')}
+                </td>
+                <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
+                  {v.pacientes?.nome_completo || 'N/A'}
+                </td>
+                <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                  {formatCurrency(v.preco_total)}
+                </td>
+                <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
+                  {v.desconto_valor > 0 ? formatCurrency(v.desconto_valor) : '-'}
+                </td>
+                <td className="px-4 py-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
+                  {formatCurrency(v.preco_final)}
+                </td>
+                {/* ✅ NOVO: Margem % Sem Desconto */}
+                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
+                  {formatPercent(v.margem_percentual || 0)}
+                </td>
+                {/* ✅ NOVO: Margem % Com Desconto */}
+                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
+                  {formatPercent(v.margem_percentual_final || 0)}
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${v.metodo_pagamento === 'PIX' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' :
+                      v.metodo_pagamento === 'Débito' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
+                        'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400'
+                    }`}>
+                    {v.metodo_pagamento}
+                  </span>
+                </td>
+                {/* ✅ NOVO: Número de Parcelas */}
+                <td className="px-4 py-3 text-center text-gray-900 dark:text-white">
+                  {v.metodo_pagamento === 'Crédito' && v.parcelas ? `${v.parcelas}x` : '-'}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Resumo */}
+    {vendas.length > 0 && (
+      <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <FinanceCard
+          title="Total de Vendas"
+          value={vendas.length}
+          variant="cyan"
+        />
+        <FinanceCard
+          title="Receita Bruta"
+          value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_total || 0), 0))}
+          variant="green"
+        />
+        <FinanceCard
+          title="Total Descontos"
+          value={formatCurrency(vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0))}
+          variant="red"
+        />
+        <FinanceCard
+          title="Receita Líquida"
+          value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))}
+          variant="cyan"
+        />
+      </div>
+    )}
+  </div>
+)
+
+const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave, onCancel, feedback, loading }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Gestão de SKUs</h2>
+
     {feedback && (
       <div className={`mb-6 p-4 rounded-lg border ${feedback.tipo === 'success'
         ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30 text-green-700 dark:text-green-400'
@@ -649,39 +834,38 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
     )}
 
     {skus.length === 0 ? (
-      <div className="text-center py-12">
-        <p className="text-gray-600 dark:text-clinic-gray-400">Nenhum SKU cadastrado</p>
-      </div>
+      <p className="text-gray-500 dark:text-slate-500 text-center py-8">Nenhum SKU cadastrado</p>
     ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Produto</th>
-              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Fabricante</th>
-              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Categoria</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-clinic-cyan">Fator Divisão</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-clinic-cyan">Ações</th>
+            <tr className="border-b border-gray-200 dark:border-slate-700">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Produto</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Fabricante</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Categoria</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Fator Divisão</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Status</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Ações</th>
             </tr>
           </thead>
           <tbody>
             {skus.map((sku: SKU) => (
-              <tr key={sku.id_sku} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
-                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white font-medium">{sku.nome_produto}</td>
-                <td className="px-4 py-3 text-gray-600 dark:text-clinic-gray-400 text-sm">{sku.fabricante}</td>
+              <tr key={sku.id_sku} className="border-b border-gray-100 dark:border-slate-700/50">
+                <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{sku.nome_produto}</td>
+                <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{sku.fabricante}</td>
                 <td className="px-4 py-3">
                   {editandoId === sku.id_sku ? (
                     <select
-                      value={editForm.classe_terapeutica}
-                      onChange={(e) => setEditForm((prev: any) => ({ ...prev, classe_terapeutica: e.target.value }))}
-                      className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded px-3 py-1 text-gray-900 dark:text-clinic-white text-sm focus:outline-none focus:border-clinic-cyan"
+                      value={editForm.classe_terapeutica || ''}
+                      onChange={(e) => setEditForm({ ...editForm, classe_terapeutica: e.target.value })}
+                      className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm text-gray-900 dark:text-white"
                     >
                       {CATEGORIAS_SKU.map(cat => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
                   ) : (
-                    <span className="inline-block px-3 py-1 bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded text-cyan-700 dark:text-clinic-cyan text-sm">
+                    <span className="px-2 py-1 bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 rounded text-xs">
                       {sku.classe_terapeutica}
                     </span>
                   )}
@@ -689,26 +873,31 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
                 <td className="px-4 py-3 text-center">
                   {editandoId === sku.id_sku ? (
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={editForm.fator_divisao}
-                      onChange={(e) => setEditForm((prev: any) => ({ ...prev, fator_divisao: e.target.value }))}
-                      className="w-24 bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded px-3 py-1 text-gray-900 dark:text-clinic-white text-sm text-center focus:outline-none focus:border-clinic-cyan"
+                      type="text"
+                      value={editForm.fator_divisao || ''}
+                      onChange={(e) => setEditForm({ ...editForm, fator_divisao: e.target.value })}
+                      className="w-20 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded px-2 py-1 text-sm text-center text-gray-900 dark:text-white"
                     />
                   ) : (
-                    <span className="text-gray-900 dark:text-clinic-white font-mono">{sku.fator_divisao}</span>
+                    <span className="text-gray-900 dark:text-white">{sku.fator_divisao || '1'}</span>
                   )}
                 </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`px-2 py-1 rounded text-xs ${sku.status_estoque === 'Ativo'
+                    ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
+                    : 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400'
+                    }`}>
+                    {sku.status_estoque}
+                  </span>
+                </td>
                 <td className="px-4 py-3">
-                  <div className="flex justify-center space-x-2">
+                  <div className="flex justify-center gap-2">
                     {editandoId === sku.id_sku ? (
                       <>
                         <button
                           onClick={() => onSave(sku.id_sku)}
                           disabled={loading}
                           className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50"
-                          title="Salvar"
                         >
                           <Save className="w-4 h-4" />
                         </button>
@@ -716,7 +905,6 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
                           onClick={onCancel}
                           disabled={loading}
                           className="p-2 bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 rounded-lg text-red-700 dark:text-red-400 transition-colors disabled:opacity-50"
-                          title="Cancelar"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -724,7 +912,7 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
                     ) : (
                       <button
                         onClick={() => onEdit(sku)}
-                        className="px-3 py-1 bg-cyan-50 dark:bg-clinic-cyan/20 hover:bg-cyan-100 dark:hover:bg-clinic-cyan/30 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg text-cyan-700 dark:text-clinic-cyan text-sm transition-colors"
+                        className="px-3 py-1 bg-cyan-50 dark:bg-cyan-500/20 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 border border-cyan-200 dark:border-cyan-500/30 rounded-lg text-cyan-700 dark:text-cyan-400 text-sm transition-colors"
                       >
                         Editar
                       </button>
@@ -738,104 +926,43 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
       </div>
     )}
 
-    {/* Estatísticas */}
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
       <FinanceCard title="Total de SKUs" value={skus.length} variant="cyan" />
-      <FinanceCard
-        title="Categorias Ativas"
-        value={new Set(skus.map((s: SKU) => s.classe_terapeutica)).size}
-        variant="green"
-      />
-      <FinanceCard
-        title="SKUs Ativos"
-        value={skus.filter((s: SKU) => s.status_estoque === 'Ativo').length}
-      />
-    </div>
-  </div>
-)
-
-const AbaServicos = ({ servicos, mostrarForm, setMostrarForm, novoServico, setNovoServico, onAdicionar }: any) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Catálogo de Serviços</h2>
-      <Button onClick={() => setMostrarForm(!mostrarForm)}>
-        {mostrarForm ? '✕ Cancelar' : '+ Novo Serviço'}
-      </Button>
-    </div>
-
-    {mostrarForm && (
-      <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
-        <h3 className="text-lg font-bold text-cyan-700 dark:text-clinic-cyan mb-4">Adicionar Novo Serviço</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <Input label="Nome do Serviço" value={novoServico.nome} onChange={(v: string) => setNovoServico({ ...novoServico, nome: v })} />
-          <Input label="Preço" type="number" value={novoServico.preco} onChange={(v: number) => setNovoServico({ ...novoServico, preco: v })} />
-          <Input label="Custo Insumos" type="number" value={novoServico.custo_insumos} onChange={(v: number) => setNovoServico({ ...novoServico, custo_insumos: v })} />
-        </div>
-        <Button onClick={onAdicionar}>Salvar Serviço</Button>
-      </div>
-    )}
-
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Serviço</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Preço</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Custo Insumos</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          {servicos.map((s: ServicoCalculado) => (
-            <tr key={s.id} className="border-b border-gray-100 dark:border-clinic-cyan/10 hover:bg-gray-50 dark:hover:bg-clinic-cyan/5">
-              <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{s.nome}</td>
-              <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan">{formatCurrency(s.preco)}</td>
-              <td className="px-4 py-3 text-right text-gray-600 dark:text-clinic-gray-400">{formatCurrency(s.custo_insumos)}</td>
-              <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatCurrency(s.margemContribuicao)}</td>
-              <td className="px-4 py-3 text-right text-green-600 dark:text-green-400 font-bold">{formatPercent(s.margemContribuicaoPct)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <FinanceCard title="Categorias Ativas" value={new Set(skus.map((s: SKU) => s.classe_terapeutica)).size} variant="green" />
+      <FinanceCard title="SKUs Ativos" value={skus.filter((s: SKU) => s.status_estoque === 'Ativo').length} />
     </div>
   </div>
 )
 
 const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoProfissional, setNovoProfissional, onAdicionarProfissional, onRemoverProfissional }: any) => (
   <div className="space-y-6">
-    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Parâmetros Dinâmicos</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Input label="Nº de Salas" type="number" value={parametros.numero_salas}
-          onChange={(v: number) => onUpdate({ numero_salas: v })} />
-        <Input label="Horas Trabalho/Dia" type="number" value={parametros.horas_trabalho_dia}
-          onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} />
-        <Input label="Duração Serviço (h)" type="number" value={parametros.duracao_media_servico_horas}
-          onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} />
-        <Input label="MOD Padrão" type="number" value={parametros.mod_padrao}
-          onChange={(v: number) => onUpdate({ mod_padrao: v })} />
-        <Input label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct}
-          onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} />
-        <Input label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct}
-          onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} />
+    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Parâmetros Operacionais</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <InputLocal label="Número de Salas" type="number" value={parametros.numero_salas} onChange={(v: number) => onUpdate({ numero_salas: v })} />
+        <InputLocal label="Horas/Dia" type="number" value={parametros.horas_trabalho_dia} onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} />
+        <InputLocal label="Duração Média Serviço (h)" type="number" value={parametros.duracao_media_servico_horas} onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} />
+        <InputLocal label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct} onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} />
+        <InputLocal label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct} onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} />
       </div>
     </div>
 
-    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Equipe de Profissionais</h2>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 p-4 border border-gray-200 dark:border-clinic-cyan/20 rounded-lg">
-        <Input label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} />
-        <Input label="Horas Semanais" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} />
-        <Button onClick={onAdicionarProfissional} className="self-end">Adicionar</Button>
+    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Equipe</h2>
+      <div className="flex gap-4 mb-4">
+        <InputLocal label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} />
+        <InputLocal label="Horas/Semana" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} />
+        <div className="flex items-end">
+          <Button onClick={onAdicionarProfissional}>Adicionar</Button>
+        </div>
       </div>
       <div className="space-y-2">
         {profissionais.map((p: Profissional) => (
-          <div key={p.id} className="flex justify-between items-center bg-gray-50 dark:bg-clinic-gray-700/50 p-3 rounded-lg">
-            <span className="font-semibold text-gray-900 dark:text-clinic-white">{p.nome}</span>
+          <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
+            <span className="text-gray-900 dark:text-white">{p.nome}</span>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600 dark:text-clinic-gray-400">{p.horas_semanais}h/semana</span>
-              <button onClick={() => onRemoverProfissional(p.id)} className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs">Remover</button>
+              <span className="text-sm text-gray-600 dark:text-slate-400">{p.horas_semanais}h/semana</span>
+              <button onClick={() => onRemoverProfissional(p.id)} className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs">Remover</button>
             </div>
           </div>
         ))}
@@ -843,8 +970,8 @@ const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoPr
     </div>
 
     {calculados && (
-      <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">Indicadores de Produtividade</h2>
+      <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Indicadores de Produtividade</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <FinanceCard title="Horas Equipe" value={`${calculados.horasDaEquipe.toFixed(0)}h`} />
           <FinanceCard title="Horas Salas" value={`${calculados.horasDasSalas}h`} />
@@ -856,91 +983,34 @@ const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoPr
   </div>
 )
 
-const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa, setNovaDespesa, onAdicionar }: any) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Despesas Fixas Mensais</h2>
-      <Button onClick={() => setMostrarForm(!mostrarForm)}>
-        {mostrarForm ? '✕ Cancelar' : '+ Nova Despesa'}
-      </Button>
-    </div>
-
-    {mostrarForm && (
-      <div className="bg-cyan-50 dark:bg-clinic-cyan/10 border border-cyan-200 dark:border-clinic-cyan/30 rounded-lg p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <div>
-            <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Categoria</label>
-            <select value={novaDespesa.categoria} onChange={(e) => setNovaDespesa({ ...novaDespesa, categoria: e.target.value })}
-              className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white">
-              <option>Infraestrutura</option>
-              <option>Pessoal</option>
-              <option>Administrativo</option>
-              <option>Marketing</option>
-            </select>
-          </div>
-          <Input label="Item" value={novaDespesa.item} onChange={(v: string) => setNovaDespesa({ ...novaDespesa, item: v })} />
-          <Input label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number) => setNovaDespesa({ ...novaDespesa, valor: v })} />
-        </div>
-        <Button onClick={onAdicionar}>Salvar Despesa</Button>
-      </div>
-    )}
-
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-          <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Categoria</th>
-          <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Item</th>
-          <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Valor</th>
-        </tr>
-      </thead>
-      <tbody>
-        {despesas.map((d: Despesa) => (
-          <tr key={d.id} className="border-b border-gray-100 dark:border-clinic-cyan/10">
-            <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{d.categoria}</td>
-            <td className="px-4 py-3 text-gray-600 dark:text-clinic-gray-400">{d.item}</td>
-            <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan">{formatCurrency(d.valor_mensal)}</td>
-          </tr>
-        ))}
-        <tr className="bg-cyan-50 dark:bg-clinic-cyan/10 font-bold">
-          <td colSpan={2} className="px-4 py-3 text-cyan-700 dark:text-clinic-cyan">TOTAL</td>
-          <td className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">{formatCurrency(total)}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-)
-
-const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda }: { vendas: any[], tituloPeriodo: string, onNovaVenda: () => void }) => (
-  <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan">Vendas - {tituloPeriodo}</h2>
-      <Button onClick={onNovaVenda}>
-        <Plus className="w-4 h-4 mr-2" /> Nova Venda
-      </Button>
-    </div>
+const AbaMetas = ({ metas, tituloPeriodo }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Serviço - {tituloPeriodo}</h2>
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Data</th>
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Paciente</th>
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Pagamento</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Total</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem %</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Margem % Final</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Parcelas</th>
+          <tr className="border-b border-gray-200 dark:border-slate-700">
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Serviço</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Meta</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Realizado</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Cobertura</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Gap</th>
+            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Projeção</th>
           </tr>
         </thead>
         <tbody>
-          {vendas.map((v: any) => (
-            <tr key={v.id} className="border-b border-gray-100 dark:border-clinic-cyan/10">
-              <td className="px-4 py-4">{new Date(v.data_venda).toLocaleDateString('pt-BR')}</td>
-              <td className="px-4 py-4">{v.pacientes?.nome_completo || 'N/A'}</td>
-              <td className="px-4 py-4">{v.metodo_pagamento}</td>
-              <td className="px-4 py-4 text-right font-medium">R$ {v.preco_final?.toFixed(2) || v.preco_total?.toFixed(2) || '0.00'}</td>
-              <td className="px-4 py-4 text-right">{v.margem_percentual?.toFixed(2) || '0.00'}%</td>
-              <td className="px-4 py-4 text-right">{v.margem_percentual_final?.toFixed(2) || '0.00'}%</td>
-              <td className="px-4 py-4 text-right">{v.parcelas || '-'}</td>
+          {metas.map((m: any, i: number) => (
+            <tr key={i} className="border-b border-gray-100 dark:border-slate-700/50">
+              <td className="px-4 py-3 text-gray-900 dark:text-white">{m.servico}</td>
+              <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
+              <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
+              <td className="px-4 py-3 text-center">
+                <span className={`px-2 py-1 rounded text-xs ${m.cobertura >= 100 ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'}`}>
+                  {formatPercent(m.cobertura)}
+                </span>
+              </td>
+              <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.gap}</td>
+              <td className="px-4 py-3 text-center text-cyan-600 dark:text-cyan-400">{m.projecao}</td>
             </tr>
           ))}
         </tbody>
@@ -949,173 +1019,72 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda }: { vendas: any[], titu
   </div>
 )
 
-const AbaMetas = ({ metas, tituloPeriodo }: any) => (
+const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, mesesSelecionados, onUpdateMeta, metaTemporaria, setMetaTemporaria }: any) => (
   <div className="space-y-6">
-    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Metas por Serviço - {tituloPeriodo}</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-clinic-cyan/20">
-              <th className="px-4 py-3 text-left text-cyan-700 dark:text-clinic-cyan">Serviço</th>
-              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Meta</th>
-              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Realizado</th>
-              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Cobertura</th>
-              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">GAP</th>
-              <th className="px-4 py-3 text-right text-cyan-700 dark:text-clinic-cyan">Projeção</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metas.map((m: any, idx: number) => (
-              <tr key={idx} className="border-b border-gray-100 dark:border-clinic-cyan/10">
-                <td className="px-4 py-3 text-gray-900 dark:text-clinic-white">{m.servico}</td>
-                <td className="px-4 py-3 text-right text-cyan-600 dark:text-clinic-cyan font-semibold">{m.metaUnidades}</td>
-                <td className="px-4 py-3 text-right text-blue-600 dark:text-blue-400 font-semibold">{m.realizado}</td>
-                <td className="px-4 py-3 text-right">
-                  <span className={`font-bold ${m.cobertura >= 100 ? 'text-green-600 dark:text-green-400' :
-                    m.cobertura >= 70 ? 'text-yellow-600 dark:text-yellow-400' :
-                      'text-red-600 dark:text-red-400'
-                    }`}>
-                    {formatPercent(m.cobertura)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right text-red-600 dark:text-red-400 font-semibold">{m.gap}</td>
-                <td className="px-4 py-3 text-right text-purple-600 dark:text-purple-400 font-semibold">{m.projecao}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <FinanceCard title="Dias Úteis" value={diasUteis} />
+      <FinanceCard title="Dia Útil Atual" value={diaAtual} />
+      <FinanceCard title="Progresso" value={formatPercent(diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0)} variant="cyan" />
+    </div>
+
+    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Meta de Resultado Mensal</h2>
+      <div className="flex gap-4 items-end">
+        <InputLocal
+          label="Meta (R$)"
+          type="number"
+          value={metaTemporaria ?? metaResultadoMensal}
+          onChange={(v: number) => setMetaTemporaria(v)}
+        />
+        <Button onClick={() => onUpdateMeta(metaTemporaria ?? metaResultadoMensal)}>
+          Salvar Meta
+        </Button>
       </div>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <FinanceCard title="Receita Bruta" value={formatCurrency(controle.receitaBruta)} variant="green" />
+      <FinanceCard title="Custo Insumos" value={formatCurrency(controle.custoInsumos)} variant="red" />
+      <FinanceCard title="Lucro Bruto" value={formatCurrency(controle.lucroBruto)} variant="cyan" />
+      <FinanceCard title="Despesas Fixas" value={formatCurrency(controle.despesasFixasPeriodo)} variant="red" />
+      <FinanceCard title="Impostos" value={formatCurrency(controle.impostos)} variant="red" />
+      <FinanceCard title="Resultado Líquido" value={formatCurrency(controle.resultadoLiquido)} variant={controle.resultadoLiquido >= 0 ? 'green' : 'red'} />
     </div>
   </div>
 )
 
-const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, setMetaResultadoMensal, onBlurMeta, tituloPeriodo, mesesSelecionadosCount }: any) => {
-  const [valorFormatado, setValorFormatado] = React.useState(formatCurrency(metaResultadoMensal))
-
-  React.useEffect(() => {
-    setValorFormatado(formatCurrency(metaResultadoMensal))
-  }, [metaResultadoMensal])
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let valor = e.target.value.replace(/\D/g, '')
-
-    if (valor === '') {
-      setValorFormatado('R$ 0,00')
-      setMetaResultadoMensal(0)
-      return
-    }
-
-    valor = valor.replace(/^0+/, '') || '0'
-    const numeroDecimal = parseFloat(valor) / 100
-    setValorFormatado(formatCurrency(numeroDecimal))
-    setMetaResultadoMensal(numeroDecimal)
-  }
-
-  const handleBlur = () => {
-    onBlurMeta(metaResultadoMensal)
-  }
-
-  return (
-    <>
-      <div className="space-y-6">
-        <div className="bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-500/20 dark:to-pink-500/20 rounded-xl border border-purple-300 dark:border-purple-500/40 p-6">
-          <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400 mb-4">🎯 Defina sua Meta Mensal</h3>
-          <p className="text-xs text-gray-700 dark:text-gray-400 mb-2">
-            A meta total para o período de {tituloPeriodo} ({mesesSelecionadosCount} {mesesSelecionadosCount === 1 ? 'mês' : 'meses'}) será {formatCurrency(metaResultadoMensal * mesesSelecionadosCount)}.
-          </p>
-          <div className="max-w-md">
-            <label className="text-sm text-gray-700 dark:text-clinic-gray-400 mb-2 block">Meta de Resultado Operacional Mensal</label>
-            <input
-              type="text"
-              value={valorFormatado}
-              onChange={handleInputChange}
-              onBlur={handleBlur}
-              placeholder="R$ 0,00"
-              className="w-full bg-white dark:bg-clinic-gray-700 border border-gray-300 dark:border-clinic-cyan/30 rounded-lg px-4 py-2 text-gray-900 dark:text-clinic-white"
-            />
-          </div>
-        </div>
+const AbaDRE = ({ controle, tituloPeriodo }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">DRE - {tituloPeriodo}</h2>
+    <div className="space-y-3">
+      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700">
+        <span className="text-gray-900 dark:text-white font-medium">Receita Bruta</span>
+        <span className="text-green-600 dark:text-green-400 font-bold">{formatCurrency(controle.receitaBruta)}</span>
       </div>
-
-      <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Controle - {tituloPeriodo}</h2>
-
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <FinanceCard title="Dias Úteis Totais" value={diasUteis} />
-          <FinanceCard title="Dia Útil Atual" value={diaAtual} variant="cyan" />
-        </div>
-
-        <h3 className="text-xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Performance Atual</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <FinanceCard title="Faturamento" value={formatCurrency(controle.faturamentoAcumulado)} variant="cyan" />
-          <FinanceCard title="Lucro Bruto" value={formatCurrency(controle.lucroBrutoAcumulado)} variant="green" />
-          <FinanceCard title="Dias Restantes" value={controle.diasRestantes} />
-          <FinanceCard title="Performance Diária" value={formatCurrency(controle.performanceDiaria)} variant="green" />
-        </div>
-
-        <h3 className="text-xl font-bold text-gray-900 dark:text-clinic-cyan mb-4">Projeções</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <FinanceCard title="Faturamento Projetado" value={formatCurrency(controle.faturamentoProjetado)} variant="cyan" />
-          <FinanceCard title="Lucro Bruto Projetado" value={formatCurrency(controle.lucroBrutoProjetado)} variant="green" />
-          <FinanceCard
-            title="Resultado Projetado"
-            value={formatCurrency(controle.resultadoProjetado)}
-            variant={controle.resultadoProjetado >= 0 ? 'green' : 'red'}
-          />
-        </div>
-
-        <h3 className="text-xl font-bold text-purple-700 dark:text-purple-400 mb-4">Engenharia Reversa</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <FinanceCard title="Meta Resultado Líquido" value={formatCurrency(controle.metaResultadoLiquido)} />
-          <FinanceCard title="Meta Lucro Bruto" value={formatCurrency(controle.metaLucroBruto)} variant="cyan" />
-          <FinanceCard title="Lucro Faltante" value={formatCurrency(controle.lucroBrutoFaltante)} variant="red" />
-        </div>
+      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
+        <span className="text-gray-600 dark:text-slate-400">(-) Custo dos Insumos</span>
+        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.custoInsumos)}</span>
       </div>
-    </>
-  )
-}
-
-const AbaDRE = ({ dre, tituloPeriodo, parametros }: any) => (
-  <div className="space-y-6">
-    <div className="bg-white dark:bg-clinic-gray-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-clinic-cyan/20 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-clinic-cyan mb-6">DRE - {tituloPeriodo}</h2>
-      <div className="space-y-4">
-        <DRELine label="(+) Faturamento Bruto" value={dre.faturamentoBruto} isMain />
-        <DRELine label="(-) Impostos" value={dre.impostos} isNegative />
-        <DRELine label="(-) Taxas Financeiras" value={dre.taxasFinanceiras} isNegative />
-        <DRELine label="(=) Faturamento Líquido" value={dre.faturamentoLiquido} isMain />
-        <DRELine label="(-) Custos Variáveis" value={dre.custosVariaveis} isNegative />
-        <DRELine label="(=) Lucro Bruto" value={dre.lucroBruto} isSubTotal />
-        <DRELine label="(-) Despesas Fixas" value={dre.despesasFixas} isNegative />
-        <DRELine label="(=) RESULTADO OPERACIONAL" value={dre.resultadoOperacional} isFinal />
+      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 bg-cyan-50 dark:bg-cyan-500/10 px-4 rounded">
+        <span className="text-cyan-700 dark:text-cyan-400 font-medium">= Lucro Bruto</span>
+        <span className="text-cyan-700 dark:text-cyan-400 font-bold">{formatCurrency(controle.lucroBruto)}</span>
+      </div>
+      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
+        <span className="text-gray-600 dark:text-slate-400">(-) Despesas Fixas</span>
+        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.despesasFixasPeriodo)}</span>
+      </div>
+      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
+        <span className="text-gray-600 dark:text-slate-400">(-) Impostos</span>
+        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.impostos)}</span>
+      </div>
+      <div className={`flex justify-between py-4 px-4 rounded-lg ${controle.resultadoLiquido >= 0 ? 'bg-green-100 dark:bg-green-500/20' : 'bg-red-100 dark:bg-red-500/20'}`}>
+        <span className={`font-bold ${controle.resultadoLiquido >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+          = Resultado Líquido
+        </span>
+        <span className={`font-bold text-xl ${controle.resultadoLiquido >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+          {formatCurrency(controle.resultadoLiquido)}
+        </span>
       </div>
     </div>
   </div>
 )
-
-const DRELine = ({ label, value, isMain, isNegative, isSubTotal, isFinal }: any) => {
-  let classes = "flex justify-between py-3"
-  let valueClasses = "text-lg"
-
-  if (isMain) {
-    classes += " border-b-2 border-cyan-500 dark:border-clinic-cyan"
-    valueClasses = "text-xl font-bold text-cyan-600 dark:text-clinic-cyan"
-  }
-  if (isNegative) valueClasses += " text-red-600 dark:text-red-400"
-  if (isSubTotal) {
-    classes += " bg-green-50 dark:bg-green-500/10 px-4 rounded border-b-2 border-green-500"
-    valueClasses = `text-xl font-bold ${value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`
-  }
-  if (isFinal) {
-    classes += ` px-4 rounded ${value >= 0 ? 'bg-green-50 dark:bg-green-500/10 border-b-4 border-green-500' : 'bg-red-50 dark:bg-red-500/10 border-b-4 border-red-500'}`
-    valueClasses = `text-2xl font-bold ${value >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`
-  }
-
-  return (
-    <div className={classes}>
-      <span className={`font-semibold text-gray-900 dark:text-clinic-white ${isFinal ? 'text-lg' : ''}`}>{label}</span>
-      <p className={valueClasses}>{formatCurrency(value)}</p>
-    </div>
-  )
-}

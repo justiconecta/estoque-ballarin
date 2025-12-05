@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { X, Trash2, Check, ShoppingCart } from 'lucide-react'
-import { Button, Input } from '@/components/ui'
+import { Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { Paciente, Lote, Sku } from '@/types/database'
 
@@ -24,7 +24,7 @@ interface InsumoSelecionado {
   quantidade_disponivel: number
 }
 
-// ✅ 6 CATEGORIAS FIXAS - SEMPRE VISÍVEIS
+// ✅ 6 CATEGORIAS FIXAS
 const CATEGORIAS_FIXAS = [
   'Toxina Botulínica',
   'Preenchedor',
@@ -48,13 +48,7 @@ const normalizarCategoria = (categoria: string): string => {
 }
 
 // ✅ Função para determinar nível do combo
-const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: number): {
-  nivel: 'none' | 'basic' | 'standard' | 'premium' | 'ultra'
-  label: string
-  borderClass: string
-  badgeClass: string
-} => {
-  // Ultra: Toxina >= 2, Preenchedor >= 5, Especiais >= 2
+const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: number) => {
   if (toxina >= 2 && preenchedor >= 5 && especiais >= 2) {
     return {
       nivel: 'ultra',
@@ -63,8 +57,6 @@ const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: nu
       badgeClass: 'bg-yellow-400 text-black'
     }
   }
-  
-  // Premium: Toxina >= 2, Preenchedor >= 4, Especiais >= 1
   if (toxina >= 2 && preenchedor >= 4 && especiais >= 1) {
     return {
       nivel: 'premium',
@@ -73,8 +65,6 @@ const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: nu
       badgeClass: 'bg-purple-500 text-white'
     }
   }
-  
-  // Standard: Toxina >= 1, Preenchedor >= 4, Especiais >= 1
   if (toxina >= 1 && preenchedor >= 4 && especiais >= 1) {
     return {
       nivel: 'standard',
@@ -83,8 +73,6 @@ const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: nu
       badgeClass: 'bg-cyan-400 text-black'
     }
   }
-  
-  // Basic: Toxina >= 1, Preenchedor >= 2, Especiais >= 1
   if (toxina >= 1 && preenchedor >= 2 && especiais >= 1) {
     return {
       nivel: 'basic',
@@ -93,18 +81,16 @@ const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: nu
       badgeClass: 'bg-green-500 text-black'
     }
   }
-  
-  // Sem combo
   return {
     nivel: 'none',
-    label: 'Padrão',
+    label: 'Sem Combo',
     borderClass: 'border-2 border-slate-600',
     badgeClass: 'bg-slate-600 text-slate-300'
   }
 }
 
 export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVendaModalProps) {
-  // ============ TODOS OS HOOKS PRIMEIRO ============
+  // ============ ESTADOS ============
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState(1)
   const [pacientes, setPacientes] = useState<Paciente[]>([])
@@ -118,7 +104,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
   const [valorEntrada, setValorEntrada] = useState(0)
   const [buscaPaciente, setBuscaPaciente] = useState('')
 
-  // useCallback para funções estáveis
+  // ============ CARREGAR DADOS (IGUAL AO CÓDIGO ANTIGO QUE FUNCIONA) ============
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -127,16 +113,22 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
         supabaseApi.getProdutos()
       ])
 
+      console.log('📦 Produtos carregados:', produtosData.length)
       setPacientes(pacientesData)
 
+      // ✅ LÓGICA ORIGINAL QUE FUNCIONA - SEM FILTRO EXTRA
       const lotes: (Lote & { skus: Sku })[] = []
       produtosData.forEach((prod: any) => {
+        console.log(`  SKU: ${prod.nome_produto}, Lotes: ${prod.lotes?.length || 0}`)
         if (prod.lotes && prod.lotes.length > 0) {
           prod.lotes.forEach((lote: Lote) => {
+            // ✅ Adiciona TODOS os lotes retornados (já filtrados pelo getProdutos)
             lotes.push({ ...lote, skus: prod })
           })
         }
       })
+      
+      console.log('📋 Total de lotes disponíveis:', lotes.length)
       setLotesDisponiveis(lotes)
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
@@ -157,7 +149,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     setBuscaPaciente('')
   }, [])
 
-  // useEffect
   useEffect(() => {
     if (isOpen) {
       loadData()
@@ -165,7 +156,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     }
   }, [isOpen, loadData, resetForm])
 
-  // useMemo - Cálculos de totais
+  // ============ CÁLCULOS ============
   const totais = useMemo(() => {
     const custoTotal = insumosSelecionados.reduce((acc, item) =>
       acc + ((item.preco_unitario_custo || 0) * item.quantidade), 0)
@@ -176,8 +167,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     const descontoPercentual = vendaTotal > 0 ? (descontoValor / vendaTotal) * 100 : 0
     const valorParcelado = Math.max(0, precoFinal - valorEntrada)
     const valorParcela = parcelas > 0 ? valorParcelado / parcelas : 0
-
-    // Margens
     const margemTotal = vendaTotal - custoTotal
     const margemPercentual = vendaTotal > 0 ? (margemTotal / vendaTotal) * 100 : 0
     const margemTotalFinal = precoFinal - custoTotal
@@ -197,60 +186,38 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     }
   }, [insumosSelecionados, descontoValor, valorEntrada, parcelas])
 
-  // useMemo - Contagem por categoria para gamificação
   const contagemCategorias = useMemo(() => {
     const counts = { toxina: 0, preenchedor: 0, especiais: 0 }
-
     insumosSelecionados.forEach(item => {
       const categoria = normalizarCategoria(item.classe_terapeutica)
-
-      if (categoria === 'Toxina Botulínica') {
-        counts.toxina += item.quantidade
-      } else if (categoria === 'Preenchedor') {
-        counts.preenchedor += item.quantidade
-      } else if (['Bioestimulador', 'Bioregenerador', 'Tecnologia'].includes(categoria)) {
-        counts.especiais += item.quantidade
-      }
+      if (categoria === 'Toxina Botulínica') counts.toxina += item.quantidade
+      else if (categoria === 'Preenchedor') counts.preenchedor += item.quantidade
+      else if (['Bioestimulador', 'Bioregenerador', 'Tecnologia'].includes(categoria)) counts.especiais += item.quantidade
     })
-
     return counts
   }, [insumosSelecionados])
 
-  // useMemo - Nível do combo
   const nivelCombo = useMemo(() => {
-    return determinarNivelCombo(
-      contagemCategorias.toxina,
-      contagemCategorias.preenchedor,
-      contagemCategorias.especiais
-    )
+    return determinarNivelCombo(contagemCategorias.toxina, contagemCategorias.preenchedor, contagemCategorias.especiais)
   }, [contagemCategorias])
 
-  // useMemo - Lotes agrupados por categoria (6 categorias fixas)
   const lotesPorCategoria = useMemo(() => {
     const grouped: Record<string, typeof lotesDisponiveis> = {}
-
-    // Inicializar todas as 6 categorias
-    CATEGORIAS_FIXAS.forEach(cat => {
-      grouped[cat] = []
-    })
-
-    // Distribuir lotes nas categorias
+    CATEGORIAS_FIXAS.forEach(cat => { grouped[cat] = [] })
+    
     lotesDisponiveis.forEach(lote => {
       const skuData = lote.skus as any
       const categoriaOriginal = skuData?.classe_terapeutica || 'Outros'
       const categoriaNormalizada = normalizarCategoria(categoriaOriginal)
-
       if (grouped[categoriaNormalizada]) {
         grouped[categoriaNormalizada].push(lote)
       } else {
         grouped['Outros'].push(lote)
       }
     })
-
     return grouped
   }, [lotesDisponiveis])
 
-  // useMemo - Pacientes filtrados pela busca (autocomplete)
   const pacientesFiltrados = useMemo(() => {
     if (!buscaPaciente.trim()) return []
     const termo = buscaPaciente.toLowerCase().trim()
@@ -260,33 +227,30 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     ).slice(0, 10)
   }, [pacientes, buscaPaciente])
 
-  // ✅ RETURN CONDICIONAL DEPOIS DE TODOS OS HOOKS
   if (!isOpen) return null
 
   // ============ HANDLERS ============
-  const handleAddInsumo = (loteId: string, categoria: string) => {
-    const id = parseInt(loteId)
-    if (!id) return
-
-    const lote = lotesDisponiveis.find(l => l.id_lote === id)
-    if (!lote) return
-
-    if (insumosSelecionados.some(i => i.id_lote === id)) return
-
-    const skuData = lote.skus as any
-    const valorVenda = skuData?.valor_venda || 0
-
-    setInsumosSelecionados(prev => [...prev, {
-      id_lote: lote.id_lote,
-      id_sku: lote.id_sku,
-      nome_produto: skuData?.nome_produto || 'Produto',
-      classe_terapeutica: categoria,
-      quantidade: 1,
-      preco_unitario_custo: lote.preco_unitario || 0,
-      preco_unitario_venda: valorVenda,
-      validade: lote.validade,
-      quantidade_disponivel: lote.quantidade_disponivel
-    }])
+  const handleToggleInsumo = (lote: Lote & { skus: Sku }) => {
+    const exists = insumosSelecionados.find(i => i.id_lote === lote.id_lote)
+    
+    if (exists) {
+      // Remove
+      setInsumosSelecionados(prev => prev.filter(i => i.id_lote !== lote.id_lote))
+    } else {
+      // Adiciona
+      const skuData = lote.skus as any
+      setInsumosSelecionados(prev => [...prev, {
+        id_lote: lote.id_lote,
+        id_sku: lote.id_sku,
+        nome_produto: skuData?.nome_produto || 'Produto',
+        classe_terapeutica: skuData?.classe_terapeutica || 'Outros',
+        quantidade: 1,
+        preco_unitario_custo: lote.preco_unitario || 0,
+        preco_unitario_venda: skuData?.valor_venda || 0,
+        validade: lote.validade,
+        quantidade_disponivel: lote.quantidade_disponivel
+      }])
+    }
   }
 
   const handleUpdateQuantidade = (loteId: number, qtd: number) => {
@@ -301,20 +265,9 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     ))
   }
 
-  const handleRemoveInsumo = (loteId: number) => {
-    setInsumosSelecionados(prev => prev.filter(i => i.id_lote !== loteId))
-  }
-
   const handleSave = async () => {
-    if (!selectedPacienteId) {
-      alert('Selecione um paciente')
-      return
-    }
-
-    if (insumosSelecionados.length === 0) {
-      alert('Adicione pelo menos um insumo')
-      return
-    }
+    if (!selectedPacienteId) return alert('Selecione um paciente')
+    if (insumosSelecionados.length === 0) return alert('Adicione pelo menos um insumo')
 
     try {
       setLoading(true)
@@ -330,12 +283,11 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
           quantidade: i.quantidade
         }))
       })
-
       onSuccess()
       onClose()
     } catch (error) {
       console.error('Erro ao salvar venda:', error)
-      alert('Erro ao salvar venda. Verifique o console.')
+      alert('Erro ao salvar venda.')
     } finally {
       setLoading(false)
     }
@@ -347,111 +299,88 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
   // ============ RENDER ============
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-xl w-full max-w-5xl max-h-[90vh] overflow-hidden border border-slate-700">
+      <div className="bg-slate-900 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden border border-slate-700">
 
         {/* Header */}
-        <div className="p-6 border-b border-slate-700 flex justify-between items-center bg-gradient-to-r from-slate-800 to-slate-900">
+        <div className="p-5 border-b border-slate-700 flex justify-between items-center bg-gradient-to-r from-slate-800 to-slate-900">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-cyan-500/20 rounded-lg">
-              <ShoppingCart className="w-6 h-6 text-cyan-400" />
+              <ShoppingCart className="w-5 h-5 text-cyan-400" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-cyan-400">Registrar Venda</h2>
-              <p className="text-sm text-slate-400">
-                {step === 1 ? 'Seleção de Insumos' : 'Resumo e Pagamento'}
+              <h2 className="text-xl font-bold text-cyan-400">Registrar Venda</h2>
+              <p className="text-xs text-slate-400">
+                {step === 1 ? 'Selecionar Itens' : 'Resumo e Pagamento'}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-          >
-            <X className="w-6 h-6 text-slate-400 hover:text-white" />
+          <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg">
+            <X className="w-5 h-5 text-slate-400" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+        <div className="p-5 overflow-y-auto max-h-[calc(90vh-180px)]">
 
-          {/* Step 1: Seleção de Insumos */}
-          {step === 1 && (
-            <div className="space-y-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-400 border-t-transparent"></div>
+              <span className="ml-3 text-slate-400">Carregando produtos...</span>
+            </div>
+          ) : step === 1 ? (
+            <div className="space-y-5">
 
               {/* Data e Paciente */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Data da Venda
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Data da Venda</label>
                   <input
                     type="date"
                     value={dataVenda}
                     onChange={(e) => setDataVenda(e.target.value)}
-                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-3 text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:border-cyan-400 outline-none"
                   />
                 </div>
                 <div className="relative">
-                  <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Paciente
-                  </label>
+                  <label className="block text-sm font-medium text-slate-300 mb-2">Paciente</label>
                   <input
                     type="text"
                     placeholder="Buscar por nome ou CPF..."
                     value={buscaPaciente}
                     onChange={(e) => {
                       setBuscaPaciente(e.target.value)
-                      if (!e.target.value.trim()) {
-                        setSelectedPacienteId(null)
-                      }
+                      if (!e.target.value.trim()) setSelectedPacienteId(null)
                     }}
-                    className={`w-full bg-slate-800 border rounded-lg px-4 py-3 text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 outline-none ${
+                    className={`w-full bg-slate-800 border rounded-lg px-4 py-2.5 text-white outline-none ${
                       selectedPacienteId ? 'border-cyan-500' : 'border-slate-600'
                     }`}
                   />
                   
-                  {/* Dropdown de resultados */}
-                  {buscaPaciente.trim().length >= 1 && !selectedPacienteId && (
-                    <div 
-                      className="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-2xl overflow-hidden"
-                      style={{ zIndex: 9999, maxHeight: '240px', overflowY: 'auto' }}
-                    >
-                      {pacientesFiltrados.length > 0 ? (
-                        pacientesFiltrados.map(p => (
-                          <button
-                            key={p.id_paciente}
-                            type="button"
-                            onClick={() => {
-                              setSelectedPacienteId(p.id_paciente)
-                              setBuscaPaciente(p.nome_completo || '')
-                            }}
-                            className="w-full px-4 py-3 text-left hover:bg-slate-700 transition-colors border-b border-slate-700 last:border-b-0 bg-slate-800"
-                          >
-                            <p className="text-white font-medium">{p.nome_completo}</p>
-                            {p.cpf && (
-                              <p className="text-slate-400 text-sm">CPF: {p.cpf}</p>
-                            )}
-                          </button>
-                        ))
-                      ) : (
-                        <div className="px-4 py-3 bg-slate-800">
-                          <p className="text-slate-400 text-sm text-center">Nenhum paciente encontrado</p>
-                        </div>
+                  {buscaPaciente.trim() && !selectedPacienteId && (
+                    <div className="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50">
+                      {pacientesFiltrados.length > 0 ? pacientesFiltrados.map(p => (
+                        <button
+                          key={p.id_paciente}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPacienteId(p.id_paciente)
+                            setBuscaPaciente(p.nome_completo || '')
+                          }}
+                          className="w-full px-4 py-2 text-left hover:bg-slate-700 border-b border-slate-700 last:border-b-0"
+                        >
+                          <p className="text-white text-sm">{p.nome_completo}</p>
+                          <p className="text-slate-400 text-xs">CPF: {p.cpf}</p>
+                        </button>
+                      )) : (
+                        <p className="px-4 py-3 text-slate-400 text-sm">Nenhum paciente encontrado</p>
                       )}
                     </div>
                   )}
-                  
-                  {/* Indicador de paciente selecionado */}
+
                   {selectedPacienteId && (
-                    <div className="flex items-center justify-between mt-2 px-3 py-2 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
-                      <span className="text-cyan-400 text-sm">✓ Paciente selecionado</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedPacienteId(null)
-                          setBuscaPaciente('')
-                        }}
-                        className="text-slate-400 hover:text-white text-xs"
-                      >
+                    <div className="flex items-center justify-between mt-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded">
+                      <span className="text-cyan-400 text-xs">✓ Paciente selecionado</span>
+                      <button onClick={() => { setSelectedPacienteId(null); setBuscaPaciente('') }} className="text-slate-400 text-xs hover:text-white">
                         Alterar
                       </button>
                     </div>
@@ -459,178 +388,162 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 </div>
               </div>
 
-              {/* Título da seção */}
-              <h3 className="text-lg font-bold text-white border-b border-slate-700 pb-2">
-                Selecionar Insumos
-              </h3>
+              {/* ✅ CATEGORIAS COM CARDS CLICÁVEIS */}
+              {CATEGORIAS_FIXAS.map(categoria => {
+                const lotesCategoria = lotesPorCategoria[categoria] || []
+                const insumosDaCategoria = insumosSelecionados.filter(i => normalizarCategoria(i.classe_terapeutica) === categoria)
 
-              {/* ✅ CATEGORIAS - APENAS COM PRODUTOS DISPONÍVEIS */}
-              <div className="space-y-4">
-                {CATEGORIAS_FIXAS.map(categoria => {
-                  const lotesCategoria = lotesPorCategoria[categoria] || []
-                  const lotesNaoSelecionados = lotesCategoria.filter(l =>
-                    !insumosSelecionados.some(i => i.id_lote === l.id_lote)
-                  )
-                  const insumosDaCategoria = insumosSelecionados.filter(i =>
-                    normalizarCategoria(i.classe_terapeutica) === categoria
-                  )
+                if (lotesCategoria.length === 0 && insumosDaCategoria.length === 0) return null
 
-                  // ✅ OCULTAR categoria se não tem produtos E não tem selecionados
-                  if (lotesCategoria.length === 0 && insumosDaCategoria.length === 0) {
-                    return null
-                  }
+                return (
+                  <div key={categoria}>
+                    {/* Título da categoria */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-1 h-5 bg-cyan-400 rounded-full"></div>
+                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{categoria}</h4>
+                      <span className="text-xs text-slate-500">({lotesCategoria.length})</span>
+                    </div>
 
-                  return (
-                    <div key={categoria} className="bg-slate-800 rounded-lg overflow-hidden">
-                      {/* Header da categoria */}
-                      <div className="px-4 py-3 bg-slate-700/50 border-l-4 border-cyan-400">
-                        <h4 className="text-sm font-bold text-cyan-400 uppercase tracking-wide">
-                          {categoria}
-                        </h4>
-                        <p className="text-xs text-slate-400">
-                          {lotesCategoria.length} produto(s) disponível(is) • {insumosDaCategoria.length} selecionado(s)
-                        </p>
-                      </div>
+                    {/* Cards de produtos */}
+                    <div className="space-y-2">
+                      {lotesCategoria.map(lote => {
+                        const skuData = lote.skus as any
+                        const isSelected = insumosSelecionados.some(i => i.id_lote === lote.id_lote)
+                        const insumoSelecionado = insumosSelecionados.find(i => i.id_lote === lote.id_lote)
 
-                      <div className="p-4 space-y-3">
-                        {/* Select para adicionar insumo */}
-                        {lotesNaoSelecionados.length > 0 ? (
-                          <select
-                            onChange={(e) => handleAddInsumo(e.target.value, categoria)}
-                            value=""
-                            className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:border-cyan-400 outline-none"
-                          >
-                            <option value="">+ Adicionar insumo desta categoria...</option>
-                            {lotesNaoSelecionados.map(lote => {
-                              const skuData = lote.skus as any
-                              return (
-                                <option key={lote.id_lote} value={lote.id_lote}>
-                                  {skuData?.nome_produto} - Qtd: {lote.quantidade_disponivel} - Val: {new Date(lote.validade).toLocaleDateString('pt-BR')}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        ) : (
-                          <p className="text-green-400 text-sm">
-                            ✓ Todos os produtos desta categoria já foram selecionados
-                          </p>
-                        )}
-
-                        {/* Insumos selecionados desta categoria */}
-                        {insumosDaCategoria.map(insumo => (
+                        return (
                           <div
-                            key={insumo.id_lote}
-                            className="flex items-center justify-between bg-slate-900 border border-cyan-500/30 rounded-lg p-3"
+                            key={lote.id_lote}
+                            className={`rounded-lg overflow-hidden transition-all duration-200 ${
+                              isSelected 
+                                ? 'border-2 border-teal-400 bg-slate-800' 
+                                : 'border border-slate-600 bg-slate-900 hover:bg-slate-800'
+                            }`}
                           >
-                            <div className="flex-1">
-                              <p className="text-white font-medium text-sm">{insumo.nome_produto}</p>
-                              <p className="text-slate-400 text-xs">
-                                Val: {new Date(insumo.validade).toLocaleDateString('pt-BR')} •
-                                Disp: {insumo.quantidade_disponivel} •
-                                Venda: {formatCurrency(insumo.preco_unitario_venda)}
-                              </p>
+                            {/* Header clicável */}
+                            <div
+                              onClick={() => handleToggleInsumo(lote)}
+                              className="px-4 py-3 flex justify-between items-center cursor-pointer"
+                            >
+                              <div className="flex-1">
+                                <span className="text-sm font-medium text-white">{skuData?.nome_produto || 'Produto'}</span>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <span className="text-xs text-slate-400">Estoque: {lote.quantidade_disponivel}</span>
+                                  <span className="text-xs text-slate-400">Val: {new Date(lote.validade).toLocaleDateString('pt-BR')}</span>
+                                  <span className="text-xs text-teal-400 font-medium">{formatCurrency(skuData?.valor_venda || 0)}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Ícone Check */}
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                                isSelected ? 'bg-teal-500 scale-100' : 'bg-slate-700 scale-75 opacity-30'
+                              }`}>
+                                <Check className="w-4 h-4 text-white" />
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-2">
-                                <label className="text-slate-400 text-xs">Qtd:</label>
+
+                            {/* Área de quantidade (expande quando selecionado) */}
+                            <div className={`overflow-hidden transition-all duration-300 bg-slate-800 border-t border-slate-700 ${
+                              isSelected ? 'max-h-14 opacity-100 py-2 px-4' : 'max-h-0 opacity-0 py-0'
+                            }`}>
+                              <div className="flex items-center gap-3">
+                                <label className="text-xs text-slate-400">Quantidade:</label>
                                 <input
                                   type="number"
                                   min="1"
-                                  max={insumo.quantidade_disponivel}
-                                  value={insumo.quantidade}
-                                  onChange={(e) => handleUpdateQuantidade(insumo.id_lote, parseInt(e.target.value) || 1)}
-                                  className="w-16 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-white text-center text-sm"
+                                  max={lote.quantidade_disponivel}
+                                  value={insumoSelecionado?.quantidade || 1}
+                                  onChange={(e) => handleUpdateQuantidade(lote.id_lote, parseInt(e.target.value) || 1)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-16 px-2 py-1 text-center text-white bg-slate-900 border border-slate-600 rounded focus:border-teal-400 outline-none"
                                 />
+                                <span className="text-xs text-slate-500">máx: {lote.quantidade_disponivel}</span>
                               </div>
-                              <button
-                                onClick={() => handleRemoveInsumo(insumo.id_lote)}
-                                className="p-2 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-red-400 transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+                  </div>
+                )
+              })}
 
-          {/* Step 2: Resumo e Pagamento */}
-          {step === 2 && (
-            <div className="space-y-6">
-
-              {/* ✅ RESUMO COM BORDA DINÂMICA (GAMIFICAÇÃO) */}
-              <div className={`rounded-xl p-6 bg-slate-800 transition-all duration-500 ${nivelCombo.borderClass}`}>
-
-                {/* Badge do nível */}
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-bold text-white">Resumo de Itens</h3>
+              {/* Resumo com gamificação */}
+              <div className={`rounded-xl p-5 bg-slate-950 transition-all duration-500 ${nivelCombo.borderClass}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-white font-semibold">Resumo de Itens</h4>
                   <span className={`px-3 py-1 rounded text-xs font-bold uppercase ${nivelCombo.badgeClass}`}>
                     {nivelCombo.label}
                   </span>
                 </div>
 
-                {/* Lista de itens */}
-                <div className="space-y-2 mb-6">
-                  {insumosSelecionados.length === 0 ? (
-                    <p className="text-slate-500 italic">Nenhum item selecionado.</p>
-                  ) : (
-                    insumosSelecionados.map(item => (
-                      <div
-                        key={item.id_lote}
-                        className="flex justify-between items-center py-2 border-b border-slate-700"
-                      >
-                        <div className="flex-1">
-                          <p className="text-white text-sm">{item.nome_produto}</p>
-                          <p className="text-slate-400 text-xs">{item.classe_terapeutica} • x{item.quantidade}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-cyan-400 text-sm font-medium">
-                            {formatCurrency(item.preco_unitario_venda * item.quantidade)}
-                          </p>
-                          <p className="text-slate-500 text-xs">
-                            Custo: {formatCurrency(item.preco_unitario_custo * item.quantidade)}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                {insumosSelecionados.length === 0 ? (
+                  <p className="text-slate-500 text-sm italic">Nenhum item selecionado.</p>
+                ) : (
+                  <ul className="space-y-2 mb-4">
+                    {insumosSelecionados.map(item => (
+                      <li key={item.id_lote} className="flex justify-between text-sm text-slate-300 pb-2 border-b border-slate-800">
+                        <span>{item.nome_produto}</span>
+                        <span className="text-cyan-400">x{item.quantidade}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
-                {/* Indicadores de combo */}
-                <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-slate-900 rounded-lg">
-                  <div className="text-center">
-                    <p className="text-xs text-slate-400">Toxina</p>
+                {/* Stats do Combo */}
+                <div className="flex gap-4 pt-4 border-t border-slate-800">
+                  <div className="text-center flex-1">
+                    <p className="text-xs text-slate-500">Toxina</p>
                     <p className="text-lg font-bold text-white">{contagemCategorias.toxina}</p>
                   </div>
-                  <div className="text-center border-x border-slate-700">
-                    <p className="text-xs text-slate-400">Preenchedor</p>
+                  <div className="text-center flex-1 border-x border-slate-700">
+                    <p className="text-xs text-slate-500">Preenchedor</p>
                     <p className="text-lg font-bold text-white">{contagemCategorias.preenchedor}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-xs text-slate-400">Especiais</p>
+                  <div className="text-center flex-1">
+                    <p className="text-xs text-slate-500">Especiais</p>
                     <p className="text-lg font-bold text-white">{contagemCategorias.especiais}</p>
                   </div>
                 </div>
 
-                {/* Totais */}
-                <div className="space-y-2 pt-4 border-t border-slate-600">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Valor Total:</span>
-                    <span className="text-white font-bold">{formatCurrency(totais.vendaTotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Custo Total:</span>
-                    <span className="text-slate-300">{formatCurrency(totais.custoTotal)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Margem (s/ desc.):</span>
-                    <span className="text-green-400">{totais.margemPercentual.toFixed(2)}%</span>
-                  </div>
+                <div className="mt-4 pt-4 border-t border-slate-700 flex justify-between items-center">
+                  <span className="text-slate-400">Total:</span>
+                  <span className="text-2xl font-bold text-cyan-400">{formatCurrency(totais.vendaTotal)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Step 2: Resumo e Pagamento */
+            <div className="space-y-5">
+              {/* Resumo */}
+              <div className={`rounded-xl p-5 bg-slate-800 ${nivelCombo.borderClass}`}>
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-white">Resumo de Itens</h3>
+                  <span className={`px-3 py-1 rounded text-xs font-bold uppercase ${nivelCombo.badgeClass}`}>{nivelCombo.label}</span>
+                </div>
+                <div className="space-y-2 mb-4">
+                  {insumosSelecionados.map(item => (
+                    <div key={item.id_lote} className="flex justify-between py-2 border-b border-slate-700">
+                      <div>
+                        <p className="text-white text-sm">{item.nome_produto}</p>
+                        <p className="text-slate-400 text-xs">{item.classe_terapeutica} • x{item.quantidade}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-cyan-400 text-sm">{formatCurrency(item.preco_unitario_venda * item.quantidade)}</p>
+                        <p className="text-slate-500 text-xs">Custo: {formatCurrency(item.preco_unitario_custo * item.quantidade)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-3 gap-2 p-3 bg-slate-900 rounded-lg">
+                  <div className="text-center"><p className="text-xs text-slate-400">Toxina</p><p className="text-lg font-bold text-white">{contagemCategorias.toxina}</p></div>
+                  <div className="text-center border-x border-slate-700"><p className="text-xs text-slate-400">Preenchedor</p><p className="text-lg font-bold text-white">{contagemCategorias.preenchedor}</p></div>
+                  <div className="text-center"><p className="text-xs text-slate-400">Especiais</p><p className="text-lg font-bold text-white">{contagemCategorias.especiais}</p></div>
+                </div>
+                <div className="space-y-2 pt-4 border-t border-slate-600 mt-4">
+                  <div className="flex justify-between"><span className="text-slate-400">Valor Total:</span><span className="text-white font-bold">{formatCurrency(totais.vendaTotal)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Custo Total:</span><span className="text-slate-300">{formatCurrency(totais.custoTotal)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">Margem:</span><span className="text-green-400">{totais.margemPercentual.toFixed(1)}%</span></div>
                 </div>
               </div>
 
@@ -639,30 +552,14 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 <h4 className="text-sm font-bold text-cyan-400 mb-3">Desconto</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1">Valor do Desconto (R$)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={totais.vendaTotal}
-                      value={descontoValor}
-                      onChange={(e) => setDescontoValor(Number(e.target.value) || 0)}
-                      className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
-                    />
+                    <label className="block text-xs text-slate-400 mb-1">Valor (R$)</label>
+                    <input type="number" min="0" max={totais.vendaTotal} value={descontoValor} onChange={(e) => setDescontoValor(Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" />
                   </div>
-                  <div className="flex items-end">
-                    <div className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2">
-                      <span className="text-slate-400 text-sm">Percentual: </span>
-                      <span className="text-cyan-400 font-bold">{totais.descontoPercentual.toFixed(2)}%</span>
-                    </div>
-                  </div>
+                  <div className="flex items-end"><div className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2"><span className="text-slate-400 text-sm">Percentual: </span><span className="text-cyan-400 font-bold">{totais.descontoPercentual.toFixed(1)}%</span></div></div>
                 </div>
                 <div className="mt-3 flex justify-between p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
                   <span className="text-cyan-400 font-medium">Valor Final:</span>
                   <span className="text-cyan-400 font-bold text-lg">{formatCurrency(totais.precoFinal)}</span>
-                </div>
-                <div className="mt-2 flex justify-between text-sm">
-                  <span className="text-slate-400">Margem (c/ desc.):</span>
-                  <span className="text-green-400 font-medium">{totais.margemPercentualFinal.toFixed(2)}%</span>
                 </div>
               </div>
 
@@ -671,62 +568,21 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 <h4 className="text-sm font-bold text-cyan-400 mb-3">Forma de Pagamento</h4>
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   {(['PIX', 'Débito', 'Crédito'] as const).map(metodo => (
-                    <button
-                      key={metodo}
-                      onClick={() => {
-                        setMetodoPagamento(metodo)
-                        if (metodo !== 'Crédito') setParcelas(1)
-                      }}
-                      className={`py-3 px-4 rounded-lg font-medium transition-all ${metodoPagamento === metodo
-                        ? 'bg-cyan-500 text-black'
-                        : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-                        }`}
-                    >
+                    <button key={metodo} onClick={() => { setMetodoPagamento(metodo); if (metodo !== 'Crédito') setParcelas(1) }} className={`py-3 rounded-lg font-medium transition-all ${metodoPagamento === metodo ? 'bg-cyan-500 text-black' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
                       {metodo}
                     </button>
                   ))}
                 </div>
-
                 {metodoPagamento === 'Crédito' && (
-                  <div className="grid grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Valor de Entrada (R$)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max={totais.precoFinal}
-                        value={valorEntrada}
-                        onChange={(e) => setValorEntrada(Number(e.target.value) || 0)}
-                        className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-400 mb-1">Número de Parcelas</label>
-                      <select
-                        value={parcelas}
-                        onChange={(e) => setParcelas(Number(e.target.value))}
-                        className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
-                      >
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
-                          <option key={n} value={n}>{n}x</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-xs text-slate-400 mb-1">Entrada (R$)</label><input type="number" min="0" value={valorEntrada} onChange={(e) => setValorEntrada(Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                    <div><label className="block text-xs text-slate-400 mb-1">Parcelas</label><select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white">{[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}</select></div>
                   </div>
                 )}
-
                 {metodoPagamento === 'Crédito' && parcelas > 1 && (
-                  <div className="mt-4 p-3 bg-slate-900 rounded-lg">
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-slate-400">Valor a Parcelar:</span>
-                      <span className="text-white">{formatCurrency(totais.valorParcelado)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Valor da Parcela:</span>
-                      <span className="text-cyan-400 font-bold">
-                        {parcelas}x de {formatCurrency(totais.valorParcela)}
-                      </span>
-                    </div>
+                  <div className="mt-4 p-3 bg-slate-900 rounded-lg flex justify-between">
+                    <span className="text-slate-400">Valor da Parcela:</span>
+                    <span className="text-cyan-400 font-bold">{parcelas}x de {formatCurrency(totais.valorParcela)}</span>
                   </div>
                 )}
               </div>
@@ -735,28 +591,18 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-slate-700 bg-slate-800/50 flex justify-between">
+        <div className="p-5 border-t border-slate-700 bg-slate-800/50 flex justify-between">
+          <Button variant="secondary" onClick={step === 1 ? onClose : () => setStep(1)}>
+            {step === 1 ? 'Cancelar' : '← Voltar'}
+          </Button>
           {step === 1 ? (
-            <>
-              <Button variant="secondary" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => setStep(2)}
-                disabled={insumosSelecionados.length === 0 || !selectedPacienteId}
-              >
-                Continuar para Pagamento
-              </Button>
-            </>
+            <Button onClick={() => setStep(2)} disabled={insumosSelecionados.length === 0 || !selectedPacienteId}>
+              Continuar →
+            </Button>
           ) : (
-            <>
-              <Button variant="secondary" onClick={() => setStep(1)}>
-                ← Voltar
-              </Button>
-              <Button onClick={handleSave} disabled={loading}>
-                {loading ? 'Salvando...' : 'Finalizar Venda'}
-              </Button>
-            </>
+            <Button onClick={handleSave} disabled={loading}>
+              {loading ? 'Salvando...' : '✓ Finalizar Venda'}
+            </Button>
           )}
         </div>
       </div>

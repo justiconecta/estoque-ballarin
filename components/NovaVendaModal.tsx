@@ -1,10 +1,10 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
-import { X, Trash2, Check, ShoppingCart } from 'lucide-react'
+import { X, Trash2, Check, ShoppingCart, User } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import { Paciente, Lote, Sku } from '@/types/database'
+import { Paciente, Lote, Sku, Profissional } from '@/types/database'
 
 interface NovaVendaModalProps {
   isOpen: boolean
@@ -98,23 +98,34 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
   const [dataVenda, setDataVenda] = useState(new Date().toISOString().split('T')[0])
   const [selectedPacienteId, setSelectedPacienteId] = useState<number | null>(null)
   const [insumosSelecionados, setInsumosSelecionados] = useState<InsumoSelecionado[]>([])
-  const [descontoValor, setDescontoValor] = useState(0)
+  
+  // ✅ ITEM 6: Profissional responsável
+  const [profissionais, setProfissionais] = useState<Profissional[]>([])
+  const [profissionalSelecionado, setProfissionalSelecionado] = useState<number | null>(null)
+  
+  // ✅ FIX UX: Usar string vazia em vez de 0 para evitar "050000"
+  const [descontoValor, setDescontoValor] = useState<number | string>('')
   const [metodoPagamento, setMetodoPagamento] = useState<'PIX' | 'Débito' | 'Crédito'>('PIX')
   const [parcelas, setParcelas] = useState(1)
-  const [valorEntrada, setValorEntrada] = useState(0)
+  // ✅ ITEM 6: Entrada em % (não mais em R$)
+  const [entradaPercentual, setEntradaPercentual] = useState<number | string>('')
   const [buscaPaciente, setBuscaPaciente] = useState('')
 
-  // ============ CARREGAR DADOS (IGUAL AO CÓDIGO ANTIGO QUE FUNCIONA) ============
+  // ============ CARREGAR DADOS ============
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const [pacientesData, produtosData] = await Promise.all([
+      // ✅ ITEM 6: Carregar profissionais também
+      const [pacientesData, produtosData, profissionaisData] = await Promise.all([
         supabaseApi.getPacientes(),
-        supabaseApi.getProdutos()
+        supabaseApi.getProdutos(),
+        supabaseApi.getProfissionais()
       ])
 
       console.log('📦 Produtos carregados:', produtosData.length)
+      console.log('👥 Profissionais carregados:', profissionaisData.length)
       setPacientes(pacientesData)
+      setProfissionais(profissionaisData)
 
       // ✅ LÓGICA ORIGINAL QUE FUNCIONA - SEM FILTRO EXTRA
       const lotes: (Lote & { skus: Sku })[] = []
@@ -142,10 +153,13 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     setDataVenda(new Date().toISOString().split('T')[0])
     setSelectedPacienteId(null)
     setInsumosSelecionados([])
-    setDescontoValor(0)
+    // ✅ FIX UX: Usar string vazia no reset
+    setDescontoValor('')
     setMetodoPagamento('PIX')
     setParcelas(1)
-    setValorEntrada(0)
+    // ✅ ITEM 6: Reset entrada percentual e profissional
+    setEntradaPercentual('')
+    setProfissionalSelecionado(null)
     setBuscaPaciente('')
   }, [])
 
@@ -163,9 +177,17 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     const vendaTotal = insumosSelecionados.reduce((acc, item) =>
       acc + ((item.preco_unitario_venda || 0) * item.quantidade), 0)
 
-    const precoFinal = Math.max(0, vendaTotal - descontoValor)
-    const descontoPercentual = vendaTotal > 0 ? (descontoValor / vendaTotal) * 100 : 0
-    const valorParcelado = Math.max(0, precoFinal - valorEntrada)
+    // ✅ FIX UX: Converter para number antes de calcular
+    const descontoNumerico = Number(descontoValor) || 0
+    // ✅ ITEM 6: Entrada em % - calcular valor em R$
+    const entradaPctNumerico = Number(entradaPercentual) || 0
+    
+    const precoFinal = Math.max(0, vendaTotal - descontoNumerico)
+    const descontoPercentual = vendaTotal > 0 ? (descontoNumerico / vendaTotal) * 100 : 0
+    
+    // ✅ ITEM 6: Calcular entrada em R$ baseado no percentual sobre preço final
+    const valorEntradaReais = precoFinal * (entradaPctNumerico / 100)
+    const valorParcelado = Math.max(0, precoFinal - valorEntradaReais)
     const valorParcela = parcelas > 0 ? valorParcelado / parcelas : 0
     const margemTotal = vendaTotal - custoTotal
     const margemPercentual = vendaTotal > 0 ? (margemTotal / vendaTotal) * 100 : 0
@@ -177,6 +199,9 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
       vendaTotal: isNaN(vendaTotal) ? 0 : vendaTotal,
       precoFinal: isNaN(precoFinal) ? 0 : precoFinal,
       descontoPercentual: isNaN(descontoPercentual) ? 0 : descontoPercentual,
+      // ✅ ITEM 6: Adicionar valorEntradaReais calculado
+      entradaPercentual: isNaN(entradaPctNumerico) ? 0 : entradaPctNumerico,
+      valorEntradaReais: isNaN(valorEntradaReais) ? 0 : valorEntradaReais,
       valorParcelado: isNaN(valorParcelado) ? 0 : valorParcelado,
       valorParcela: isNaN(valorParcela) ? 0 : valorParcela,
       margemTotal: isNaN(margemTotal) ? 0 : margemTotal,
@@ -184,7 +209,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
       margemTotalFinal: isNaN(margemTotalFinal) ? 0 : margemTotalFinal,
       margemPercentualFinal: isNaN(margemPercentualFinal) ? 0 : margemPercentualFinal
     }
-  }, [insumosSelecionados, descontoValor, valorEntrada, parcelas])
+  }, [insumosSelecionados, descontoValor, entradaPercentual, parcelas])
 
   const contagemCategorias = useMemo(() => {
     const counts = { toxina: 0, preenchedor: 0, especiais: 0 }
@@ -276,8 +301,14 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
         data_venda: dataVenda,
         metodo_pagamento: metodoPagamento,
         parcelas: parcelas,
-        desconto_valor: descontoValor,
-        valor_entrada: valorEntrada,
+        // ✅ FIX UX: Converter para number no save
+        desconto_valor: Number(descontoValor) || 0,
+        // ✅ ITEM 6: Usar valor calculado em R$ (baseado no %)
+        valor_entrada: totais.valorEntradaReais,
+        // ✅ ITEM 6: Profissional responsável
+        id_usuario_responsavel: profissionalSelecionado,
+        // ✅ ITEM 6: IDs dos lotes como array
+        items: insumosSelecionados.map(i => i.id_lote),
         insumos: insumosSelecionados.map(i => ({
           id_lote: i.id_lote,
           quantidade: i.quantidade
@@ -388,24 +419,42 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 </div>
               </div>
 
-              {/* ✅ CATEGORIAS COM CARDS CLICÁVEIS */}
+              {/* ✅ ITEM 6: CATEGORIAS COM DESIGN DESTACADO */}
               {CATEGORIAS_FIXAS.map(categoria => {
                 const lotesCategoria = lotesPorCategoria[categoria] || []
                 const insumosDaCategoria = insumosSelecionados.filter(i => normalizarCategoria(i.classe_terapeutica) === categoria)
 
                 if (lotesCategoria.length === 0 && insumosDaCategoria.length === 0) return null
 
+                // ✅ ITEM 6: Cores por categoria para destaque
+                const coresCategoria: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+                  'Toxina Botulínica': { bg: 'bg-pink-500/10', border: 'border-pink-500/40', text: 'text-pink-400', icon: '💉' },
+                  'Preenchedor': { bg: 'bg-blue-500/10', border: 'border-blue-500/40', text: 'text-blue-400', icon: '✨' },
+                  'Bioestimulador': { bg: 'bg-purple-500/10', border: 'border-purple-500/40', text: 'text-purple-400', icon: '🔬' },
+                  'Bioregenerador': { bg: 'bg-green-500/10', border: 'border-green-500/40', text: 'text-green-400', icon: '🌿' },
+                  'Tecnologia': { bg: 'bg-amber-500/10', border: 'border-amber-500/40', text: 'text-amber-400', icon: '⚡' },
+                  'Outros': { bg: 'bg-slate-500/10', border: 'border-slate-500/40', text: 'text-slate-400', icon: '📦' }
+                }
+                const cores = coresCategoria[categoria] || coresCategoria['Outros']
+
                 return (
-                  <div key={categoria}>
-                    {/* Título da categoria */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-1 h-5 bg-cyan-400 rounded-full"></div>
-                      <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">{categoria}</h4>
-                      <span className="text-xs text-slate-500">({lotesCategoria.length})</span>
+                  <div key={categoria} className="mb-6">
+                    {/* ✅ ITEM 6: Título da categoria com DESTAQUE MAIOR */}
+                    <div className={`flex items-center gap-3 mb-4 p-3 rounded-lg ${cores.bg} border ${cores.border}`}>
+                      <span className="text-2xl">{cores.icon}</span>
+                      <div className="flex-1">
+                        <h4 className={`text-lg font-bold ${cores.text} uppercase tracking-wide`}>{categoria}</h4>
+                        <span className="text-xs text-slate-500">{lotesCategoria.length} produto(s) disponível(is)</span>
+                      </div>
+                      {insumosDaCategoria.length > 0 && (
+                        <span className="px-3 py-1 bg-teal-500 text-black text-sm font-bold rounded-full">
+                          {insumosDaCategoria.length} selecionado(s)
+                        </span>
+                      )}
                     </div>
 
                     {/* Cards de produtos */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 pl-2">
                       {lotesCategoria.map(lote => {
                         const skuData = lote.skus as any
                         const isSelected = insumosSelecionados.some(i => i.id_lote === lote.id_lote)
@@ -553,7 +602,16 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Valor (R$)</label>
-                    <input type="number" min="0" max={totais.vendaTotal} value={descontoValor} onChange={(e) => setDescontoValor(Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" />
+                    {/* ✅ FIX UX: Input com tratamento para string vazia */}
+                    <input 
+                      type="number" 
+                      min="0" 
+                      max={totais.vendaTotal} 
+                      value={descontoValor} 
+                      onChange={(e) => setDescontoValor(e.target.value === '' ? '' : Number(e.target.value))}
+                      onFocus={(e) => { if (e.target.value === '0') setDescontoValor('') }}
+                      className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" 
+                    />
                   </div>
                   <div className="flex items-end"><div className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2"><span className="text-slate-400 text-sm">Percentual: </span><span className="text-cyan-400 font-bold">{totais.descontoPercentual.toFixed(1)}%</span></div></div>
                 </div>
@@ -561,6 +619,25 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                   <span className="text-cyan-400 font-medium">Valor Final:</span>
                   <span className="text-cyan-400 font-bold text-lg">{formatCurrency(totais.precoFinal)}</span>
                 </div>
+              </div>
+
+              {/* ✅ ITEM 6: Profissional Responsável */}
+              <div className="bg-slate-800 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-cyan-400 mb-3 flex items-center gap-2">
+                  <User className="w-4 h-4" /> Profissional Responsável
+                </h4>
+                <select
+                  value={profissionalSelecionado || ''}
+                  onChange={(e) => setProfissionalSelecionado(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
+                >
+                  <option value="">Selecione o profissional...</option>
+                  {profissionais.map(prof => (
+                    <option key={prof.id} value={prof.id}>
+                      {prof.nome} {prof.perfil === 'proprietario' ? '(Proprietário)' : prof.perfil === 'comissionado' ? `(${prof.percentual_profissional || 0}% comissão)` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Pagamento */}
@@ -575,7 +652,25 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 </div>
                 {metodoPagamento === 'Crédito' && (
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-xs text-slate-400 mb-1">Entrada (R$)</label><input type="number" min="0" value={valorEntrada} onChange={(e) => setValorEntrada(Number(e.target.value) || 0)} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" /></div>
+                    {/* ✅ ITEM 6: Entrada em % (não mais em R$) */}
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Entrada (%)</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={entradaPercentual} 
+                        onChange={(e) => setEntradaPercentual(e.target.value === '' ? '' : Math.min(100, Number(e.target.value)))}
+                        onFocus={(e) => { if (e.target.value === '0') setEntradaPercentual('') }}
+                        placeholder="Ex: 30"
+                        className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" 
+                      />
+                      {/* Mostrar valor em R$ calculado */}
+                      {totais.valorEntradaReais > 0 && (
+                        <p className="text-xs text-cyan-400 mt-1">= {formatCurrency(totais.valorEntradaReais)}</p>
+                      )}
+                    </div>
                     <div><label className="block text-xs text-slate-400 mb-1">Parcelas</label><select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white">{[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}</select></div>
                   </div>
                 )}

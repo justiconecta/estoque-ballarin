@@ -223,13 +223,15 @@ export const supabaseApi = {
     categoria: string
     item: string
     valor_mensal: number
+    periodo?: string  // ✅ NOVO: formato MM/YYYY
   }) {
     try {
       const despesaCompleta = ensureClinicFilter({
-        tipo: despesa.tipo || 'Despesa Fixa', // Default para compatibilidade
+        tipo: despesa.tipo || 'Despesa Fixa',
         categoria: despesa.categoria,
         item: despesa.item,
         valor_mensal: despesa.valor_mensal,
+        periodo: despesa.periodo || null,  // ✅ NOVO CAMPO
         ativo: true
       })
 
@@ -240,13 +242,14 @@ export const supabaseApi = {
         .single()
 
       if (error) throw error
-      console.log('✅ DESPESA CRIADA:', data.item, '- Tipo:', data.tipo)
+      console.log('✅ DESPESA CRIADA:', data.item, '- Período:', data.periodo)
       return data
     } catch (error) {
       console.error('💥 ERRO createDespesa:', error)
       throw error
     }
   },
+  
 
   // ============ MÓDULO FINANCEIRO - PROFISSIONAIS ============
 
@@ -289,6 +292,33 @@ export const supabaseApi = {
       return data
     } catch (error) {
       console.error('💥 ERRO createProfissional:', error)
+      throw error
+    }
+  },
+
+  async updateProfissional(id: number, updates: Partial<{
+    nome: string
+    horas_semanais: number
+    percentual_profissional: number
+    perfil: 'proprietario' | 'comissionado'
+  }>) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      const { data, error } = await supabase
+        .from('profissionais')
+        .update(updates)
+        .eq('id', id)
+        .eq('id_clinica', clinicId)
+        .select()
+        .single()
+
+      if (error) throw error
+      console.log('✅ PROFISSIONAL ATUALIZADO:', data.nome)
+      return data
+    } catch (error) {
+      console.error('💥 ERRO updateProfissional:', error)
       throw error
     }
   },
@@ -351,8 +381,12 @@ export const supabaseApi = {
         mod_padrao: 500.00,
         aliquota_impostos_pct: 17.0,
         taxa_cartao_pct: 4.0,
-        meta_resultado_liquido_mensal: 65000.00
+        meta_resultado_liquido_mensal: 65000.00,
+        modern_inova: 10.0,           
+        fator_correcao_marca: 1.5,    
+        custo_hora: null              
       }
+      
 
       const { data, error } = await supabase
         .from('parametros')
@@ -370,90 +404,125 @@ export const supabaseApi = {
   },
 
   async updateParametros(updates: Partial<{
-    numero_salas: number
-    horas_trabalho_dia: number
-    duracao_media_servico_horas: number
-    mod_padrao: number
-    aliquota_impostos_pct: number
-    taxa_cartao_pct: number
-    meta_resultado_liquido_mensal: number
-  }>) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
+  numero_salas: number
+  horas_trabalho_dia: number
+  duracao_media_servico_horas: number
+  mod_padrao: number
+  aliquota_impostos_pct: number
+  taxa_cartao_pct: number
+  meta_resultado_liquido_mensal: number
+  modern_inova: number
+  fator_correcao_marca: number
+  custo_hora: number
+}>) {
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
 
-      const { data, error } = await supabase
-        .from('parametros')
-        .update(updates)
-        .eq('id_clinica', clinicId)
-        .select()
-        .single()
+    // ✅ IMPORTANTE: Usar .update() para ATUALIZAR registro existente
+    // NÃO usar .upsert() ou .insert() que podem criar duplicados
+    const { data, error } = await supabase
+      .from('parametros')
+      .update(updates)          // ✅ UPDATE, não INSERT
+      .eq('id_clinica', clinicId) // ✅ Filtrar pela clínica
+      .select()
+      .single()
 
-      if (error) throw error
-      console.log('✅ PARÂMETROS ATUALIZADOS')
-      return data
-    } catch (error) {
-      console.error('💥 ERRO updateParametros:', error)
+    if (error) {
+      // Se erro PGRST116 = não encontrou registro para atualizar
+      // Isso significa que não existe parametros para essa clínica
+      if (error.code === 'PGRST116') {
+        console.warn('⚠️ Nenhum registro de parâmetros encontrado. Criando...')
+        return this.createParametros()
+      }
       throw error
     }
-  },
-
+    
+    console.log('✅ PARÂMETROS ATUALIZADOS (UPDATE):', Object.keys(updates))
+    return data
+  } catch (error) {
+    console.error('💥 ERRO updateParametros:', error)
+    throw error
+  }
+},
   // ============ MÓDULO FINANCEIRO - VENDAS ============
 
   async getVendas(ano: number, meses: number[]) {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
+  try {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não identificada')
 
-      // Construir filtro de datas
-      const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
-      const ultimoMes = Math.max(...meses)
-      const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
-      const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
+    // Construir filtro de datas
+    const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
+    const ultimoMes = Math.max(...meses)
+    const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
+    const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
 
-      const { data, error } = await supabase
-        .from('vendas')
-        .select(`
-          *,
-          pacientes:id_paciente (
-            nome_completo,
-            cpf
-          )
-        `)
-        .eq('id_clinica', clinicId)
-        .gte('data_venda', dataInicio)
-        .lte('data_venda', dataFim)
-        .order('data_venda', { ascending: false })
+    const { data, error } = await supabase
+      .from('vendas')
+      .select(`
+        *,
+        pacientes:id_paciente (
+          nome_completo,
+          cpf
+        )
+      `)
+      .eq('id_clinica', clinicId)
+      .gte('data_venda', dataInicio)
+      .lte('data_venda', dataFim)
+      .order('data_venda', { ascending: false })
 
-      if (error) throw error
+    if (error) throw error
 
-      // Buscar serviços de cada venda
-      const vendasComServicos = await Promise.all(
-        (data || []).map(async (venda) => {
-          const { data: servicos } = await supabase
-            .from('venda_servicos')
-            .select(`
-              *,
-              servicos:id_servico (
-                nome
+    // ✅ ITEM 9: Buscar INSUMOS de cada venda (para cálculo de metas)
+    const vendasCompletas = await Promise.all(
+      (data || []).map(async (venda) => {
+        // Buscar insumos com join em lotes e skus
+        const { data: insumos } = await supabase
+          .from('venda_insumos')
+          .select(`
+            *,
+            lotes:id_lote (
+              id_lote,
+              id_sku,
+              preco_unitario,
+              quantidade_disponivel,
+              skus:id_sku (
+                id_sku,
+                nome_produto,
+                valor_venda,
+                classe_terapeutica
               )
-            `)
-            .eq('id_venda', venda.id)
+            )
+          `)
+          .eq('id_venda', venda.id)
 
-          return {
-            ...venda,
-            servicos: servicos || []
-          }
-        })
-      )
+        // Buscar serviços (mantido para compatibilidade)
+        const { data: servicos } = await supabase
+          .from('venda_servicos')
+          .select(`
+            *,
+            servicos:id_servico (
+              nome
+            )
+          `)
+          .eq('id_venda', venda.id)
 
-      console.log(`💵 VENDAS ENCONTRADAS: ${vendasComServicos.length}`)
-      return vendasComServicos
-    } catch (error) {
-      console.error('💥 ERRO getVendas:', error)
-      return []
-    }
-  },
+        return {
+          ...venda,
+          insumos: insumos || [],  // ✅ ITEM 9: Insumos com dados do SKU
+          servicos: servicos || []
+        }
+      })
+    )
+
+    console.log(`💵 VENDAS ENCONTRADAS: ${vendasCompletas.length} (com insumos)`)
+    return vendasCompletas
+  } catch (error) {
+    console.error('💥 ERRO getVendas:', error)
+    return []
+  }
+},
 
   /**
    * ✅ Buscar todos os SKUs da clínica
@@ -510,13 +579,13 @@ export const supabaseApi = {
     id_paciente: number
     data_venda: string
     metodo_pagamento: 'PIX' | 'Débito' | 'Crédito'
-    parcelas?: number
-    desconto_valor?: number
-    valor_entrada?: number
-    insumos: {
-      id_lote: number
-      quantidade: number
-    }[]
+    parcelas: number
+    desconto_valor: number
+    valor_entrada: number
+    // ✅ ITEM 6: Novos campos
+    id_usuario_responsavel?: number | null
+    items?: number[]
+    insumos: { id_lote: number; quantidade: number }[]
   }) {
     try {
       const clinicId = getCurrentClinicId()
@@ -1252,33 +1321,79 @@ export const supabaseApi = {
     }
   },
 
-  // MOVIMENTAÇÕES DE ESTOQUE
   async getMovimentacoes(limit = 100) {
     try {
       const clinicId = getCurrentClinicId()
       if (!clinicId) throw new Error('Clínica não identificada')
 
-      const { data, error } = await supabase
+      // 1. Buscar movimentações (query simples, sem JOIN)
+      const { data: movimentacoes, error } = await supabase
         .from('movimentacoes_estoque')
-        .select(`
-          *,
-          lotes:id_lote (
-            id_sku,
-            validade,
-            skus:id_sku (
-              nome_produto
-            )
-          )
-        `)
+        .select('*')
         .eq('id_clinica', clinicId)
         .order('data_movimentacao', { ascending: false })
         .limit(limit)
 
       if (error) throw error
-      return data || []
+      if (!movimentacoes || movimentacoes.length === 0) return []
+
+      // 2. Buscar lotes únicos
+      const loteIds = Array.from(
+        new Set(
+          movimentacoes
+            .map(m => m.id_lote)
+            .filter((id): id is number => id != null)
+        )
+      )
+
+      if (loteIds.length === 0) return movimentacoes
+
+      const { data: lotes } = await supabase
+        .from('lotes')
+        .select('id_lote, id_sku, validade, quantidade_disponivel, preco_unitario')
+        .in('id_lote', loteIds)
+
+      // 3. Buscar SKUs únicos
+      const skuIds = Array.from(
+        new Set(
+          (lotes || [])
+            .map(l => l.id_sku)
+            .filter((id): id is number => id != null)
+        )
+      )
+
+      let skuMap = new Map()
+      if (skuIds.length > 0) {
+        const { data: skus } = await supabase
+          .from('skus')
+          .select('id_sku, nome_produto, fabricante, classe_terapeutica')
+          .in('id_sku', skuIds)
+
+        skuMap = new Map((skus || []).map(s => [s.id_sku, s]))
+      }
+
+      // 4. Criar mapa de lotes
+      const loteMap = new Map(
+        (lotes || []).map(l => [
+          l.id_lote,
+          {
+            ...l,
+            skus: skuMap.get(l.id_sku) || null
+          }
+        ])
+      )
+
+      // 5. Enriquecer movimentações
+      const movimentacoesEnriquecidas = movimentacoes.map(mov => ({
+        ...mov,
+        lotes: loteMap.get(mov.id_lote) || null
+      }))
+
+      console.log(`📦 MOVIMENTAÇÕES CARREGADAS: ${movimentacoesEnriquecidas.length}`)
+      return movimentacoesEnriquecidas
     } catch (error) {
       console.error('💥 ERRO getMovimentacoes:', error)
       return []
     }
   }
-}
+  }

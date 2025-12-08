@@ -540,6 +540,7 @@ export interface Despesa {
   ativo: boolean
   criado_em: string
   atualizado_em: string
+  periodo: string | null
 }
 
 export interface Profissional {
@@ -549,6 +550,9 @@ export interface Profissional {
   horas_semanais: number
   ativo: boolean
   criado_em: string
+  // ✅ NOVOS CAMPOS
+  percentual_profissional: number | null 
+  perfil: 'proprietario' | 'comissionado' | null 
 }
 
 export interface Parametros {
@@ -561,7 +565,18 @@ export interface Parametros {
   taxa_cartao_pct: number
   meta_resultado_liquido_mensal: number
   atualizado_em: string
+  // ✅ NOVOS CAMPOS
+  modern_inova: number | null              
+  fator_correcao_marca: number | null      
+  custo_hora: number | null                
 }
+
+export type PerfilProfissional = 'proprietario' | 'comissionado'
+
+export const PERFIS_PROFISSIONAL: PerfilProfissional[] = [
+  'proprietario',
+  'comissionado'
+]
 
 export interface Venda {
   id: number

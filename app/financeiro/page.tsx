@@ -113,22 +113,27 @@ export default function FinanceiroPage() {
   const [parametros, setParametros] = useState<Parametros | null>(null)
   const [vendas, setVendas] = useState<any[]>([])
   const [skus, setSKUs] = useState<SKU[]>([])
+  // ✅ ITEM 9: Produtos com lotes disponíveis (qty > 0)
+  const [produtosComLotes, setProdutosComLotes] = useState<any[]>([])
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
   const [novoServico, setNovoServico] = useState({ nome: '', preco: 0, custo_insumos: 0 })
   const [mostrarFormDespesa, setMostrarFormDespesa] = useState(false)
-  // ✅ ATUALIZADO: Incluindo tipo no estado
+  
+  // ✅ FIX UX ITEM 3 + ITEM 5: valor como string vazia, campo periodo adicionado
   const [novaDespesa, setNovaDespesa] = useState<{
     tipo: TipoDespesa
     categoria: string
     item: string
-    valor: number
+    valor: number | string
+    periodo: string
   }>({
     tipo: 'Despesa Fixa',
     categoria: 'Infraestrutura',
     item: '',
-    valor: 0
+    valor: '',
+    periodo: `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
   })
   const [novoProfissional, setNovoProfissional] = useState({ nome: '', horasSemanais: 40 })
 
@@ -138,12 +143,13 @@ export default function FinanceiroPage() {
   const [feedbackSKU, setFeedbackSKU] = useState<{ tipo: 'success' | 'error'; mensagem: string } | null>(null)
 
   // Estado para meta temporária
-  const [metaTemporaria, setMetaTemporaria] = useState<number | null>(null)
+  const [metaTemporaria, setMetaTemporaria] = useState<number | string>('')
 
   // Load inicial
   useEffect(() => {
     loadData()
     loadSKUs()
+    loadProdutosComLotes() // ✅ ITEM 9: Carregar produtos para Metas
   }, [])
 
   // Reload vendas quando mudar período
@@ -191,6 +197,21 @@ export default function FinanceiroPage() {
     } catch (error) {
       console.error('Erro ao carregar SKUs:', error)
       showFeedbackSKU('error', 'Falha ao carregar produtos')
+    }
+  }
+
+  // ✅ ITEM 9: Carregar produtos com lotes disponíveis para Metas
+  const loadProdutosComLotes = async () => {
+    try {
+      const produtosData = await supabaseApi.getProdutos()
+      // Filtrar apenas SKUs que têm lotes com quantidade > 0
+      const produtosComEstoque = produtosData.filter((p: any) => 
+        p.lotes && p.lotes.length > 0 && p.lotes.some((l: any) => l.quantidade_disponivel > 0)
+      )
+      setProdutosComLotes(produtosComEstoque)
+      console.log(`📊 ITEM 9: ${produtosComEstoque.length} SKUs com estoque disponível`)
+    } catch (error) {
+      console.error('Erro ao carregar produtos com lotes:', error)
     }
   }
 
@@ -251,17 +272,25 @@ export default function FinanceiroPage() {
     }
   }
 
-  // ✅ ATUALIZADO: Incluindo tipo na criação de despesa
+  // ✅ FIX UX ITEM 3 + ITEM 5: Converter valor para number, incluir periodo
   const handleAdicionarDespesa = async () => {
-    if (!novaDespesa.item || novaDespesa.valor <= 0) return
+    const valorNumerico = Number(novaDespesa.valor) || 0
+    if (!novaDespesa.item || valorNumerico <= 0) return
     try {
       await supabaseApi.createDespesa({
         tipo: novaDespesa.tipo,
         categoria: novaDespesa.categoria,
         item: novaDespesa.item,
-        valor_mensal: novaDespesa.valor
+        valor_mensal: valorNumerico,
+        periodo: novaDespesa.periodo
       })
-      setNovaDespesa({ tipo: 'Despesa Fixa', categoria: 'Infraestrutura', item: '', valor: 0 })
+      setNovaDespesa({ 
+        tipo: 'Despesa Fixa', 
+        categoria: 'Infraestrutura', 
+        item: '', 
+        valor: '',
+        periodo: `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
+      })
       setMostrarFormDespesa(false)
       loadData()
     } catch (error) {
@@ -289,24 +318,44 @@ export default function FinanceiroPage() {
     }
   }
 
-  const handleUpdateParametros = async (updates: Partial<Parametros>) => {
+  // ✅ NOVO ITEM 4: Handler para atualizar profissional (percentual e perfil)
+  const handleUpdateProfissional = async (id: number, updates: Partial<{
+    nome: string
+    horas_semanais: number
+    percentual_profissional: number
+    perfil: 'proprietario' | 'comissionado'
+  }>) => {
     try {
-      await supabaseApi.updateParametros(updates)
+      await supabaseApi.updateProfissional(id, updates)
+      loadData()
+    } catch (error) {
+      console.error('Erro ao atualizar profissional:', error)
+    }
+  }
+
+  const handleUpdateParametros = async (updates: Record<string, number | string | null>) => {
+    try {
+      await supabaseApi.updateParametros(updates as any)
       loadData()
     } catch (error) {
       console.error('Erro ao atualizar parâmetros:', error)
     }
   }
 
+  // ✅ ITEM 8: Salvar Meta faz UPDATE (não INSERT)
   const handleUpdateMetaMensal = async (novaMeta: number) => {
     try {
+      console.log('📝 ATUALIZANDO META (UPDATE):', novaMeta)
+      // ✅ Chama updateParametros que faz UPDATE na tabela parametros
       await supabaseApi.updateParametros({ meta_resultado_liquido_mensal: novaMeta })
       if (parametros) {
         setParametros({ ...parametros, meta_resultado_liquido_mensal: novaMeta })
       }
-      setMetaTemporaria(null)
+      setMetaTemporaria('')
+      console.log('✅ META ATUALIZADA COM SUCESSO')
     } catch (error) {
-      console.error('Erro ao atualizar meta:', error)
+      console.error('❌ Erro ao atualizar meta:', error)
+      alert('Erro ao salvar meta. Verifique o console.')
     }
   }
 
@@ -378,6 +427,98 @@ export default function FinanceiroPage() {
     }
   }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
 
+  // ✅ ITEM 7: DRE COMPLETO COM 9 LINHAS
+  const dreCalc = useMemo(() => {
+    if (!parametros) return null
+
+    // 1. RECEITA OPERACIONAL BRUTA
+    const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
+
+    // 2. DEDUÇÕES DA RECEITA
+    // 2.1 Impostos (sobre toda receita)
+    const impostos = receitaBruta * (parametros.aliquota_impostos_pct / 100)
+
+    // 2.2 Taxas Financeiras (só para vendas no CRÉDITO)
+    const vendasCredito = vendas.filter(v => v.metodo_pagamento === 'Crédito')
+    const totalVendasCredito = vendasCredito.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
+    const taxasFinanceiras = totalVendasCredito * (parametros.taxa_cartao_pct / 100)
+
+    const totalDeducoes = impostos + taxasFinanceiras
+
+    // 3. RECEITA LÍQUIDA
+    const receitaLiquida = receitaBruta - totalDeducoes
+
+    // 4. CUSTOS VARIÁVEIS
+    // 4.1 Custo dos Insumos (CMV)
+    const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
+
+    // 4.2 Repasse Profissionais (comissionados)
+    let repasseProfissionais = 0
+    vendas.forEach(v => {
+      if (v.id_usuario_responsavel) {
+        const prof = profissionais.find(p => p.id === v.id_usuario_responsavel)
+        if (prof && prof.perfil === 'comissionado' && prof.percentual_profissional) {
+          const valorVenda = v.preco_final || v.preco_total || 0
+          repasseProfissionais += valorVenda * (prof.percentual_profissional / 100)
+        }
+      }
+    })
+
+    const totalCustosVariaveis = custoInsumos + repasseProfissionais
+
+    // 5. MARGEM DE CONTRIBUIÇÃO
+    const margemContribuicao = receitaLiquida - totalCustosVariaveis
+    const margemContribuicaoPct = receitaBruta > 0 ? (margemContribuicao / receitaBruta) * 100 : 0
+
+    // 6. DESPESAS FIXAS (tipo = 'Despesa Fixa' ou 'Custo Fixo') - multiplicado pelo número de meses
+    const despesasFixasMensal = despesas
+      .filter(d => d.tipo === 'Despesa Fixa' || d.tipo === 'Custo Fixo')
+      .reduce((sum, d) => sum + d.valor_mensal, 0)
+    const despesasFixas = despesasFixasMensal * mesesSelecionados.length
+
+    // 7. EBITDA (Operacional)
+    const ebitda = margemContribuicao - despesasFixas
+
+    // 8. RESERVAS / INOVAÇÃO
+    const modernInova = parametros.modern_inova || 10 // default 10%
+    const reservasInovacao = ebitda > 0 ? ebitda * (modernInova / 100) : 0
+
+    // 9. LUCRO LÍQUIDO (BOLSO)
+    const lucroLiquidoBolso = ebitda - reservasInovacao
+
+    return {
+      // Linha 1
+      receitaBruta,
+      // Linha 2
+      impostos,
+      taxasFinanceiras,
+      totalDeducoes,
+      totalVendasCredito,
+      // Linha 3
+      receitaLiquida,
+      // Linha 4
+      custoInsumos,
+      repasseProfissionais,
+      totalCustosVariaveis,
+      // Linha 5
+      margemContribuicao,
+      margemContribuicaoPct,
+      // Linha 6
+      despesasFixas,
+      // Linha 7
+      ebitda,
+      // Linha 8
+      modernInova,
+      reservasInovacao,
+      // Linha 9
+      lucroLiquidoBolso,
+      // Extras para compatibilidade
+      aliquotaImpostos: parametros.aliquota_impostos_pct,
+      taxaCartao: parametros.taxa_cartao_pct
+    }
+  }, [parametros, vendas, profissionais, despesas, mesesSelecionados])
+
+  // Manter controleCalc para compatibilidade com AbaControle
   const controleCalc = useMemo(() => {
     if (!parametros || !parametrosCalculados) return null
 
@@ -397,28 +538,66 @@ export default function FinanceiroPage() {
     }
   }, [parametros, parametrosCalculados, vendas, despesasFixasPeriodo])
 
+  // ✅ ITEM 9: NOVA LÓGICA DE METAS - SKUs com lotes disponíveis
   const metasCalculadas = useMemo(() => {
-    if (!controleCalc || !parametros || servicosCalculados.length === 0) return []
+    // Validações
+    if (!parametros || produtosComLotes.length === 0) return []
+    if (!dreCalc) return []
 
-    const metaPorServico = parametros.meta_resultado_liquido_mensal / servicosCalculados.length
-    const metaLucroBrutoPorServico = metaPorServico + (despesasFixasPeriodo / servicosCalculados.length)
+    // 1. Calcular Faturamento Necessário (mesmo cálculo do AbaControle)
+    const modernInova = parametros.modern_inova || 10
+    const metaMensal = parametros.meta_resultado_liquido_mensal || 0
+    const despesasFixas = dreCalc.despesasFixas || 0
+    const margemContribuicao = dreCalc.margemContribuicao || 0
+    const receitaBruta = dreCalc.receitaBruta || 0
 
-    return servicosCalculados.map(servico => {
-      const metaUnidades = servico.margemContribuicao > 0
-        ? Math.ceil(metaLucroBrutoPorServico / servico.margemContribuicao)
+    const alvoEbitda = metaMensal / (1 - (modernInova / 100))
+    const alvoMc = alvoEbitda + despesasFixas
+    const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3 // default 30% se sem dados
+    const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+
+    // 2. Número de produtos (SKUs únicos com lotes > 0)
+    const numProdutos = produtosComLotes.length
+
+    // 3. Calcular meta por produto
+    return produtosComLotes.map((produto: any) => {
+      const valorVenda = produto.valor_venda || 0
+      
+      // Meta = (Faturamento Necessário / nº produtos) / valor_venda (arredondar para cima)
+      const metaUnidades = valorVenda > 0 
+        ? Math.ceil((faturamentoNecessario / numProdutos) / valorVenda)
         : 0
 
-      const realizado = vendas.reduce((sum, v) => {
-        const servicosVenda = v.servicos?.filter((s: any) => s.servicos?.nome === servico.nome) || []
-        return sum + servicosVenda.length
-      }, 0)
+      // Realizado = Quantidade de doses vendidas deste SKU neste mês
+      // Buscar em vendas.insumos onde o lote pertence a este SKU
+      let realizado = 0
+      vendas.forEach((v: any) => {
+        if (v.insumos && Array.isArray(v.insumos)) {
+          v.insumos.forEach((insumo: any) => {
+            // Verificar se o insumo pertence a este SKU
+            const insumoSkuId = insumo.lotes?.id_sku || insumo.id_sku
+            if (insumoSkuId === produto.id_sku) {
+              realizado += insumo.quantidade || 0
+            }
+          })
+        }
+      })
 
+      // Cobertura = (realizado/meta) * 100 (%)
       const cobertura = metaUnidades > 0 ? (realizado / metaUnidades) * 100 : 0
+
+      // GAP = Meta - Realizado
       const gap = metaUnidades - realizado
-      const projecao = diaUtilAtual > 0 ? Math.round((realizado / diaUtilAtual) * diasUteisTotais) : 0
+
+      // Projeção = [(Realizado * dias úteis do mês) / (Dia útil atual * Meta)] * 100
+      const projecao = (diaUtilAtual > 0 && metaUnidades > 0)
+        ? Math.round((realizado * diasUteisTotais) / (diaUtilAtual * metaUnidades) * 100)
+        : 0
 
       return {
-        servico: servico.nome,
+        produto: produto.nome_produto,
+        idSku: produto.id_sku,
+        valorVenda: valorVenda,
         metaUnidades,
         realizado,
         cobertura,
@@ -426,7 +605,7 @@ export default function FinanceiroPage() {
         projecao
       }
     })
-  }, [controleCalc, parametros, servicosCalculados, vendas, diaUtilAtual, diasUteisTotais, despesasFixasPeriodo])
+  }, [parametros, produtosComLotes, vendas, dreCalc, diaUtilAtual, diasUteisTotais])
 
   const tituloPeriodo = useMemo(() => {
     const anosTexto = anosSelecionados.length > 1 ? anosSelecionados.join(', ') : anosSelecionados[0]
@@ -494,6 +673,7 @@ export default function FinanceiroPage() {
               vendas={vendas}
               tituloPeriodo={tituloPeriodo}
               onNovaVenda={() => setShowNovaVendaModal(true)}
+              profissionais={profissionais}
             />
           )}
 
@@ -511,6 +691,7 @@ export default function FinanceiroPage() {
             />
           )}
 
+          {/* ✅ ATUALIZADO ITEM 4: Passa onUpdateProfissional */}
           {abaAtiva === 'parametros' && parametros && parametrosCalculados && (
             <AbaParametros
               parametros={parametros}
@@ -521,6 +702,7 @@ export default function FinanceiroPage() {
               setNovoProfissional={setNovoProfissional}
               onAdicionarProfissional={handleAdicionarProfissional}
               onRemoverProfissional={handleRemoverProfissional}
+              onUpdateProfissional={handleUpdateProfissional}
             />
           )}
 
@@ -540,12 +722,15 @@ export default function FinanceiroPage() {
             <AbaMetas metas={metasCalculadas} tituloPeriodo={tituloPeriodo} />
           )}
 
+          {/* ✅ ITEM 8: AbaControle com Faturamento Necessário */}
           {abaAtiva === 'controle' && controleCalc && parametros && (
             <AbaControle
               controle={controleCalc}
+              dre={dreCalc}
+              parametros={parametros}
               diasUteis={diasUteisTotais}
               diaAtual={diaUtilAtual}
-              metaResultadoMensal={metaTemporaria ?? parametros.meta_resultado_liquido_mensal}
+              metaResultadoMensal={Number(metaTemporaria) || parametros.meta_resultado_liquido_mensal}
               mesesSelecionados={mesesSelecionados}
               onUpdateMeta={handleUpdateMetaMensal}
               metaTemporaria={metaTemporaria}
@@ -553,8 +738,9 @@ export default function FinanceiroPage() {
             />
           )}
 
-          {abaAtiva === 'dre' && controleCalc && (
-            <AbaDRE controle={controleCalc} tituloPeriodo={tituloPeriodo} />
+          {/* ✅ ITEM 7: DRE com novo cálculo completo */}
+          {abaAtiva === 'dre' && dreCalc && (
+            <AbaDRE dre={dreCalc} tituloPeriodo={tituloPeriodo} />
           )}
         </div>
 
@@ -613,24 +799,36 @@ const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: any) =
   </div>
 )
 
+// ✅ FIX UX ITEM 3: InputLocal com tratamento para campos zero
 const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '' }: any) => (
   <div>
     <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">{label}</label>
     <input
       type={type}
-      value={value}
-      onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
+      value={value === 0 || value === null ? '' : value}
+      onChange={(e) => {
+        if (type === 'number') {
+          onChange(e.target.value === '' ? '' : Number(e.target.value))
+        } else {
+          onChange(e.target.value)
+        }
+      }}
+      onFocus={(e) => {
+        if (type === 'number' && e.target.value === '0') {
+          onChange('')
+        }
+      }}
       placeholder={placeholder}
       className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
     />
   </div>
 )
 
-// ✅ ABA DESPESAS ATUALIZADA COM CAMPO TIPO
+// ✅ ITEM 5: ABA DESPESAS COM CAMPO PERÍODO E TÍTULO CORRIGIDO
 const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa, setNovaDespesa, onAdicionar }: any) => (
   <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
     <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Despesas Fixas Mensais</h2>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Despesas Mensais</h2>
       <Button onClick={() => setMostrarForm(!mostrarForm)}>
         {mostrarForm ? '✕ Cancelar' : '+ Nova Despesa'}
       </Button>
@@ -638,8 +836,20 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
 
     {mostrarForm && (
       <div className="bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 rounded-lg p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          {/* ✅ NOVO: Campo Tipo */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
+          {/* Campo Período MM/YYYY */}
+          <div>
+            <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Período (MM/AAAA)</label>
+            <input
+              type="text"
+              value={novaDespesa.periodo}
+              onChange={(e) => setNovaDespesa({ ...novaDespesa, periodo: e.target.value })}
+              placeholder="12/2025"
+              maxLength={7}
+              className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
+            />
+          </div>
+          {/* Campo Tipo */}
           <div>
             <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Tipo</label>
             <select
@@ -668,7 +878,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
             </select>
           </div>
           <InputLocal label="Item" value={novaDespesa.item} onChange={(v: string) => setNovaDespesa({ ...novaDespesa, item: v })} />
-          <InputLocal label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number) => setNovaDespesa({ ...novaDespesa, valor: v })} />
+          <InputLocal label="Valor" type="number" value={novaDespesa.valor} onChange={(v: number | string) => setNovaDespesa({ ...novaDespesa, valor: v })} />
         </div>
         <Button onClick={onAdicionar}>Salvar Despesa</Button>
       </div>
@@ -678,7 +888,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200 dark:border-slate-700">
-            {/* ✅ NOVO: Coluna Tipo */}
+            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Período</th>
             <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Tipo</th>
             <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Categoria</th>
             <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Item</th>
@@ -688,7 +898,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
         <tbody>
           {despesas.map((d: Despesa) => (
             <tr key={d.id} className="border-b border-gray-100 dark:border-slate-700/50">
-              {/* ✅ NOVO: Exibindo Tipo */}
+              <td className="px-4 py-3 text-gray-600 dark:text-slate-400 font-mono text-xs">{d.periodo || '—'}</td>
               <td className="px-4 py-3">
                 <span className={`px-2 py-1 rounded text-xs font-medium ${d.tipo === 'Despesa Fixa' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
                     d.tipo === 'Custo Fixo' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' :
@@ -704,7 +914,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
             </tr>
           ))}
           <tr className="bg-cyan-50 dark:bg-cyan-500/10 font-bold">
-            <td colSpan={3} className="px-4 py-3 text-cyan-700 dark:text-cyan-400">TOTAL</td>
+            <td colSpan={4} className="px-4 py-3 text-cyan-700 dark:text-cyan-400">TOTAL</td>
             <td className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">{formatCurrency(total)}</td>
           </tr>
         </tbody>
@@ -713,112 +923,131 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
   </div>
 )
 
-// ✅ ABA VENDAS ATUALIZADA COM MARGENS E PARCELAS
-const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda }: { vendas: any[], tituloPeriodo: string, onNovaVenda: () => void }) => (
-  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-    <div className="flex justify-between items-center mb-4">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Vendas - {tituloPeriodo}</h2>
-      <Button onClick={onNovaVenda}>
-        <Plus className="w-4 h-4 mr-2" /> Nova Venda
-      </Button>
-    </div>
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-slate-700">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Data</th>
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Paciente</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Total</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Desconto</th>
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Final</th>
-            {/* ✅ NOVO: Margem % Sem Desconto */}
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem % (s/desc)</th>
-            {/* ✅ NOVO: Margem % Com Desconto */}
-            <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem % (c/desc)</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Pagamento</th>
-            {/* ✅ NOVO: Parcelas */}
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Parcelas</th>
-          </tr>
-        </thead>
-        <tbody>
-          {vendas.length === 0 ? (
-            <tr>
-              <td colSpan={9} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
-                Nenhuma venda encontrada no período selecionado
-              </td>
+// ✅ ITEM 6: ABA VENDAS COM COLUNAS PROFISSIONAL E PRODUTOS
+const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: { vendas: any[], tituloPeriodo: string, onNovaVenda: () => void, profissionais?: any[] }) => {
+  // ✅ ITEM 6: Helper para buscar nome do profissional
+  const getProfissionalNome = (idResponsavel: number | null) => {
+    if (!idResponsavel) return '—'
+    const prof = profissionais.find(p => p.id === idResponsavel)
+    return prof?.nome || '—'
+  }
+
+  return (
+    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Vendas - {tituloPeriodo}</h2>
+        <Button onClick={onNovaVenda}>
+          <Plus className="w-4 h-4 mr-2" /> Nova Venda
+        </Button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 dark:border-slate-700">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Data</th>
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Paciente</th>
+              {/* ✅ ITEM 6: Coluna Profissional */}
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Profissional</th>
+              {/* ✅ ITEM 6: Coluna Produtos */}
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Produtos</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Total</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Desconto</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Valor Final</th>
+              <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem %</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Pagamento</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Parcelas</th>
             </tr>
-          ) : (
-            vendas.map((v: any) => (
-              <tr key={v.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
-                <td className="px-4 py-3 text-gray-900 dark:text-white">
-                  {new Date(v.data_venda).toLocaleDateString('pt-BR')}
-                </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
-                  {v.pacientes?.nome_completo || 'N/A'}
-                </td>
-                <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                  {formatCurrency(v.preco_total)}
-                </td>
-                <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
-                  {v.desconto_valor > 0 ? formatCurrency(v.desconto_valor) : '-'}
-                </td>
-                <td className="px-4 py-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
-                  {formatCurrency(v.preco_final)}
-                </td>
-                {/* ✅ NOVO: Margem % Sem Desconto */}
-                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
-                  {formatPercent(v.margem_percentual || 0)}
-                </td>
-                {/* ✅ NOVO: Margem % Com Desconto */}
-                <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
-                  {formatPercent(v.margem_percentual_final || 0)}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${v.metodo_pagamento === 'PIX' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' :
-                      v.metodo_pagamento === 'Débito' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
-                        'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400'
-                    }`}>
-                    {v.metodo_pagamento}
-                  </span>
-                </td>
-                {/* ✅ NOVO: Número de Parcelas */}
-                <td className="px-4 py-3 text-center text-gray-900 dark:text-white">
-                  {v.metodo_pagamento === 'Crédito' && v.parcelas ? `${v.parcelas}x` : '-'}
+          </thead>
+          <tbody>
+            {vendas.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
+                  Nenhuma venda encontrada no período selecionado
                 </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
+            ) : (
+              vendas.map((v: any) => {
+                // ✅ ITEM 6: Extrair nomes dos produtos dos insumos
+                const produtosNomes = v.insumos?.map((ins: any) => ins.lotes?.skus?.nome_produto).filter(Boolean) || []
+                const produtosTexto = produtosNomes.length > 0 
+                  ? produtosNomes.slice(0, 2).join(', ') + (produtosNomes.length > 2 ? ` +${produtosNomes.length - 2}` : '')
+                  : '—'
 
-    {/* Resumo */}
-    {vendas.length > 0 && (
-      <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-        <FinanceCard
-          title="Total de Vendas"
-          value={vendas.length}
-          variant="cyan"
-        />
-        <FinanceCard
-          title="Receita Bruta"
-          value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_total || 0), 0))}
-          variant="green"
-        />
-        <FinanceCard
-          title="Total Descontos"
-          value={formatCurrency(vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0))}
-          variant="red"
-        />
-        <FinanceCard
-          title="Receita Líquida"
-          value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))}
-          variant="cyan"
-        />
+                return (
+                  <tr key={v.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                    <td className="px-4 py-3 text-gray-900 dark:text-white">
+                      {new Date(v.data_venda).toLocaleDateString('pt-BR')}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
+                      {v.pacientes?.nome_completo || 'N/A'}
+                    </td>
+                    {/* ✅ ITEM 6: Exibir Profissional */}
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
+                      {getProfissionalNome(v.id_usuario_responsavel)}
+                    </td>
+                    {/* ✅ ITEM 6: Exibir Produtos */}
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400 max-w-[150px] truncate" title={produtosNomes.join(', ')}>
+                      {produtosTexto}
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
+                      {formatCurrency(v.preco_total)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
+                      {v.desconto_valor > 0 ? formatCurrency(v.desconto_valor) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
+                      {formatCurrency(v.preco_final)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
+                      {formatPercent(v.margem_percentual_final || v.margem_percentual || 0)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${v.metodo_pagamento === 'PIX' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' :
+                          v.metodo_pagamento === 'Débito' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
+                            'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400'
+                        }`}>
+                        {v.metodo_pagamento}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-gray-900 dark:text-white">
+                      {v.metodo_pagamento === 'Crédito' && v.parcelas ? `${v.parcelas}x` : '-'}
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
       </div>
-    )}
-  </div>
-)
+
+      {/* Resumo */}
+      {vendas.length > 0 && (
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <FinanceCard
+            title="Total de Vendas"
+            value={vendas.length}
+            variant="cyan"
+          />
+          <FinanceCard
+            title="Receita Bruta"
+            value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_total || 0), 0))}
+            variant="green"
+          />
+          <FinanceCard
+            title="Total Descontos"
+            value={formatCurrency(vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0))}
+            variant="red"
+          />
+          <FinanceCard
+            title="Receita Líquida"
+            value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))}
+            variant="cyan"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave, onCancel, feedback, loading }: any) => (
   <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
@@ -934,157 +1163,519 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
   </div>
 )
 
-const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoProfissional, setNovoProfissional, onAdicionarProfissional, onRemoverProfissional }: any) => (
-  <div className="space-y-6">
-    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Parâmetros Operacionais</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <InputLocal label="Número de Salas" type="number" value={parametros.numero_salas} onChange={(v: number) => onUpdate({ numero_salas: v })} />
-        <InputLocal label="Horas/Dia" type="number" value={parametros.horas_trabalho_dia} onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} />
-        <InputLocal label="Duração Média Serviço (h)" type="number" value={parametros.duracao_media_servico_horas} onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} />
-        <InputLocal label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct} onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} />
-        <InputLocal label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct} onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} />
-      </div>
-    </div>
+// ✅ ITEM 4: ABA PARÂMETROS COMPLETA COM NOVOS CAMPOS
+const AbaParametros = ({ 
+  parametros, 
+  calculados, 
+  onUpdate, 
+  profissionais, 
+  novoProfissional, 
+  setNovoProfissional, 
+  onAdicionarProfissional, 
+  onRemoverProfissional,
+  onUpdateProfissional
+}: any) => {
+  // Estado local para edição de profissionais
+  const [editandoProfissional, setEditandoProfissional] = useState<number | null>(null)
+  const [editFormProfissional, setEditFormProfissional] = useState<{
+    percentual_profissional?: number | string
+    perfil?: string
+  }>({})
 
-    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Equipe</h2>
-      <div className="flex gap-4 mb-4">
-        <InputLocal label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} />
-        <InputLocal label="Horas/Semana" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} />
-        <div className="flex items-end">
-          <Button onClick={onAdicionarProfissional}>Adicionar</Button>
-        </div>
-      </div>
-      <div className="space-y-2">
-        {profissionais.map((p: Profissional) => (
-          <div key={p.id} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-            <span className="text-gray-900 dark:text-white">{p.nome}</span>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600 dark:text-slate-400">{p.horas_semanais}h/semana</span>
-              <button onClick={() => onRemoverProfissional(p.id)} className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs">Remover</button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+  const handleEditProfissional = (p: any) => {
+    setEditandoProfissional(p.id)
+    setEditFormProfissional({
+      percentual_profissional: p.percentual_profissional ?? '',
+      perfil: p.perfil ?? ''
+    })
+  }
 
-    {calculados && (
+  const handleSaveProfissional = async (id: number) => {
+    await onUpdateProfissional(id, {
+      percentual_profissional: Number(editFormProfissional.percentual_profissional) || 0,
+      perfil: editFormProfissional.perfil || null
+    })
+    setEditandoProfissional(null)
+    setEditFormProfissional({})
+  }
+
+  const handleCancelEditProfissional = () => {
+    setEditandoProfissional(null)
+    setEditFormProfissional({})
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* ✅ SEÇÃO 1: Parâmetros Operacionais */}
       <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Indicadores de Produtividade</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Parâmetros Operacionais</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <FinanceCard title="Horas Equipe" value={`${calculados.horasDaEquipe.toFixed(0)}h`} />
-          <FinanceCard title="Horas Salas" value={`${calculados.horasDasSalas}h`} />
-          <FinanceCard title="Custo Hora" value={formatCurrency(calculados.custoHora)} />
-          <FinanceCard title="Taxa Ocupação" value={formatPercent(calculados.taxaOcupacao)} />
+          <InputLocal 
+            label="Número de Salas" 
+            type="number" 
+            value={parametros.numero_salas} 
+            onChange={(v: number) => onUpdate({ numero_salas: v })} 
+          />
+          <InputLocal 
+            label="Horas/Dia" 
+            type="number" 
+            value={parametros.horas_trabalho_dia} 
+            onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} 
+          />
+          <InputLocal 
+            label="Duração Média Serviço (h)" 
+            type="number" 
+            value={parametros.duracao_media_servico_horas} 
+            onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} 
+          />
+          <InputLocal 
+            label="Alíquota Impostos (%)" 
+            type="number" 
+            value={parametros.aliquota_impostos_pct} 
+            onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} 
+          />
+          <InputLocal 
+            label="Taxa Cartão (%)" 
+            type="number" 
+            value={parametros.taxa_cartao_pct} 
+            onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} 
+          />
+          
+          {/* ✅ NOVOS CAMPOS ITEM 4 */}
+          <InputLocal 
+            label="Modernização e Inovação (%)" 
+            type="number" 
+            value={parametros.modern_inova} 
+            onChange={(v: number) => onUpdate({ modern_inova: v })} 
+          />
+          <InputLocal 
+            label="Fator Correção Marca (%)" 
+            type="number" 
+            value={parametros.fator_correcao_marca} 
+            onChange={(v: number) => onUpdate({ fator_correcao_marca: v })} 
+          />
+          <InputLocal 
+            label="Custo/Hora (R$)" 
+            type="number" 
+            value={parametros.custo_hora} 
+            onChange={(v: number) => onUpdate({ custo_hora: v })} 
+          />
         </div>
+        
+        {/* Dica sobre Custo/Hora */}
+        <p className="text-xs text-gray-500 dark:text-slate-500 mt-4">
+          💡 O Custo/Hora calculado automaticamente é R$ {calculados?.custoHora?.toFixed(2) || '0.00'}. 
+          Você pode sobrescrever manualmente acima se necessário.
+        </p>
+      </div>
+
+      {/* ✅ SEÇÃO 2: Equipe (com percentual e perfil) */}
+      <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Equipe</h2>
+        
+        {/* Form adicionar profissional */}
+        <div className="flex gap-4 mb-4 flex-wrap">
+          <InputLocal 
+            label="Nome" 
+            value={novoProfissional.nome} 
+            onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} 
+          />
+          <InputLocal 
+            label="Horas/Semana" 
+            type="number" 
+            value={novoProfissional.horasSemanais} 
+            onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} 
+          />
+          <div className="flex items-end">
+            <Button onClick={onAdicionarProfissional}>Adicionar</Button>
+          </div>
+        </div>
+        
+        {/* Lista de profissionais */}
+        <div className="space-y-3">
+          {profissionais.map((p: any) => (
+            <div 
+              key={p.id} 
+              className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg gap-4"
+            >
+              {/* Info básica */}
+              <div className="flex-1">
+                <span className="text-gray-900 dark:text-white font-medium">{p.nome}</span>
+                <span className="text-sm text-gray-500 dark:text-slate-400 ml-2">({p.horas_semanais}h/semana)</span>
+              </div>
+              
+              {/* Campos editáveis ou exibição */}
+              {editandoProfissional === p.id ? (
+                // Modo edição
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Repasse %</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={editFormProfissional.percentual_profissional ?? ''}
+                      onChange={(e) => setEditFormProfissional({
+                        ...editFormProfissional,
+                        percentual_profissional: e.target.value === '' ? '' : Number(e.target.value)
+                      })}
+                      className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Perfil</label>
+                    <select
+                      value={editFormProfissional.perfil ?? ''}
+                      onChange={(e) => setEditFormProfissional({
+                        ...editFormProfissional,
+                        perfil: e.target.value
+                      })}
+                      className="w-36 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
+                    >
+                      <option value="">Selecione...</option>
+                      <option value="proprietario">Proprietário</option>
+                      <option value="comissionado">Comissionado</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => handleSaveProfissional(p.id)}
+                      className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded"
+                    >
+                      Salvar
+                    </button>
+                    <button 
+                      onClick={handleCancelEditProfissional}
+                      className="px-3 py-1 text-xs bg-gray-400 hover:bg-gray-500 text-white rounded"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // Modo visualização
+                <div className="flex items-center gap-4">
+                  {/* Perfil Badge */}
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    p.perfil === 'proprietario' 
+                      ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' 
+                      : p.perfil === 'comissionado'
+                        ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
+                        : 'bg-gray-100 dark:bg-slate-600 text-gray-500 dark:text-slate-400'
+                  }`}>
+                    {p.perfil === 'proprietario' ? 'Proprietário' : 
+                     p.perfil === 'comissionado' ? 'Comissionado' : 
+                     'Não definido'}
+                  </span>
+                  
+                  {/* Percentual */}
+                  <span className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">
+                    {p.percentual_profissional != null ? `${p.percentual_profissional}%` : '—'}
+                  </span>
+                  
+                  {/* Botões */}
+                  <button 
+                    onClick={() => handleEditProfissional(p)}
+                    className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-xs"
+                  >
+                    Editar
+                  </button>
+                  <button 
+                    onClick={() => onRemoverProfissional(p.id)} 
+                    className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs"
+                  >
+                    Remover
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          
+          {profissionais.length === 0 && (
+            <p className="text-gray-500 dark:text-slate-400 text-sm text-center py-4">
+              Nenhum profissional cadastrado
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ✅ SEÇÃO 3: Indicadores de Produtividade */}
+      {calculados && (
+        <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Indicadores de Produtividade</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <FinanceCard title="Horas Equipe" value={`${calculados.horasDaEquipe.toFixed(0)}h`} />
+            <FinanceCard title="Horas Salas" value={`${calculados.horasDasSalas}h`} />
+            <FinanceCard title="Custo Hora (Calc)" value={formatCurrency(calculados.custoHora)} />
+            <FinanceCard title="Taxa Ocupação" value={formatPercent(calculados.taxaOcupacao)} />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ✅ ITEM 9: AbaMetas atualizado - usa Produtos (SKUs com lotes) em vez de Serviços
+const AbaMetas = ({ metas, tituloPeriodo }: any) => (
+  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Produto - {tituloPeriodo}</h2>
+    
+    {metas.length === 0 ? (
+      <div className="text-center py-8 text-gray-500 dark:text-slate-400">
+        <p>Nenhum produto com estoque disponível.</p>
+        <p className="text-sm mt-2">Adicione lotes aos seus SKUs para visualizar as metas.</p>
+      </div>
+    ) : (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 dark:border-slate-700">
+              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Produto</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Meta (un)</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Realizado</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Cobertura</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Gap</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Projeção</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metas.map((m: any, i: number) => (
+              <tr key={m.idSku || i} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{m.produto}</td>
+                <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
+                <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                    m.cobertura >= 100 
+                      ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' 
+                      : m.cobertura >= 50
+                        ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
+                        : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
+                  }`}>
+                    {formatPercent(m.cobertura)}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={m.gap > 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
+                    {m.gap > 0 ? `-${m.gap}` : m.gap === 0 ? '✓' : `+${Math.abs(m.gap)}`}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`font-medium ${
+                    m.projecao >= 100 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : m.projecao >= 70
+                        ? 'text-yellow-600 dark:text-yellow-400'
+                        : 'text-red-500 dark:text-red-400'
+                  }`}>
+                    {m.projecao}%
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     )}
   </div>
 )
 
-const AbaMetas = ({ metas, tituloPeriodo }: any) => (
-  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Serviço - {tituloPeriodo}</h2>
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-slate-700">
-            <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Serviço</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Meta</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Realizado</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Cobertura</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Gap</th>
-            <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Projeção</th>
-          </tr>
-        </thead>
-        <tbody>
-          {metas.map((m: any, i: number) => (
-            <tr key={i} className="border-b border-gray-100 dark:border-slate-700/50">
-              <td className="px-4 py-3 text-gray-900 dark:text-white">{m.servico}</td>
-              <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
-              <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
-              <td className="px-4 py-3 text-center">
-                <span className={`px-2 py-1 rounded text-xs ${m.cobertura >= 100 ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'}`}>
-                  {formatPercent(m.cobertura)}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.gap}</td>
-              <td className="px-4 py-3 text-center text-cyan-600 dark:text-cyan-400">{m.projecao}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)
+// ✅ ITEM 8: AbaControle com campo Faturamento Necessário
+const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResultadoMensal, mesesSelecionados, onUpdateMeta, metaTemporaria, setMetaTemporaria }: any) => {
+  // ✅ ITEM 8: Cálculo do Faturamento Necessário
+  // Fórmula:
+  // alvo_EBITDA = Meta de Resultado Mensal / ( 1 - % inovação)
+  // alvo_mc = alvo_EBITDA + despesas fixas
+  // % Margem_atual = margem_contribuicao (R$) / receita_bruta (R$)
+  // Faturamento Necessário = alvo_mc / %Margem_atual
 
-const AbaControle = ({ controle, diasUteis, diaAtual, metaResultadoMensal, mesesSelecionados, onUpdateMeta, metaTemporaria, setMetaTemporaria }: any) => (
-  <div className="space-y-6">
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <FinanceCard title="Dias Úteis" value={diasUteis} />
-      <FinanceCard title="Dia Útil Atual" value={diaAtual} />
-      <FinanceCard title="Progresso" value={formatPercent(diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0)} variant="cyan" />
+  const modernInova = parametros?.modern_inova || 10
+  const metaMensal = metaResultadoMensal || 0
+  const despesasFixas = dre?.despesasFixas || controle?.despesasFixasPeriodo || 0
+  const margemContribuicao = dre?.margemContribuicao || (controle?.receitaBruta - controle?.custoInsumos) || 0
+  const receitaBruta = dre?.receitaBruta || controle?.receitaBruta || 0
+
+  // Cálculos
+  const alvoEbitda = metaMensal / (1 - (modernInova / 100))
+  const alvoMc = alvoEbitda + despesasFixas
+  const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0
+  const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <FinanceCard title="Dias Úteis" value={diasUteis} />
+        <FinanceCard title="Dia Útil Atual" value={diaAtual} />
+        <FinanceCard title="Progresso" value={formatPercent(diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0)} variant="cyan" />
+      </div>
+
+      {/* ✅ ITEM 8: Seção Meta + Faturamento Necessário */}
+      <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Meta de Resultado Mensal</h2>
+        <div className="flex gap-4 items-end mb-6">
+          <InputLocal
+            label="Meta (R$)"
+            type="number"
+            value={metaTemporaria !== '' ? metaTemporaria : metaResultadoMensal}
+            onChange={(v: number | string) => setMetaTemporaria(v)}
+          />
+          <Button onClick={() => onUpdateMeta(Number(metaTemporaria) || metaResultadoMensal)}>
+            Salvar Meta
+          </Button>
+        </div>
+
+        {/* ✅ ITEM 8: Campo Faturamento Necessário */}
+        <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-lg border border-amber-200 dark:border-amber-700/50">
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wide">
+                Faturamento Necessário
+              </h3>
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                Para atingir a meta com margem atual de {formatPercent(margemAtualPct * 100)}
+              </p>
+            </div>
+            <span className="text-2xl font-bold text-amber-700 dark:text-amber-300">
+              {formatCurrency(faturamentoNecessario)}
+            </span>
+          </div>
+          
+          {/* Detalhamento do cálculo */}
+          <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/50 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div>
+              <span className="text-amber-600 dark:text-amber-500">Alvo EBITDA:</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoEbitda)}</span>
+            </div>
+            <div>
+              <span className="text-amber-600 dark:text-amber-500">Alvo MC:</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoMc)}</span>
+            </div>
+            <div>
+              <span className="text-amber-600 dark:text-amber-500">% Inovação:</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{modernInova}%</span>
+            </div>
+            <div>
+              <span className="text-amber-600 dark:text-amber-500">Desp. Fixas:</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(despesasFixas)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <FinanceCard title="Receita Bruta" value={formatCurrency(controle.receitaBruta)} variant="green" />
+        <FinanceCard title="Custo Insumos" value={formatCurrency(controle.custoInsumos)} variant="red" />
+        <FinanceCard title="Lucro Bruto" value={formatCurrency(controle.lucroBruto)} variant="cyan" />
+        <FinanceCard title="Despesas Fixas" value={formatCurrency(controle.despesasFixasPeriodo)} variant="red" />
+        <FinanceCard title="Impostos" value={formatCurrency(controle.impostos)} variant="red" />
+        <FinanceCard title="Resultado Líquido" value={formatCurrency(controle.resultadoLiquido)} variant={controle.resultadoLiquido >= 0 ? 'green' : 'red'} />
+      </div>
+    </div>
+  )
+}
+
+// ✅ ITEM 7: DRE COMPLETO COM 9 LINHAS
+const AbaDRE = ({ dre, tituloPeriodo }: any) => (
+  <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 shadow-xl">
+    {/* Header */}
+    <div className="mb-6 flex items-center justify-between border-b border-gray-200 dark:border-slate-700 pb-4">
+      <h2 className="text-xl font-bold text-gray-900 dark:text-cyan-400">DRE - {tituloPeriodo}</h2>
+      <span className="text-xs text-gray-500 dark:text-slate-500 uppercase tracking-wider">Regime de Competência</span>
     </div>
 
-    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Meta de Resultado Mensal</h2>
-      <div className="flex gap-4 items-end">
-        <InputLocal
-          label="Meta (R$)"
-          type="number"
-          value={metaTemporaria ?? metaResultadoMensal}
-          onChange={(v: number) => setMetaTemporaria(v)}
-        />
-        <Button onClick={() => onUpdateMeta(metaTemporaria ?? metaResultadoMensal)}>
-          Salvar Meta
-        </Button>
+    {/* 1. RECEITA OPERACIONAL BRUTA */}
+    <div className="flex justify-between items-center py-2">
+      <span className="font-semibold text-gray-900 dark:text-white">1. Receita Operacional Bruta</span>
+      <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(dre.receitaBruta)}</span>
+    </div>
+
+    {/* 2. DEDUÇÕES DA RECEITA */}
+    <div className="mt-2 mb-4">
+      <div className="flex justify-between items-center py-1">
+        <span className="font-medium text-gray-700 dark:text-slate-300">2. Deduções da Receita</span>
+        <span className="font-medium text-red-600 dark:text-red-400">- {formatCurrency(dre.totalDeducoes)}</span>
+      </div>
+      <div className="pl-4 border-l-2 border-gray-200 dark:border-slate-800 ml-1 mt-1 space-y-1">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-gray-500 dark:text-slate-400">2.1 Impostos ({dre.aliquotaImpostos}%)</span>
+          <span className="text-red-500 dark:text-red-400/80">- {formatCurrency(dre.impostos)}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-gray-500 dark:text-slate-400">2.2 Taxas Financeiras ({dre.taxaCartao}% s/ {formatCurrency(dre.totalVendasCredito)})</span>
+          <span className="text-red-500 dark:text-red-400/80">- {formatCurrency(dre.taxasFinanceiras)}</span>
+        </div>
       </div>
     </div>
 
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <FinanceCard title="Receita Bruta" value={formatCurrency(controle.receitaBruta)} variant="green" />
-      <FinanceCard title="Custo Insumos" value={formatCurrency(controle.custoInsumos)} variant="red" />
-      <FinanceCard title="Lucro Bruto" value={formatCurrency(controle.lucroBruto)} variant="cyan" />
-      <FinanceCard title="Despesas Fixas" value={formatCurrency(controle.despesasFixasPeriodo)} variant="red" />
-      <FinanceCard title="Impostos" value={formatCurrency(controle.impostos)} variant="red" />
-      <FinanceCard title="Resultado Líquido" value={formatCurrency(controle.resultadoLiquido)} variant={controle.resultadoLiquido >= 0 ? 'green' : 'red'} />
+    {/* 3. RECEITA LÍQUIDA */}
+    <div className="flex justify-between items-center py-3 border-t border-gray-200 dark:border-slate-700 bg-blue-50 dark:bg-slate-800/30 px-3 rounded mb-4">
+      <span className="font-bold text-gray-800 dark:text-slate-100">3. (=) Receita Líquida</span>
+      <span className="font-bold text-blue-600 dark:text-blue-200">{formatCurrency(dre.receitaLiquida)}</span>
     </div>
-  </div>
-)
 
-const AbaDRE = ({ controle, tituloPeriodo }: any) => (
-  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">DRE - {tituloPeriodo}</h2>
-    <div className="space-y-3">
-      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700">
-        <span className="text-gray-900 dark:text-white font-medium">Receita Bruta</span>
-        <span className="text-green-600 dark:text-green-400 font-bold">{formatCurrency(controle.receitaBruta)}</span>
+    {/* 4. CUSTOS VARIÁVEIS */}
+    <div className="mb-4">
+      <div className="flex justify-between items-center py-1">
+        <span className="font-medium text-gray-700 dark:text-slate-300">4. Custos Variáveis</span>
+        <span className="font-medium text-red-600 dark:text-red-400">- {formatCurrency(dre.totalCustosVariaveis)}</span>
       </div>
-      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
-        <span className="text-gray-600 dark:text-slate-400">(-) Custo dos Insumos</span>
-        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.custoInsumos)}</span>
+      <div className="pl-4 border-l-2 border-gray-200 dark:border-slate-800 ml-1 mt-1 space-y-1">
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-gray-500 dark:text-slate-400">(-) Custo dos Insumos (CMV)</span>
+          <span className="text-red-500 dark:text-red-400/80">- {formatCurrency(dre.custoInsumos)}</span>
+        </div>
+        <div className="flex justify-between items-center text-sm">
+          <span className="text-gray-500 dark:text-slate-400">(-) Repasse Profissionais (Comissionados)</span>
+          <span className="text-red-500 dark:text-red-400/80">- {formatCurrency(dre.repasseProfissionais)}</span>
+        </div>
       </div>
-      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 bg-cyan-50 dark:bg-cyan-500/10 px-4 rounded">
-        <span className="text-cyan-700 dark:text-cyan-400 font-medium">= Lucro Bruto</span>
-        <span className="text-cyan-700 dark:text-cyan-400 font-bold">{formatCurrency(controle.lucroBruto)}</span>
+    </div>
+
+    {/* 5. MARGEM DE CONTRIBUIÇÃO - Destaque especial */}
+    <div className="flex justify-between items-center py-4 px-4 rounded-lg bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-500/30 mb-6">
+      <div className="flex flex-col">
+        <span className="text-cyan-700 dark:text-cyan-400 font-bold text-lg">5. (=) Margem de Contribuição</span>
+        <span className="text-xs text-cyan-600/60 dark:text-cyan-200/60 uppercase">Indicador de Eficiência</span>
       </div>
-      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
-        <span className="text-gray-600 dark:text-slate-400">(-) Despesas Fixas</span>
-        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.despesasFixasPeriodo)}</span>
+      <div className="text-right">
+        <div className="text-cyan-700 dark:text-cyan-400 font-bold text-xl">{formatCurrency(dre.margemContribuicao)}</div>
+        <div className="text-sm text-cyan-600 dark:text-cyan-300 font-medium">({dre.margemContribuicaoPct.toFixed(1)}%)</div>
       </div>
-      <div className="flex justify-between py-3 border-b border-gray-200 dark:border-slate-700 pl-4">
-        <span className="text-gray-600 dark:text-slate-400">(-) Impostos</span>
-        <span className="text-red-600 dark:text-red-400">{formatCurrency(controle.impostos)}</span>
-      </div>
-      <div className={`flex justify-between py-4 px-4 rounded-lg ${controle.resultadoLiquido >= 0 ? 'bg-green-100 dark:bg-green-500/20' : 'bg-red-100 dark:bg-red-500/20'}`}>
-        <span className={`font-bold ${controle.resultadoLiquido >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-          = Resultado Líquido
+    </div>
+
+    {/* 6. DESPESAS FIXAS */}
+    <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-slate-800 mb-2">
+      <span className="text-gray-700 dark:text-slate-300">6. (-) Despesas Fixas</span>
+      <span className="text-red-600 dark:text-red-400">- {formatCurrency(dre.despesasFixas)}</span>
+    </div>
+
+    {/* 7. EBITDA */}
+    <div className="flex justify-between items-center py-3 bg-gray-100 dark:bg-slate-800 rounded px-3 mb-2">
+      <span className="font-bold text-gray-900 dark:text-white">7. (=) EBITDA (Operacional)</span>
+      <span className={`font-bold text-lg ${dre.ebitda >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-500'}`}>
+        {formatCurrency(dre.ebitda)}
+      </span>
+    </div>
+
+    {/* 8. RESERVAS / INOVAÇÃO */}
+    <div className="flex justify-between items-center py-2 text-sm mb-4 pl-3">
+      <span className="text-amber-600 dark:text-amber-500/90">8. (-) Reservas / Inovação ({dre.modernInova}%)</span>
+      <span className="text-amber-600 dark:text-amber-500 font-medium">- {formatCurrency(dre.reservasInovacao)}</span>
+    </div>
+
+    {/* 9. LUCRO LÍQUIDO (BOLSO) - Destaque máximo */}
+    <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-900 border border-gray-300 dark:border-slate-600 p-6 mt-4">
+      <div className="flex justify-between items-end relative z-10">
+        <div>
+          <h3 className="text-gray-500 dark:text-gray-400 text-sm font-medium uppercase tracking-widest mb-1">9. Lucro Líquido (Bolso)</h3>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Resultado final após reinvestimento</p>
+        </div>
+        <span className={`text-3xl font-extrabold tracking-tight ${dre.lucroLiquidoBolso >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-500'}`}>
+          {formatCurrency(dre.lucroLiquidoBolso)}
         </span>
-        <span className={`font-bold text-xl ${controle.resultadoLiquido >= 0 ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-          {formatCurrency(controle.resultadoLiquido)}
-        </span>
       </div>
+      <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white dark:bg-white opacity-5 rounded-full blur-xl"></div>
     </div>
   </div>
 )

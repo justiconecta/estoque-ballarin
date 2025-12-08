@@ -73,11 +73,26 @@ export default function EstoquePage() {
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
-  const convertDateToISO = (ddmmyyyy: string): string => {
-    if (!ddmmyyyy) return ''
-    const [day, month, year] = ddmmyyyy.split('/')
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+  const convertDateToISO = (dateValue: string): string => {
+  if (!dateValue) return ''
+  
+  // Se já está no formato ISO (YYYY-MM-DD) - vem do input type="date"
+  if (dateValue.includes('-') && dateValue.length === 10) {
+    return dateValue // Já está correto
   }
+  
+  // Se está no formato DD/MM/YYYY - converter para ISO
+  if (dateValue.includes('/')) {
+    const parts = dateValue.split('/')
+    if (parts.length === 3) {
+      const [day, month, year] = parts
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    }
+  }
+  
+  // Fallback: retornar como está
+  return dateValue
+}
 
   // ✅ NOVA FUNÇÃO: Formatar valor monetário em tempo real
   const formatCurrency = (value: string): string => {

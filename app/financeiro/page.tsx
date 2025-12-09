@@ -145,8 +145,28 @@ export default function FinanceiroPage() {
   // Estado para meta temporária
   const [metaTemporaria, setMetaTemporaria] = useState<number | string>('')
 
-  // Load inicial
+  // ✅ FIX: Garantir clinic_id válido antes de carregar dados
   useEffect(() => {
+    const ensureClinicId = () => {
+      const currentClinicId = localStorage.getItem('clinic_id')
+      if (!currentClinicId) {
+        // Tentar recuperar do usuário logado
+        const userData = localStorage.getItem('ballarin_user')
+        if (userData) {
+          try {
+            const user = JSON.parse(userData)
+            if (user.id_clinica) {
+              localStorage.setItem('clinic_id', user.id_clinica.toString())
+              console.log('✅ clinic_id recuperado do usuário:', user.id_clinica)
+            }
+          } catch (e) {
+            console.error('Erro ao recuperar clinic_id:', e)
+          }
+        }
+      }
+    }
+    
+    ensureClinicId()
     loadData()
     loadSKUs()
     loadProdutosComLotes() // ✅ ITEM 9: Carregar produtos para Metas
@@ -162,12 +182,27 @@ export default function FinanceiroPage() {
   const loadData = async () => {
     setLoading(true)
     try {
+      // ✅ DEBUG: Verificar clinicId antes de carregar
+      const clinicId = supabaseApi.getCurrentClinicId()
+      console.log('🔍 DEBUG loadData - clinicId:', clinicId)
+      
+      if (!clinicId) {
+        console.error('❌ clinicId é NULL! Verificar localStorage...')
+        // Tentar recuperar do localStorage diretamente
+        const storedClinic = localStorage.getItem('clinic_id')
+        const storedUser = localStorage.getItem('ballarin_user')
+        console.log('📦 localStorage clinic_id:', storedClinic)
+        console.log('📦 localStorage ballarin_user:', storedUser)
+      }
+
       const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
         supabaseApi.getServicos(),
         supabaseApi.getDespesas(),
         supabaseApi.getProfissionais(),
         supabaseApi.getParametros()
       ])
+
+      console.log('👥 Profissionais carregados:', profissionaisData.length, profissionaisData)
 
       setServicos(servicosData)
       setDespesas(despesasData)
@@ -1261,12 +1296,6 @@ const AbaParametros = ({
             onChange={(v: number) => onUpdate({ custo_hora: v })} 
           />
         </div>
-        
-        {/* Dica sobre Custo/Hora */}
-        <p className="text-xs text-gray-500 dark:text-slate-500 mt-4">
-          💡 O Custo/Hora calculado automaticamente é R$ {calculados?.custoHora?.toFixed(2) || '0.00'}. 
-          Você pode sobrescrever manualmente acima se necessário.
-        </p>
       </div>
 
       {/* ✅ SEÇÃO 2: Equipe (com percentual e perfil) */}

@@ -254,25 +254,41 @@ export const supabaseApi = {
   // ============ MÓDULO FINANCEIRO - PROFISSIONAIS ============
 
   async getProfissionais() {
-    try {
-      const clinicId = getCurrentClinicId()
-      if (!clinicId) throw new Error('Clínica não identificada')
-
-      const { data, error } = await supabase
-        .from('profissionais')
-        .select('*')
-        .eq('id_clinica', clinicId)
-        .eq('ativo', true)
-        .order('nome', { ascending: true })
-
-      if (error) throw error
-      console.log(`👥 PROFISSIONAIS ENCONTRADOS: ${data?.length || 0}`)
-      return data || []
-    } catch (error) {
-      console.error('💥 ERRO getProfissionais:', error)
-      return []
+  try {
+    const clinicId = getCurrentClinicId()
+    
+    // ✅ DEBUG LOG
+    console.log('👥 getProfissionais - clinicId:', clinicId)
+    
+    if (!clinicId) {
+      console.error('❌ getProfissionais: clinicId é NULL!')
+      console.log('📦 localStorage clinic_id:', localStorage.getItem('clinic_id'))
+      console.log('📦 localStorage ballarin_user:', localStorage.getItem('ballarin_user'))
+      throw new Error('Clínica não identificada')
     }
-  },
+
+    const { data, error } = await supabase
+      .from('profissionais')
+      .select('*')
+      .eq('id_clinica', clinicId)
+      .eq('ativo', true)
+      .order('nome', { ascending: true })
+
+    if (error) {
+      console.error('❌ getProfissionais ERRO SQL:', error)
+      throw error
+    }
+    
+    console.log(`✅ PROFISSIONAIS ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
+    console.log('📋 Dados:', data)
+    
+    return data || []
+  } catch (error) {
+    console.error('💥 ERRO getProfissionais:', error)
+    return []
+  }
+},
+
 
   async createProfissional(profissional: { nome: string; horas_semanais: number }) {
     try {

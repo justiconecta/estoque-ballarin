@@ -34,6 +34,9 @@ const CATEGORIAS_FIXAS = [
   'Outros'
 ]
 
+// ✅ NOVO: Percentuais de desconto fixo
+const DESCONTOS_FIXOS = [5, 10, 15, 20, 25, 30, 40, 50]
+
 // ✅ Função para normalizar categoria
 const normalizarCategoria = (categoria: string): string => {
   const cat = (categoria || '').toUpperCase().trim()
@@ -288,6 +291,12 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     setInsumosSelecionados(prev => prev.map(item =>
       item.id_lote === loteId ? { ...item, quantidade: qtd } : item
     ))
+  }
+
+  // ✅ NOVO: Handler para botões de desconto fixo
+  const handleDescontoFixo = (percentual: number) => {
+    const descontoCalculado = totais.vendaTotal * (percentual / 100)
+    setDescontoValor(descontoCalculado)
   }
 
   const handleSave = async () => {
@@ -596,13 +605,29 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 </div>
               </div>
 
-              {/* Desconto */}
+              {/* Desconto com Botões Fixos */}
               <div className="bg-slate-800 rounded-lg p-4">
                 <h4 className="text-sm font-bold text-cyan-400 mb-3">Desconto</h4>
+                
+                {/* ✅ NOVO: Botões de desconto fixo */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-400 mb-2">Atalhos de Desconto</label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {DESCONTOS_FIXOS.map(pct => (
+                      <button
+                        key={pct}
+                        onClick={() => handleDescontoFixo(pct)}
+                        className="px-3 py-2 bg-slate-700 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Valor (R$)</label>
-                    {/* ✅ FIX UX: Input com tratamento para string vazia */}
                     <input 
                       type="number" 
                       min="0" 

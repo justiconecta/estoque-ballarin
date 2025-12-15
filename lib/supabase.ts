@@ -591,6 +591,7 @@ export const supabaseApi = {
     }
   },
 
+  // ✅ CORRIGIDO: createVenda com items JSONB + id_usuario_responsavel
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
@@ -598,7 +599,6 @@ export const supabaseApi = {
     parcelas: number
     desconto_valor: number
     valor_entrada: number
-    // ✅ ITEM 6: Novos campos
     id_usuario_responsavel?: number | null
     items?: number[]
     insumos: { id_lote: number; quantidade: number }[]
@@ -663,10 +663,19 @@ export const supabaseApi = {
       const valorParcelado = Math.max(0, precoFinal - valorEntrada)
       const numeroParcelas = venda.metodo_pagamento === 'Crédito' ? (venda.parcelas || 1) : null
 
+      // ✅ CORREÇÃO 1: Construir campo items no formato correto [{"id": sku_id, "qtd": quantidade}]
+      const itemsFormatted = insumosDetalhados.map(item => ({
+        id: item.lote.skus?.id_sku || item.lote.id_sku,
+        qtd: item.quantidade
+      }))
+
+      console.log('📦 ITEMS FORMATADOS:', JSON.stringify(itemsFormatted))
+
       // 3. Criar Venda
       const vendaCompleta = ensureClinicFilter({
         id_paciente: venda.id_paciente,
-        id_usuario_responsavel: null,
+        // ✅ CORREÇÃO 2: Salvar id_usuario_responsavel (não mais NULL fixo)
+        id_usuario_responsavel: venda.id_usuario_responsavel || null,
         data_venda: venda.data_venda,
         metodo_pagamento: venda.metodo_pagamento,
         parcelas: numeroParcelas,
@@ -684,8 +693,13 @@ export const supabaseApi = {
         margem_percentual_final: margemPercentualFinal,
         margem_total_final: margemTotalFinal,
         valor_entrada: valorEntrada,
-        valor_parcelado: valorParcelado
+        valor_parcelado: valorParcelado,
+
+        // ✅ CORREÇÃO 3: Adicionar campo items no formato JSONB
+        items: itemsFormatted as any
       })
+
+      console.log('💾 SALVANDO VENDA COM ITEMS:', vendaCompleta.items)
 
       const { data: vendaCriada, error: vendaError } = await supabase
         .from('vendas')
@@ -720,7 +734,7 @@ export const supabaseApi = {
         })
       }
 
-      console.log('✅ VENDA CRIADA COM INSUMOS:', vendaCriada.id)
+      console.log('✅ VENDA CRIADA COM ITEMS:', vendaCriada.id, vendaCriada.items)
       return vendaCriada
 
     } catch (error) {

@@ -438,6 +438,7 @@ export default function FinanceiroPage() {
     [totalDespesasFixas, mesesSelecionados]
   )
 
+  // ✅ CORREÇÃO ITEM 3: Taxa de Ocupação - Fórmula CORRETA
   const parametrosCalculados = useMemo(() => {
     if (!parametros) return null
 
@@ -450,7 +451,9 @@ export default function FinanceiroPage() {
     const horasOcupadas = totalServicosVendidos * parametros.duracao_media_servico_horas
 
     const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
-    const taxaOcupacao = horasProdutivasPotenciais > 0 ? (horasOcupadas / horasProdutivasPotenciais) * 100 : 0
+    
+    // ✅ CORREÇÃO: Taxa Ocupação = (horasDaEquipe / horasDasSalas) * 100
+    const taxaOcupacao = horasDasSalas > 0 ? (horasDaEquipe / horasDasSalas) * 100 : 0
 
     return {
       horasDaEquipe,
@@ -754,7 +757,15 @@ export default function FinanceiroPage() {
           )}
 
           {abaAtiva === 'metas' && metasCalculadas && (
-            <AbaMetas metas={metasCalculadas} tituloPeriodo={tituloPeriodo} />
+            <AbaMetas 
+              metas={metasCalculadas} 
+              tituloPeriodo={tituloPeriodo}
+              parametros={parametros}
+              dreCalc={dreCalc}
+              diasUteis={diasUteisTotais}
+              diaUtilAtual={diaUtilAtual}
+              profissionais={profissionais}
+            />
           )}
 
           {/* ✅ ITEM 8: AbaControle com Faturamento Necessário */}
@@ -835,7 +846,7 @@ const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: any) =
 )
 
 // ✅ FIX UX ITEM 3: InputLocal com tratamento para campos zero
-const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '' }: any) => (
+const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '', step }: any) => (
   <div>
     <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">{label}</label>
     <input
@@ -854,6 +865,7 @@ const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '' }:
         }
       }}
       placeholder={placeholder}
+      step={step}
       className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
     />
   </div>
@@ -1198,7 +1210,7 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
   </div>
 )
 
-// ✅ ITEM 4: ABA PARÂMETROS COMPLETA COM NOVOS CAMPOS
+// ✅ ITEM 5: ABA PARÂMETROS COMPLETA - Duração Média com step="0.1"
 const AbaParametros = ({ 
   parametros, 
   calculados, 
@@ -1257,9 +1269,11 @@ const AbaParametros = ({
             value={parametros.horas_trabalho_dia} 
             onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} 
           />
+          {/* ✅ ITEM 5: step="0.1" para aceitar decimais */}
           <InputLocal 
             label="Duração Média Serviço (h)" 
             type="number" 
+            step="0.1"
             value={parametros.duracao_media_servico_horas} 
             onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} 
           />
@@ -1445,70 +1459,119 @@ const AbaParametros = ({
   )
 }
 
-// ✅ ITEM 9: AbaMetas atualizado - usa Produtos (SKUs com lotes) em vez de Serviços
-const AbaMetas = ({ metas, tituloPeriodo }: any) => (
-  <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-    <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Produto - {tituloPeriodo}</h2>
+// ✅ ITEM 4: AbaMetas com TICKET POR PACIENTE
+const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUtilAtual, profissionais }: any) => {
+  // ✅ ITEM 4: Calcular Ticket Por Paciente
+  const ticketPorPaciente = useMemo(() => {
+    if (!parametros || !dreCalc) return 0
+
+    // Faturamento Necessário (mesmo cálculo do AbaControle)
+    const modernInova = parametros.modern_inova || 10
+    const metaMensal = parametros.meta_resultado_liquido_mensal || 0
+    const despesasFixas = dreCalc.despesasFixas || 0
+    const margemContribuicao = dreCalc.margemContribuicao || 0
+    const receitaBruta = dreCalc.receitaBruta || 0
+
+    const alvoEbitda = metaMensal / (1 - (modernInova / 100))
+    const alvoMc = alvoEbitda + despesasFixas
+    const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3
+    const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+
+    // Número de Atendimentos Possíveis
+    // Atendimentos = [(Σ horas_semanais proprietários * duracao_media) / 5] * diasUteis
+    const horasSemanaisProprietarios = profissionais
+      .filter((p: any) => p.perfil === 'proprietario')
+      .reduce((sum: number, p: any) => sum + p.horas_semanais, 0)
     
-    {metas.length === 0 ? (
-      <div className="text-center py-8 text-gray-500 dark:text-slate-400">
-        <p>Nenhum produto com estoque disponível.</p>
-        <p className="text-sm mt-2">Adicione lotes aos seus SKUs para visualizar as metas.</p>
+    const duracaoMedia = parametros.duracao_media_servico_horas || 1
+    const atendimentosPorDia = horasSemanaisProprietarios / (5 * duracaoMedia)
+    const numeroAtendimentos = atendimentosPorDia * diasUteis
+
+    // Ticket = Faturamento Necessário / Número Atendimentos
+    return numeroAtendimentos > 0 ? faturamentoNecessario / numeroAtendimentos : 0
+  }, [parametros, dreCalc, profissionais, diasUteis])
+
+  return (
+    <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Produto - {tituloPeriodo}</h2>
+      
+      {/* ✅ ITEM 4: Ticket Por Paciente - ACIMA DA LISTA */}
+      <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg border border-purple-200 dark:border-purple-700/50">
+        <div className="flex justify-between items-center">
+          <div>
+            <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-400 uppercase tracking-wide">
+              Ticket Médio por Paciente
+            </h3>
+            <p className="text-xs text-purple-600 dark:text-purple-500 mt-1">
+              Valor necessário por atendimento para atingir meta
+            </p>
+          </div>
+          <span className="text-3xl font-bold text-purple-700 dark:text-purple-300">
+            {formatCurrency(ticketPorPaciente)}
+          </span>
+        </div>
       </div>
-    ) : (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-slate-700">
-              <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Produto</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Meta (un)</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Realizado</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Cobertura</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Gap</th>
-              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Projeção</th>
-            </tr>
-          </thead>
-          <tbody>
-            {metas.map((m: any, i: number) => (
-              <tr key={m.idSku || i} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
-                <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{m.produto}</td>
-                <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
-                <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    m.cobertura >= 100 
-                      ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' 
-                      : m.cobertura >= 50
-                        ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
-                        : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
-                  }`}>
-                    {formatPercent(m.cobertura)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={m.gap > 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
-                    {m.gap > 0 ? `-${m.gap}` : m.gap === 0 ? '✓' : `+${Math.abs(m.gap)}`}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`font-medium ${
-                    m.projecao >= 100 
-                      ? 'text-green-600 dark:text-green-400' 
-                      : m.projecao >= 70
-                        ? 'text-yellow-600 dark:text-yellow-400'
-                        : 'text-red-500 dark:text-red-400'
-                  }`}>
-                    {m.projecao}%
-                  </span>
-                </td>
+
+      {metas.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 dark:text-slate-400">
+          <p>Nenhum produto com estoque disponível.</p>
+          <p className="text-sm mt-2">Adicione lotes aos seus SKUs para visualizar as metas.</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 dark:border-slate-700">
+                <th className="px-4 py-3 text-left text-cyan-700 dark:text-cyan-400">Produto</th>
+                <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Meta (un)</th>
+                <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Realizado</th>
+                <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Cobertura</th>
+                <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Gap</th>
+                <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Projeção</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    )}
-  </div>
-)
+            </thead>
+            <tbody>
+              {metas.map((m: any, i: number) => (
+                <tr key={m.idSku || i} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                  <td className="px-4 py-3 text-gray-900 dark:text-white font-medium">{m.produto}</td>
+                  <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
+                  <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      m.cobertura >= 100 
+                        ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' 
+                        : m.cobertura >= 50
+                          ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
+                          : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
+                    }`}>
+                      {formatPercent(m.cobertura)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={m.gap > 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
+                      {m.gap > 0 ? `-${m.gap}` : m.gap === 0 ? '✓' : `+${Math.abs(m.gap)}`}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className={`font-medium ${
+                      m.projecao >= 100 
+                        ? 'text-green-600 dark:text-green-400' 
+                        : m.projecao >= 70
+                          ? 'text-yellow-600 dark:text-yellow-400'
+                          : 'text-red-500 dark:text-red-400'
+                    }`}>
+                      {m.projecao}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ✅ ITEM 8: AbaControle com campo Faturamento Necessário
 const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResultadoMensal, mesesSelecionados, onUpdateMeta, metaTemporaria, setMetaTemporaria }: any) => {

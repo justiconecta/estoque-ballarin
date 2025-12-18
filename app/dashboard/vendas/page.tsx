@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info } from 'lucide-react'
+import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangle } from 'lucide-react'
 import { HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area } from 'recharts'
@@ -327,6 +327,104 @@ export default function DashboardVendasPage() {
       preenchedor,
       biotech,
       formatted: `${format(ratioT)} : ${format(ratioP)} : ${format(ratioB)}`
+    }
+  }, [vendasPorCategoria])
+
+  // ============ ANÁLISE DE CATEGORIA DEFASADA ============
+
+  const categoriaDefasada = useMemo(() => {
+    const { toxina, preenchedor, biotech } = vendasPorCategoria
+    
+    // Se não tem dados, sem definição
+    if (toxina === 0 && preenchedor === 0 && biotech === 0) {
+      return { categoria: 'Sem definição', color: 'gray' }
+    }
+
+    const CATEGORIES = [
+      { nome: 'Toxina Botulínica', color: 'cyan' },
+      { nome: 'Preenchedor', color: 'green' },
+      { nome: 'Bio/Tech', color: 'purple' }
+    ]
+
+    // Padrões de referência (da doc)
+    const PATTERNS = [
+      [1, 3, 1], // Standard
+      [1, 4, 1],
+      [1, 4, 2],
+      [2, 4, 1], // Premium
+      [2, 5, 2], // Ultra
+    ]
+
+    const TIE_EPS = 0.03
+
+    // Converter para array na ordem correta
+    const real = [toxina, preenchedor, biotech]
+
+    // Funções auxiliares
+    const bestScaleK = (realArr: number[], pattern: number[]) => {
+      let num = 0, den = 0
+      for (let i = 0; i < 3; i++) {
+        num += realArr[i] * pattern[i]
+        den += pattern[i] * pattern[i]
+      }
+      return den === 0 ? 0 : num / den
+    }
+
+    const mseAfterScale = (realArr: number[], pattern: number[], k: number) => {
+      let sum = 0
+      for (let i = 0; i < 3; i++) {
+        const diff = realArr[i] - k * pattern[i]
+        sum += diff * diff
+      }
+      return sum / 3
+    }
+
+    const deficiencyForPattern = (realArr: number[], pattern: number[], k: number) => {
+      const expected = pattern.map(v => v * k)
+      const fulfillment = expected.map((exp, i) => {
+        if (exp <= 0) return Number.POSITIVE_INFINITY
+        return realArr[i] / exp
+      })
+      return { expected, fulfillment }
+    }
+
+    // 1) Encontrar padrão mais semelhante
+    let best: { pattern: number[], k: number, mse: number, fulfillment: number[] } | null = null
+
+    for (const pattern of PATTERNS) {
+      const k = bestScaleK(real, pattern)
+      const mse = mseAfterScale(real, pattern, k)
+      const { fulfillment } = deficiencyForPattern(real, pattern, k)
+
+      const candidate = { pattern, k, mse, fulfillment }
+      if (!best || candidate.mse < best.mse) best = candidate
+    }
+
+    if (!best) return { categoria: 'Sem definição', color: 'gray' }
+
+    // 2) Identificar categoria defasada (menor fulfillment)
+    const f = best.fulfillment.slice()
+    const sortedIdx = [0, 1, 2].sort((a, b) => f[a] - f[b])
+
+    const first = sortedIdx[0]
+    const second = sortedIdx[1]
+
+    // Empate: se os dois menores fulfillments estiverem muito próximos
+    const denom = Math.max(1e-12, f[first])
+    const relDiff = Math.abs(f[second] - f[first]) / denom
+
+    if (relDiff <= TIE_EPS) {
+      return { 
+        categoria: `${CATEGORIES[first].nome}, ${CATEGORIES[second].nome}`,
+        color: 'amber',
+        indices: [first, second]
+      }
+    }
+
+    return { 
+      categoria: CATEGORIES[first].nome,
+      color: CATEGORIES[first].color,
+      indices: [first]
     }
   }, [vendasPorCategoria])
 
@@ -656,6 +754,38 @@ export default function DashboardVendasPage() {
                   Proporção Atual
                 </div>
               </div>
+
+              {/* Alerta de Categoria Defasada */}
+              {categoriaDefasada.categoria !== 'Sem definição' && (
+                <div className={`mt-4 rounded-xl p-4 border ${
+                  categoriaDefasada.color === 'cyan' ? 'bg-cyan-500/10 border-cyan-500/30' :
+                  categoriaDefasada.color === 'green' ? 'bg-green-500/10 border-green-500/30' :
+                  categoriaDefasada.color === 'purple' ? 'bg-purple-500/10 border-purple-500/30' :
+                  'bg-amber-500/10 border-amber-500/30'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className={`w-5 h-5 flex-shrink-0 ${
+                      categoriaDefasada.color === 'cyan' ? 'text-cyan-400' :
+                      categoriaDefasada.color === 'green' ? 'text-green-400' :
+                      categoriaDefasada.color === 'purple' ? 'text-purple-400' :
+                      'text-amber-400'
+                    }`} />
+                    <div>
+                      <div className="text-xs text-slate-400 uppercase tracking-wider">
+                        Categoria Defasada
+                      </div>
+                      <div className={`font-semibold ${
+                        categoriaDefasada.color === 'cyan' ? 'text-cyan-400' :
+                        categoriaDefasada.color === 'green' ? 'text-green-400' :
+                        categoriaDefasada.color === 'purple' ? 'text-purple-400' :
+                        'text-amber-400'
+                      }`}>
+                        {categoriaDefasada.categoria}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* LADO DIREITO - Legendas de Referência */}

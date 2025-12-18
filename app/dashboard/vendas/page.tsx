@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangle } from 'lucide-react'
 import { HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 // ============ CONSTANTES ============
@@ -206,25 +206,27 @@ export default function DashboardVendasPage() {
       .filter(d => d.tipo === 'Despesa Fixa' || d.tipo === 'Custo Fixo' || d.tipo === null)
       .reduce((sum, d) => sum + d.valor_mensal, 0)
 
-    // EBITDA
-    const ebitda = margemContribuicao - despesasFixas
-
-    // Reservas/Inovação
+    // Reservas/Inovação (% da Margem de Contribuição)
     const modernInova = parametros.modern_inova || 10
-    const reservasInovacao = ebitda > 0 ? ebitda * (modernInova / 100) : 0
+    const reservasInovacao = margemContribuicao > 0 ? margemContribuicao * (modernInova / 100) : 0
 
-    // Lucro Líquido
-    const lucroLiquido = ebitda - reservasInovacao
+    // EBITDA = Margem - Despesas Fixas - Reservas
+    const ebitda = margemContribuicao - despesasFixas - reservasInovacao
+
+    // Lucro Líquido = EBITDA
+    const lucroLiquido = ebitda
 
     // ============ ENGENHARIA REVERSA ============
     // Meta do usuário (lucro líquido desejado)
     const metaLucroLiquido = parametros.meta_resultado_liquido_mensal || 0
 
     // Calcular Faturamento Bruto Necessário
-    const alvoEbitda = metaLucroLiquido / (1 - (modernInova / 100))
-    const alvoMC = alvoEbitda + despesasFixas
+    // Considerando: Lucro = Margem*(1 - modernInova%) - DespesasFixas
+    // Então: Margem = (Lucro + DespesasFixas) / (1 - modernInova%)
+    // E: Faturamento = Margem / margemPct
+    const alvoMargem = (metaLucroLiquido + despesasFixas) / (1 - (modernInova / 100))
     const margemAtualPct = margemContribuicaoPct > 0 ? margemContribuicaoPct / 100 : 0.3
-    const faturamentoNecessario = margemAtualPct > 0 ? alvoMC / margemAtualPct : 0
+    const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
 
     return {
       receitaBruta,
@@ -242,8 +244,7 @@ export default function DashboardVendasPage() {
       lucroLiquido,
       metaLucroLiquido,
       faturamentoNecessario, // ESSA É A META MENSAL!
-      alvoEbitda,
-      alvoMC
+      alvoMargem
     }
   }, [parametros, vendas, despesas])
 
@@ -624,7 +625,7 @@ export default function DashboardVendasPage() {
                   />
                 </ComposedChart>
               ) : (
-                <LineChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 12 }} />
                   <YAxis 
@@ -650,29 +651,33 @@ export default function DashboardVendasPage() {
                   />
                   <defs>
                     <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#00ff9d" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#00ff9d" stopOpacity={0}/>
+                      <stop offset="0%" stopColor="#00ff9d" stopOpacity={0.6}/>
+                      <stop offset="50%" stopColor="#00ff9d" stopOpacity={0.3}/>
+                      <stop offset="100%" stopColor="#00ff9d" stopOpacity={0.05}/>
                     </linearGradient>
                   </defs>
+                  {/* Linha de referência da meta (tracejada, cinza) */}
+                  <Line 
+                    type="monotone" 
+                    dataKey="acumuladoMeta" 
+                    stroke="#64748b" 
+                    strokeWidth={2}
+                    strokeDasharray="8 4"
+                    dot={false}
+                    name="acumuladoMeta"
+                  />
+                  {/* Área preenchida do realizado */}
                   <Area 
                     type="monotone" 
                     dataKey="acumuladoReal" 
                     stroke="#00ff9d" 
-                    fillOpacity={1}
                     fill="url(#colorReal)"
                     strokeWidth={3}
                     name="acumuladoReal"
+                    dot={{ fill: '#00ff9d', strokeWidth: 0, r: 2 }}
+                    activeDot={{ fill: '#00ff9d', strokeWidth: 2, stroke: '#fff', r: 6 }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="acumuladoMeta" 
-                    stroke="#4B5563" 
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                    name="acumuladoMeta"
-                  />
-                </LineChart>
+                </ComposedChart>
               )}
             </ResponsiveContainer>
           </div>
@@ -839,9 +844,9 @@ export default function DashboardVendasPage() {
                   <h4 className="text-cyan-400 text-sm font-bold uppercase mb-2">1. Meta Mensal (Faturamento Necessário)</h4>
                   <p className="text-slate-300 text-sm mb-3">Engenharia reversa do DRE baseada na meta de lucro líquido.</p>
                   <div className="bg-black rounded-lg p-4 font-mono text-sm text-green-400">
-                    <p>Alvo EBITDA = Meta Lucro / (1 - %Inovação)</p>
-                    <p>Alvo MC = Alvo EBITDA + Despesas Fixas</p>
-                    <p>Faturamento = Alvo MC / Margem% atual</p>
+                    <p>Lucro = Margem × (1 - %Inovação) - Desp. Fixas</p>
+                    <p>Alvo Margem = (Meta Lucro + Desp. Fixas) / (1 - %Inovação)</p>
+                    <p>Faturamento = Alvo Margem / Margem% atual</p>
                   </div>
                 </div>
                 <div>

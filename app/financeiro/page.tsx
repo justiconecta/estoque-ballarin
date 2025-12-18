@@ -519,15 +519,15 @@ export default function FinanceiroPage() {
       .reduce((sum, d) => sum + d.valor_mensal, 0)
     const despesasFixas = despesasFixasMensal * mesesSelecionados.length
 
-    // 7. EBITDA (Operacional)
-    const ebitda = margemContribuicao - despesasFixas
-
-    // 8. RESERVAS / INOVAÇÃO
+    // 7. RESERVAS / INOVAÇÃO (% da Margem de Contribuição)
     const modernInova = parametros.modern_inova || 10 // default 10%
-    const reservasInovacao = ebitda > 0 ? ebitda * (modernInova / 100) : 0
+    const reservasInovacao = margemContribuicao > 0 ? margemContribuicao * (modernInova / 100) : 0
 
-    // 9. LUCRO LÍQUIDO (BOLSO)
-    const lucroLiquidoBolso = ebitda - reservasInovacao
+    // 8. EBITDA (Operacional) = Margem - Despesas Fixas - Reservas
+    const ebitda = margemContribuicao - despesasFixas - reservasInovacao
+
+    // 9. LUCRO LÍQUIDO (BOLSO) = EBITDA
+    const lucroLiquidoBolso = ebitda
 
     return {
       // Linha 1
@@ -549,10 +549,10 @@ export default function FinanceiroPage() {
       // Linha 6
       despesasFixas,
       // Linha 7
-      ebitda,
-      // Linha 8
       modernInova,
       reservasInovacao,
+      // Linha 8
+      ebitda,
       // Linha 9
       lucroLiquidoBolso,
       // Extras para compatibilidade
@@ -587,17 +587,19 @@ export default function FinanceiroPage() {
     if (!parametros || produtosComLotes.length === 0) return []
     if (!dreCalc) return []
 
-    // 1. Calcular Faturamento Necessário (mesmo cálculo do AbaControle)
+    // 1. Calcular Faturamento Necessário (engenharia reversa do DRE)
+    // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
+    // Alvo Margem = (Meta Lucro + Desp. Fixas) / (1 - %Inovação)
+    // Faturamento = Alvo Margem / Margem% atual
     const modernInova = parametros.modern_inova || 10
     const metaMensal = parametros.meta_resultado_liquido_mensal || 0
     const despesasFixas = dreCalc.despesasFixas || 0
     const margemContribuicao = dreCalc.margemContribuicao || 0
     const receitaBruta = dreCalc.receitaBruta || 0
 
-    const alvoEbitda = metaMensal / (1 - (modernInova / 100))
-    const alvoMc = alvoEbitda + despesasFixas
+    const alvoMargem = (metaMensal + despesasFixas) / (1 - (modernInova / 100))
     const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3 // default 30% se sem dados
-    const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+    const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
 
     // 2. Número de produtos (SKUs únicos com lotes > 0)
     const numProdutos = produtosComLotes.length
@@ -1530,17 +1532,17 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
   const ticketPorPaciente = useMemo(() => {
     if (!parametros || !dreCalc) return 0
 
-    // Faturamento Necessário (mesmo cálculo do AbaControle)
+    // Faturamento Necessário (engenharia reversa do DRE)
+    // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
     const modernInova = parametros.modern_inova || 10
     const metaMensal = parametros.meta_resultado_liquido_mensal || 0
     const despesasFixas = dreCalc.despesasFixas || 0
     const margemContribuicao = dreCalc.margemContribuicao || 0
     const receitaBruta = dreCalc.receitaBruta || 0
 
-    const alvoEbitda = metaMensal / (1 - (modernInova / 100))
-    const alvoMc = alvoEbitda + despesasFixas
+    const alvoMargem = (metaMensal + despesasFixas) / (1 - (modernInova / 100))
     const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3
-    const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+    const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
 
     // ✅ FIX BUG 5: Número de Atendimentos usando duracao_servico INDIVIDUAL de cada proprietário
     // Fórmula: Σ [(horas_semanais / duracao_servico) / 5] * diasUteis
@@ -1649,11 +1651,15 @@ const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResul
   const margemContribuicao = dre?.margemContribuicao || (controle?.receitaBruta - controle?.custoInsumos) || 0
   const receitaBruta = dre?.receitaBruta || controle?.receitaBruta || 0
 
-  // Cálculos
-  const alvoEbitda = metaMensal / (1 - (modernInova / 100))
-  const alvoMc = alvoEbitda + despesasFixas
+  // Cálculos (engenharia reversa do DRE)
+  // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
+  // Alvo Margem = (Meta Lucro + Desp. Fixas) / (1 - %Inovação)
+  const alvoMargem = (metaMensal + despesasFixas) / (1 - (modernInova / 100))
   const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0
-  const faturamentoNecessario = margemAtualPct > 0 ? alvoMc / margemAtualPct : 0
+  const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
+  
+  // Valores para exibição
+  const reservasInovacao = alvoMargem * (modernInova / 100)
 
   return (
     <div className="space-y-6">
@@ -1697,12 +1703,12 @@ const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResul
           {/* Detalhamento do cálculo */}
           <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/50 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
             <div>
-              <span className="text-amber-600 dark:text-amber-500">Alvo EBITDA:</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoEbitda)}</span>
+              <span className="text-amber-600 dark:text-amber-500">Alvo Margem:</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoMargem)}</span>
             </div>
             <div>
-              <span className="text-amber-600 dark:text-amber-500">Alvo MC:</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoMc)}</span>
+              <span className="text-amber-600 dark:text-amber-500">Reservas ({modernInova}%):</span>
+              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(reservasInovacao)}</span>
             </div>
             <div>
               <span className="text-amber-600 dark:text-amber-500">% Inovação:</span>
@@ -1803,18 +1809,18 @@ const AbaDRE = ({ dre, tituloPeriodo }: any) => (
       <span className="text-red-600 dark:text-red-400">- {formatCurrency(dre.despesasFixas)}</span>
     </div>
 
-    {/* 7. EBITDA */}
+    {/* 7. RESERVAS / INOVAÇÃO */}
+    <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-slate-800 mb-2">
+      <span className="text-amber-600 dark:text-amber-500/90">7. (-) Reservas / Inovação ({dre.modernInova}%)</span>
+      <span className="text-amber-600 dark:text-amber-500 font-medium">- {formatCurrency(dre.reservasInovacao)}</span>
+    </div>
+
+    {/* 8. EBITDA */}
     <div className="flex justify-between items-center py-3 bg-gray-100 dark:bg-slate-800 rounded px-3 mb-2">
-      <span className="font-bold text-gray-900 dark:text-white">7. (=) EBITDA (Operacional)</span>
+      <span className="font-bold text-gray-900 dark:text-white">8. (=) EBITDA (Operacional)</span>
       <span className={`font-bold text-lg ${dre.ebitda >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-500'}`}>
         {formatCurrency(dre.ebitda)}
       </span>
-    </div>
-
-    {/* 8. RESERVAS / INOVAÇÃO */}
-    <div className="flex justify-between items-center py-2 text-sm mb-4 pl-3">
-      <span className="text-amber-600 dark:text-amber-500/90">8. (-) Reservas / Inovação ({dre.modernInova}%)</span>
-      <span className="text-amber-600 dark:text-amber-500 font-medium">- {formatCurrency(dre.reservasInovacao)}</span>
     </div>
 
     {/* 9. LUCRO LÍQUIDO (BOLSO) - Destaque máximo */}

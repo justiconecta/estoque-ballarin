@@ -69,10 +69,18 @@ export default function DashboardMarketingTerapeuticoPage() {
     try {
       setLoading(true)
       
-      // Carregar todos os indicadores para extrair meses e anos
+      // ✅ OBTER ID DA CLÍNICA ATUAL
+      const clinicId = supabaseApi.getCurrentClinicId()
+      if (!clinicId) {
+        console.error('❌ Clínica não identificada')
+        return
+      }
+      
+      // ✅ FILTRAR POR ID_CLINICA
       const { data: resumos, error } = await supabaseApi.supabase
         .from('resumo_indicadores_mensal')
         .select('mes_ano')
+        .eq('id_clinica', clinicId)
         .order('mes_ano', { ascending: false })
       
       if (error) throw error
@@ -107,11 +115,18 @@ export default function DashboardMarketingTerapeuticoPage() {
 
   const loadIndicadoresMes = async (mesAno: string) => {
     try {
-      console.log('🔍 Carregando indicadores para:', mesAno)
+      // ✅ OBTER ID DA CLÍNICA ATUAL
+      const clinicId = supabaseApi.getCurrentClinicId()
+      if (!clinicId) {
+        console.error('❌ Clínica não identificada')
+        return
+      }
       
+      // ✅ FILTRAR POR ID_CLINICA
       const { data, error } = await supabaseApi.supabase
         .from('resumo_indicadores_mensal')
         .select('*')
+        .eq('id_clinica', clinicId)
         .eq('mes_ano', mesAno)
         .order('data_geracao', { ascending: false })
         .limit(1)
@@ -119,10 +134,8 @@ export default function DashboardMarketingTerapeuticoPage() {
       if (error) throw error
       
       if (data && data.length > 0) {
-        console.log('✅ Indicadores carregados:', data[0])
         setIndicadoresMes(data[0])
       } else {
-        console.log('⚠️ Nenhum indicador encontrado para:', mesAno)
         setIndicadoresMes(null)
       }
     } catch (error) {
@@ -210,29 +223,30 @@ export default function DashboardMarketingTerapeuticoPage() {
           showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
-<div className="mb-8">
-  <div className="border-b border-clinic-gray-700">
-    <nav className="flex space-x-8">
-      <button
-        className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
-      >
-        Marketing e Terapêutico
-      </button>
-      <button
-        onClick={() => router.push('/dashboard/terapeutico')}
-        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-      >
-        IA - Paciente
-      </button>
-      <button
-        onClick={() => router.push('/dashboard/vendas')}
-        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-      >
-        Comercial
-      </button>
-    </nav>
-  </div>
-</div>
+        {/* Navegação por Tabs */}
+        <div className="mb-8">
+          <div className="border-b border-clinic-gray-700">
+            <nav className="flex space-x-8">
+              <button
+                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
+              >
+                Marketing e Terapêutico
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/terapeutico')}
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+              >
+                IA - Paciente
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/vendas')}
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+              >
+                Comercial
+              </button>
+            </nav>
+          </div>
+        </div>
 
         {/* Filtros Mês e Ano */}
         <div className="mb-8">
@@ -457,9 +471,9 @@ export default function DashboardMarketingTerapeuticoPage() {
       {/* Modal Nova Clínica */}
       <NovaClinicaModal
         isOpen={showNovaClinicaModal}
-        onClose={() => setShowNovaClinicaModal(false)} onSuccess={function (): void {
-          throw new Error('Function not implemented.')
-        } }      />
+        onClose={() => setShowNovaClinicaModal(false)}
+        onSuccess={() => setShowNovaClinicaModal(false)}
+      />
     </div>
   )
 }

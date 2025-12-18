@@ -35,4 +35,8 @@ const nextConfig = {
   },
 }
 
-module.exports = nextConfig
+module.exports = {
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production'
+  }
+}

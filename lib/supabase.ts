@@ -63,6 +63,26 @@ function ensureClinicFilter<T extends Record<string, any>>(data: T): T & { id_cl
   return { ...data, id_clinica: clinicId }
 }
 
+// ✅ FIX BUG 9: Helper para converter "MM/YYYY" para DATE ISO (primeiro dia do mês)
+function convertPeriodoToDate(periodo: string | null | undefined): string | null {
+  if (!periodo) return null
+  
+  // Se já está no formato ISO (YYYY-MM-DD), retornar como está
+  if (periodo.match(/^\d{4}-\d{2}-\d{2}$/)) {
+    return periodo
+  }
+  
+  // Converter de "MM/YYYY" para "YYYY-MM-01"
+  const match = periodo.match(/^(\d{1,2})\/(\d{4})$/)
+  if (match) {
+    const [, mes, ano] = match
+    return `${ano}-${mes.padStart(2, '0')}-01`
+  }
+  
+  console.warn('⚠️ Formato de período inválido:', periodo)
+  return null
+}
+
 export const supabaseApi = {
   supabase,
   getCurrentClinicId,
@@ -217,23 +237,28 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ ATUALIZADO: Incluindo campo tipo na criação de despesa
+  // ✅ FIX BUG 9: Converter periodo de "MM/YYYY" para DATE ISO
   async createDespesa(despesa: {
     tipo?: TipoDespesa
     categoria: string
     item: string
     valor_mensal: number
-    periodo?: string  // ✅ NOVO: formato MM/YYYY
+    periodo?: string  // Aceita "MM/YYYY" e converte para DATE
   }) {
     try {
+      // ✅ CORREÇÃO: Converter periodo para formato DATE
+      const periodoDate = convertPeriodoToDate(despesa.periodo)
+      
       const despesaCompleta = ensureClinicFilter({
         tipo: despesa.tipo || 'Despesa Fixa',
         categoria: despesa.categoria,
         item: despesa.item,
         valor_mensal: despesa.valor_mensal,
-        periodo: despesa.periodo || null,  // ✅ NOVO CAMPO
+        periodo: periodoDate,  // ✅ Agora é DATE válido
         ativo: true
       })
+
+      console.log('📝 CRIANDO DESPESA:', despesaCompleta)
 
       const { data, error } = await supabase
         .from('despesas')
@@ -241,7 +266,11 @@ export const supabaseApi = {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ ERRO SQL createDespesa:', error)
+        throw error
+      }
+      
       console.log('✅ DESPESA CRIADA:', data.item, '- Período:', data.periodo)
       return data
     } catch (error) {
@@ -249,46 +278,43 @@ export const supabaseApi = {
       throw error
     }
   },
-  
 
   // ============ MÓDULO FINANCEIRO - PROFISSIONAIS ============
 
   async getProfissionais() {
-  try {
-    const clinicId = getCurrentClinicId()
-    
-    // ✅ DEBUG LOG
-    console.log('👥 getProfissionais - clinicId:', clinicId)
-    
-    if (!clinicId) {
-      console.error('❌ getProfissionais: clinicId é NULL!')
-      console.log('📦 localStorage clinic_id:', localStorage.getItem('clinic_id'))
-      console.log('📦 localStorage ballarin_user:', localStorage.getItem('ballarin_user'))
-      throw new Error('Clínica não identificada')
+    try {
+      const clinicId = getCurrentClinicId()
+      
+      console.log('👥 getProfissionais - clinicId:', clinicId)
+      
+      if (!clinicId) {
+        console.error('❌ getProfissionais: clinicId é NULL!')
+        console.log('📦 localStorage clinic_id:', localStorage.getItem('clinic_id'))
+        console.log('📦 localStorage ballarin_user:', localStorage.getItem('ballarin_user'))
+        throw new Error('Clínica não identificada')
+      }
+
+      const { data, error } = await supabase
+        .from('profissionais')
+        .select('*')
+        .eq('id_clinica', clinicId)
+        .eq('ativo', true)
+        .order('nome', { ascending: true })
+
+      if (error) {
+        console.error('❌ getProfissionais ERRO SQL:', error)
+        throw error
+      }
+      
+      console.log(`✅ PROFISSIONAIS ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
+      console.log('📋 Dados:', data)
+      
+      return data || []
+    } catch (error) {
+      console.error('💥 ERRO getProfissionais:', error)
+      return []
     }
-
-    const { data, error } = await supabase
-      .from('profissionais')
-      .select('*')
-      .eq('id_clinica', clinicId)
-      .eq('ativo', true)
-      .order('nome', { ascending: true })
-
-    if (error) {
-      console.error('❌ getProfissionais ERRO SQL:', error)
-      throw error
-    }
-    
-    console.log(`✅ PROFISSIONAIS ENCONTRADOS: ${data?.length || 0} para clínica ${clinicId}`)
-    console.log('📋 Dados:', data)
-    
-    return data || []
-  } catch (error) {
-    console.error('💥 ERRO getProfissionais:', error)
-    return []
-  }
-},
-
+  },
 
   async createProfissional(profissional: { nome: string; horas_semanais: number }) {
     try {
@@ -312,11 +338,13 @@ export const supabaseApi = {
     }
   },
 
+  // ✅ ATUALIZADO: Incluir duracao_servico
   async updateProfissional(id: number, updates: Partial<{
     nome: string
     horas_semanais: number
     percentual_profissional: number
     perfil: 'proprietario' | 'comissionado'
+    duracao_servico: number  // ✅ NOVO CAMPO
   }>) {
     try {
       const clinicId = getCurrentClinicId()
@@ -402,7 +430,6 @@ export const supabaseApi = {
         fator_correcao_marca: 1.5,    
         custo_hora: null              
       }
-      
 
       const { data, error } = await supabase
         .from('parametros')
@@ -420,129 +447,120 @@ export const supabaseApi = {
   },
 
   async updateParametros(updates: Partial<{
-  numero_salas: number
-  horas_trabalho_dia: number
-  duracao_media_servico_horas: number
-  mod_padrao: number
-  aliquota_impostos_pct: number
-  taxa_cartao_pct: number
-  meta_resultado_liquido_mensal: number
-  modern_inova: number
-  fator_correcao_marca: number
-  custo_hora: number
-}>) {
-  try {
-    const clinicId = getCurrentClinicId()
-    if (!clinicId) throw new Error('Clínica não identificada')
+    numero_salas: number
+    horas_trabalho_dia: number
+    duracao_media_servico_horas: number
+    mod_padrao: number
+    aliquota_impostos_pct: number
+    taxa_cartao_pct: number
+    meta_resultado_liquido_mensal: number
+    modern_inova: number
+    fator_correcao_marca: number
+    custo_hora: number
+  }>) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
 
-    // ✅ IMPORTANTE: Usar .update() para ATUALIZAR registro existente
-    // NÃO usar .upsert() ou .insert() que podem criar duplicados
-    const { data, error } = await supabase
-      .from('parametros')
-      .update(updates)          // ✅ UPDATE, não INSERT
-      .eq('id_clinica', clinicId) // ✅ Filtrar pela clínica
-      .select()
-      .single()
+      const { data, error } = await supabase
+        .from('parametros')
+        .update(updates)
+        .eq('id_clinica', clinicId)
+        .select()
+        .single()
 
-    if (error) {
-      // Se erro PGRST116 = não encontrou registro para atualizar
-      // Isso significa que não existe parametros para essa clínica
-      if (error.code === 'PGRST116') {
-        console.warn('⚠️ Nenhum registro de parâmetros encontrado. Criando...')
-        return this.createParametros()
+      if (error) {
+        if (error.code === 'PGRST116') {
+          console.warn('⚠️ Nenhum registro de parâmetros encontrado. Criando...')
+          return this.createParametros()
+        }
+        throw error
       }
+      
+      console.log('✅ PARÂMETROS ATUALIZADOS (UPDATE):', Object.keys(updates))
+      return data
+    } catch (error) {
+      console.error('💥 ERRO updateParametros:', error)
       throw error
     }
-    
-    console.log('✅ PARÂMETROS ATUALIZADOS (UPDATE):', Object.keys(updates))
-    return data
-  } catch (error) {
-    console.error('💥 ERRO updateParametros:', error)
-    throw error
-  }
-},
+  },
+
   // ============ MÓDULO FINANCEIRO - VENDAS ============
 
   async getVendas(ano: number, meses: number[]) {
-  try {
-    const clinicId = getCurrentClinicId()
-    if (!clinicId) throw new Error('Clínica não identificada')
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
 
-    // Construir filtro de datas
-    const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
-    const ultimoMes = Math.max(...meses)
-    const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
-    const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
+      const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
+      const ultimoMes = Math.max(...meses)
+      const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
+      const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
 
-    const { data, error } = await supabase
-      .from('vendas')
-      .select(`
-        *,
-        pacientes:id_paciente (
-          nome_completo,
-          cpf
-        )
-      `)
-      .eq('id_clinica', clinicId)
-      .gte('data_venda', dataInicio)
-      .lte('data_venda', dataFim)
-      .order('data_venda', { ascending: false })
+      const { data, error } = await supabase
+        .from('vendas')
+        .select(`
+          *,
+          pacientes:id_paciente (
+            nome_completo,
+            cpf
+          )
+        `)
+        .eq('id_clinica', clinicId)
+        .gte('data_venda', dataInicio)
+        .lte('data_venda', dataFim)
+        .order('data_venda', { ascending: false })
 
-    if (error) throw error
+      if (error) throw error
 
-    // ✅ ITEM 9: Buscar INSUMOS de cada venda (para cálculo de metas)
-    const vendasCompletas = await Promise.all(
-      (data || []).map(async (venda) => {
-        // Buscar insumos com join em lotes e skus
-        const { data: insumos } = await supabase
-          .from('venda_insumos')
-          .select(`
-            *,
-            lotes:id_lote (
-              id_lote,
-              id_sku,
-              preco_unitario,
-              quantidade_disponivel,
-              skus:id_sku (
-                id_sku,
-                nome_produto,
-                valor_venda,
-                classe_terapeutica
-              )
-            )
-          `)
-          .eq('id_venda', venda.id)
+      // ✅ CORREÇÃO: Produtos estão no campo JSONB 'items', não em tabela separada
+      // Formato: [{"id": id_sku, "qtd": quantidade}]
+      
+      // Coletar todos os IDs de SKUs únicos de todas as vendas
+      const allSkuIds = new Set<number>()
+      ;(data || []).forEach(venda => {
+        if (venda.items && Array.isArray(venda.items)) {
+          venda.items.forEach((item: any) => {
+            if (item.id) allSkuIds.add(item.id)
+          })
+        }
+      })
 
-        // Buscar serviços (mantido para compatibilidade)
-        const { data: servicos } = await supabase
-          .from('venda_servicos')
-          .select(`
-            *,
-            servicos:id_servico (
-              nome
-            )
-          `)
-          .eq('id_venda', venda.id)
+      // Buscar nomes dos SKUs de uma só vez
+      let skuMap = new Map<number, any>()
+      if (allSkuIds.size > 0) {
+        const { data: skusData } = await supabase
+          .from('skus')
+          .select('id_sku, nome_produto, valor_venda, classe_terapeutica')
+          .in('id_sku', Array.from(allSkuIds))
+
+        if (skusData) {
+          skusData.forEach(sku => skuMap.set(sku.id_sku, sku))
+        }
+      }
+
+      // Enriquecer vendas com dados dos SKUs
+      const vendasCompletas = (data || []).map(venda => {
+        const itemsEnriquecidos = (venda.items || []).map((item: any) => ({
+          id_sku: item.id,
+          quantidade: item.qtd,
+          sku: skuMap.get(item.id) || null
+        }))
 
         return {
           ...venda,
-          insumos: insumos || [],  // ✅ ITEM 9: Insumos com dados do SKU
-          servicos: servicos || []
+          itemsEnriquecidos // ✅ Array com {id_sku, quantidade, sku: {nome_produto, ...}}
         }
       })
-    )
 
-    console.log(`💵 VENDAS ENCONTRADAS: ${vendasCompletas.length} (com insumos)`)
-    return vendasCompletas
-  } catch (error) {
-    console.error('💥 ERRO getVendas:', error)
-    return []
-  }
-},
+      console.log(`💵 VENDAS ENCONTRADAS: ${vendasCompletas.length} (com SKUs)`)
+      return vendasCompletas
+    } catch (error) {
+      console.error('💥 ERRO getVendas:', error)
+      return []
+    }
+  },
 
-  /**
-   * ✅ Buscar todos os SKUs da clínica
-   */
   async getSKUs() {
     try {
       const clinicId = getCurrentClinicId()
@@ -563,9 +581,6 @@ export const supabaseApi = {
     }
   },
 
-  /**
-   * ✅ Atualizar categoria e fator_divisao de um SKU
-   */
   async updateSKU(id_sku: number, updates: {
     classe_terapeutica?: string
     fator_divisao?: string
@@ -591,7 +606,7 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ CORRIGIDO: createVenda com items JSONB + id_usuario_responsavel
+  // ✅ createVenda com items JSONB + id_usuario_responsavel
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
@@ -621,7 +636,6 @@ export const supabaseApi = {
 
         if (loteError || !lote) throw new Error(`Lote ${item.id_lote} não encontrado`)
 
-        // Cálculos por Item
         const custoUnitario = lote.preco_unitario || 0
         const valorVendaUnitario = lote.skus?.valor_venda || 0
 
@@ -644,14 +658,12 @@ export const supabaseApi = {
       const precoFinal = precoTotal - descontoValor
       const descontoPercentual = precoTotal > 0 ? (descontoValor / precoTotal) * 100 : 0
 
-      // Margens
       const margemTotal = precoTotal - custoTotal
       const margemPercentual = precoTotal > 0 ? (margemTotal / precoTotal) * 100 : 0
 
       const margemTotalFinal = precoFinal - custoTotal
       const margemPercentualFinal = precoFinal > 0 ? (margemTotalFinal / precoFinal) * 100 : 0
 
-      // Pagamento e Parcelamento
       const parametros = await this.getParametros()
       let custoTaxaCartao = 0
 
@@ -663,7 +675,7 @@ export const supabaseApi = {
       const valorParcelado = Math.max(0, precoFinal - valorEntrada)
       const numeroParcelas = venda.metodo_pagamento === 'Crédito' ? (venda.parcelas || 1) : null
 
-      // ✅ CORREÇÃO 1: Construir campo items no formato correto [{"id": sku_id, "qtd": quantidade}]
+      // ✅ Construir campo items no formato correto [{"id": sku_id, "qtd": quantidade}]
       const itemsFormatted = insumosDetalhados.map(item => ({
         id: item.lote.skus?.id_sku || item.lote.id_sku,
         qtd: item.quantidade
@@ -674,7 +686,6 @@ export const supabaseApi = {
       // 3. Criar Venda
       const vendaCompleta = ensureClinicFilter({
         id_paciente: venda.id_paciente,
-        // ✅ CORREÇÃO 2: Salvar id_usuario_responsavel (não mais NULL fixo)
         id_usuario_responsavel: venda.id_usuario_responsavel || null,
         data_venda: venda.data_venda,
         metodo_pagamento: venda.metodo_pagamento,
@@ -685,7 +696,6 @@ export const supabaseApi = {
         margem_total: margemTotal,
         custo_taxa_cartao: custoTaxaCartao,
 
-        // Campos calculados
         desconto_valor: descontoValor,
         desconto_percentual: descontoPercentual,
         preco_final: precoFinal,
@@ -695,7 +705,6 @@ export const supabaseApi = {
         valor_entrada: valorEntrada,
         valor_parcelado: valorParcelado,
 
-        // ✅ CORREÇÃO 3: Adicionar campo items no formato JSONB
         items: itemsFormatted as any
       })
 
@@ -711,7 +720,6 @@ export const supabaseApi = {
 
       // 4. Inserir Itens da Venda (venda_insumos) e Baixar Estoque
       for (const item of insumosDetalhados) {
-        // Inserir na tabela de relacionamento
         await supabase.from('venda_insumos').insert({
           id_venda: vendaCriada.id,
           id_lote: item.id_lote,
@@ -720,11 +728,9 @@ export const supabaseApi = {
           valor_venda_total: item.valorVendaTotalItem
         })
 
-        // Baixar Estoque
         const novaQuantidade = item.lote.quantidade_disponivel - item.quantidade
         await this.updateLoteQuantidade(item.id_lote, novaQuantidade)
 
-        // Registrar Movimentação de Saída
         await this.createMovimentacao({
           id_lote: item.id_lote,
           tipo_movimentacao: 'SAIDA',
@@ -783,7 +789,7 @@ export const supabaseApi = {
       }
 
       const isRoleAdmin = data.role === 'admin'
-      const nomeClinica = data.clinicas?.[0]?.nome_clinica || ''
+      const nomeClinica = (data.clinicas as any)?.nome_clinica || ''
       const isClinicaAdminGeral = nomeClinica.toLowerCase().includes('admin geral')
       const isIdClinicaNull = data.id_clinica == null || data.id_clinica === 0
 
@@ -1107,7 +1113,7 @@ export const supabaseApi = {
   // Criar movimentação com VALIDAÇÃO RIGOROSA
   async createMovimentacao(movimentacao: {
     id_lote: number
-    tipo_movimentacao: 'ENTRADA' | 'SAIDA'
+    tipo_movimentacao: 'ENTRADA' | 'SAIDA' | string
     quantidade: number
     usuario: string
     observacao?: string
@@ -1186,10 +1192,7 @@ export const supabaseApi = {
     }
   },
 
-  /**
-   * ✅ Criar lote com cálculo automático de preço unitário
-   * Fórmula: preco_unitario = (valor_total_compra / quantidade_disponivel) / fator_divisao
-   */
+  // Criar lote com cálculo automático de preço unitário
   async createLoteComValor(lote: {
     id_sku: number
     quantidade_disponivel: number
@@ -1425,5 +1428,168 @@ export const supabaseApi = {
       console.error('💥 ERRO getMovimentacoes:', error)
       return []
     }
+  },
+
+  // ✅ Função auxiliar para trocar clínica (usado pelo admin geral)
+  trocarClinica(clinicId: number, clinicInfo?: any) {
+    setCurrentClinic(clinicId, clinicInfo)
+  },
+
+  // ============ DASHBOARD - VENDAS POR DIA ============
+  
+  async getVendasPorDia(ano: number, mes: number) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
+      const ultimoDia = new Date(ano, mes, 0).getDate()
+      const dataFim = `${ano}-${String(mes).padStart(2, '0')}-${ultimoDia}`
+
+      const { data, error } = await supabase
+        .from('vendas')
+        .select('id, data_venda, preco_final, preco_total')
+        .eq('id_clinica', clinicId)
+        .gte('data_venda', dataInicio)
+        .lte('data_venda', dataFim)
+        .order('data_venda', { ascending: true })
+
+      if (error) throw error
+
+      // Agrupar por dia
+      const vendasPorDia: Record<number, number> = {}
+      ;(data || []).forEach(venda => {
+        const dia = new Date(venda.data_venda).getDate()
+        const valor = venda.preco_final || venda.preco_total || 0
+        vendasPorDia[dia] = (vendasPorDia[dia] || 0) + valor
+      })
+
+      console.log(`📊 VENDAS POR DIA: ${Object.keys(vendasPorDia).length} dias com vendas`)
+      return vendasPorDia
+    } catch (error) {
+      console.error('💥 ERRO getVendasPorDia:', error)
+      return {}
+    }
+  },
+
+  // ============ DASHBOARD - VENDAS POR CATEGORIA ============
+  
+  async getVendasPorCategoria(ano: number, meses: number[]) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      const dataInicio = `${ano}-${String(Math.min(...meses)).padStart(2, '0')}-01`
+      const ultimoMes = Math.max(...meses)
+      const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
+      const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
+
+      // 1. Buscar vendas no período
+      const { data: vendas, error: vendasError } = await supabase
+        .from('vendas')
+        .select('id, items')
+        .eq('id_clinica', clinicId)
+        .gte('data_venda', dataInicio)
+        .lte('data_venda', dataFim)
+
+      if (vendasError) throw vendasError
+
+      // 2. Extrair todos os SKU IDs das vendas
+      const skuQuantidades: Record<number, number> = {}
+      ;(vendas || []).forEach(venda => {
+        if (venda.items && Array.isArray(venda.items)) {
+          venda.items.forEach((item: any) => {
+            if (item.id && item.qtd) {
+              skuQuantidades[item.id] = (skuQuantidades[item.id] || 0) + item.qtd
+            }
+          })
+        }
+      })
+
+      // 3. Buscar categorias dos SKUs
+      const skuIds = Object.keys(skuQuantidades).map(Number)
+      if (skuIds.length === 0) {
+        return { toxina: 0, preenchedor: 0, biotech: 0, total: 0 }
+      }
+
+      const { data: skus, error: skusError } = await supabase
+        .from('skus')
+        .select('id_sku, classe_terapeutica')
+        .in('id_sku', skuIds)
+
+      if (skusError) throw skusError
+
+      // 4. Mapear SKU -> Categoria
+      const skuCategoriaMap: Record<number, string> = {}
+      ;(skus || []).forEach(sku => {
+        skuCategoriaMap[sku.id_sku] = sku.classe_terapeutica || 'Outros'
+      })
+
+      // 5. Somar quantidades por grupo
+      let toxina = 0
+      let preenchedor = 0
+      let biotech = 0
+
+      Object.entries(skuQuantidades).forEach(([skuId, qtd]) => {
+        const categoria = skuCategoriaMap[Number(skuId)] || 'Outros'
+        
+        if (categoria === 'Toxina Botulínica') {
+          toxina += qtd
+        } else if (categoria === 'Preenchedor') {
+          preenchedor += qtd
+        } else {
+          // Bioestimulador, Bioregenerador, Tecnologias, Outros
+          biotech += qtd
+        }
+      })
+
+      const total = toxina + preenchedor + biotech
+
+      console.log(`📊 VENDAS POR CATEGORIA: Toxina=${toxina}, Preenchedor=${preenchedor}, Bio/Tech=${biotech}`)
+      return { toxina, preenchedor, biotech, total }
+    } catch (error) {
+      console.error('💥 ERRO getVendasPorCategoria:', error)
+      return { toxina: 0, preenchedor: 0, biotech: 0, total: 0 }
+    }
+  },
+
+  // ============ DASHBOARD - DADOS COMPLETOS ============
+  
+  async getDashboardData(ano: number, mes: number) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      // Buscar todos os dados em paralelo
+      const [vendasPorDia, vendasPorCategoria, parametros, despesas, vendas] = await Promise.all([
+        this.getVendasPorDia(ano, mes),
+        this.getVendasPorCategoria(ano, [mes]),
+        this.getParametros(),
+        this.getDespesas(),
+        this.getVendas(ano, [mes])
+      ])
+
+      // Calcular totais do mês
+      const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
+      const custoTotal = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
+
+      console.log(`📊 DASHBOARD DATA: Receita=${receitaBruta}, Custo=${custoTotal}`)
+
+      return {
+        vendasPorDia,
+        vendasPorCategoria,
+        parametros,
+        despesas,
+        vendas,
+        totais: {
+          receitaBruta,
+          custoTotal,
+          margemContribuicao: receitaBruta - custoTotal
+        }
+      }
+    } catch (error) {
+      console.error('💥 ERRO getDashboardData:', error)
+      throw error
+    }
   }
-  }
+}

@@ -419,7 +419,7 @@ export default function DashboardIAPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-8 bg-clinic-black">
+    <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
         
         {/* Header Universal */}
@@ -430,24 +430,30 @@ export default function DashboardIAPage() {
           showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
-        {/* Navegação por Tabs */}
-        <div className="mb-8">
-          <div className="border-b border-clinic-gray-700">
-            <nav className="flex space-x-8">
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300"
-              >
-                Marketing e Terapêutico
-              </button>
-              <button
-                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
-              >
-                IA - Paciente
-              </button>
-            </nav>
-          </div>
-        </div>
+    {/* Navegação por Tabs */}
+<div className="mb-8">
+  <div className="border-b border-clinic-gray-700">
+    <nav className="flex space-x-8">
+      <button
+        onClick={() => router.push('/dashboard/marketing')}
+        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+      >
+        Marketing e Terapêutico
+      </button>
+      <button
+        className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
+      >
+        IA - Paciente
+      </button>
+      <button
+        onClick={() => router.push('/dashboard/vendas')}
+        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+      >
+        Comercial
+      </button>
+    </nav>
+  </div>
+</div>
 
         {/* Conteúdo Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

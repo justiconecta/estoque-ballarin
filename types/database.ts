@@ -533,16 +533,17 @@ export interface Servico {
 export interface Despesa {
   id: number
   id_clinica: number
-  tipo: 'Despesa Fixa' | 'Custo Fixo' | 'Despesa Variável' | 'Custo Variável'
+  tipo: 'Despesa Fixa' | 'Custo Fixo' | 'Despesa Variável' | 'Custo Variável' | null
   categoria: string
   item: string
   valor_mensal: number
   ativo: boolean
   criado_em: string
   atualizado_em: string
-  periodo: string | null
+  periodo: string | null  // DATE no banco (YYYY-MM-DD)
 }
 
+// ✅ FIX BUG 5: Adicionado campo duracao_servico
 export interface Profissional {
   id: number
   id_clinica: number
@@ -550,9 +551,9 @@ export interface Profissional {
   horas_semanais: number
   ativo: boolean
   criado_em: string
-  // ✅ NOVOS CAMPOS
   percentual_profissional: number | null 
   perfil: 'proprietario' | 'comissionado' | null 
+  duracao_servico: number | null  // ✅ NOVO CAMPO - duração individual do serviço em horas
 }
 
 export interface Parametros {
@@ -565,7 +566,6 @@ export interface Parametros {
   taxa_cartao_pct: number
   meta_resultado_liquido_mensal: number
   atualizado_em: string
-  // ✅ NOVOS CAMPOS
   modern_inova: number | null              
   fator_correcao_marca: number | null      
   custo_hora: number | null                
@@ -599,6 +599,7 @@ export interface Venda {
   desconto_percentual: number
   preco_final: number
   criado_em: string
+  items: Array<{ id: number; qtd: number }> | null  // ✅ Campo JSONB
 }
 
 export interface VendaInsumo {

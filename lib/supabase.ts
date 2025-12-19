@@ -736,7 +736,7 @@ export const supabaseApi = {
           tipo_movimentacao: 'SAIDA',
           quantidade: item.quantidade,
           usuario: 'Sistema (Venda)',
-          observacao: `Venda #${vendaCriada.id}`
+          observacao: 'Baixa automática na venda'
         })
       }
 
@@ -1419,7 +1419,7 @@ export const supabaseApi = {
       // 5. Enriquecer movimentações
       const movimentacoesEnriquecidas = movimentacoes.map(mov => ({
         ...mov,
-        lotes: loteMap.get(mov.id_lote) || null
+        lote: loteMap.get(mov.id_lote) || null
       }))
 
       console.log(`📦 MOVIMENTAÇÕES CARREGADAS: ${movimentacoesEnriquecidas.length}`)

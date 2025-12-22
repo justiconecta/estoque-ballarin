@@ -273,9 +273,11 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
   const pacientesFiltrados = useMemo(() => {
     if (!buscaPaciente.trim()) return []
     const termo = buscaPaciente.toLowerCase().trim()
+    const termoNumerico = termo.replace(/\D/g, '')
+    
     return pacientes.filter(p =>
       p.nome_completo?.toLowerCase().includes(termo) ||
-      p.cpf?.replace(/\D/g, '').includes(termo.replace(/\D/g, ''))
+      (termoNumerico.length > 0 && p.cpf?.replace(/\D/g, '').includes(termoNumerico))
     ).slice(0, 10)
   }, [pacientes, buscaPaciente])
 
@@ -351,7 +353,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
         parcelas: parcelas,
         desconto_valor: Number(descontoValor) || 0,
         valor_entrada: totais.valorEntradaReais,
-        // ✅ AJUSTE 5: Profissional responsável
+        // ✅ AJUSTE 5: Profissional responsável (tabela profissionais)
         id_profissional: profissionalSelecionado,
         items: insumosSelecionados.map(i => i.id_lote),
         insumos: insumosSelecionados.map(i => ({

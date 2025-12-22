@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Users, 
@@ -23,20 +23,20 @@ import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 // ✅ INTERFACE CORRIGIDA - TODOS os campos com nomes reais da tabela
 interface PacienteForm {
-  nome_completo: string      // ✅ CORRIGIDO: era 'nome'
+  nome_completo: string
   cpf: string
   data_nascimento: string
-  genero: string             // ✅ MANTIDO: correto
-  celular: string            // ✅ MANTIDO: correto
+  genero: string
+  celular: string
   email: string
   origem_lead: string
-  endereco_completo: string  // ✅ MANTIDO: correto
-  status_paciente: string    // ✅ MANTIDO: correto
+  endereco_completo: string
+  status_paciente: string
 }
 
 // ✅ FORM INICIAL CORRIGIDO
 const pacienteFormInitial: PacienteForm = {
-  nome_completo: '',         // ✅ CORRIGIDO
+  nome_completo: '',
   cpf: '',
   data_nascimento: '',
   genero: '',               
@@ -51,7 +51,7 @@ export default function PacientesPage() {
   const router = useRouter()
   
   // Estados principais
-  const [pacientes, setPacientes] = useState<Paciente[]>([])
+  const [pacientesOriginal, setPacientesOriginal] = useState<Paciente[]>([]) // ✅ Lista original
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   
@@ -78,9 +78,24 @@ export default function PacientesPage() {
     message: ''
   })
 
+  // ✅ FILTRO EM TEMPO REAL - Filtra enquanto digita
+  const pacientes = useMemo(() => {
+    if (!searchTerm.trim()) return pacientesOriginal
+    
+    const termo = searchTerm.toLowerCase().trim()
+    const termoNumerico = termo.replace(/\D/g, '')
+    
+    return pacientesOriginal.filter(paciente =>
+      paciente.nome_completo?.toLowerCase().includes(termo) ||
+      (termoNumerico.length > 0 && paciente.cpf?.replace(/\D/g, '').includes(termoNumerico)) ||
+      paciente.email?.toLowerCase().includes(termo) ||
+      (termoNumerico.length > 0 && paciente.celular?.replace(/\D/g, '').includes(termoNumerico)) ||
+      paciente.endereco_completo?.toLowerCase().includes(termo)
+    )
+  }, [pacientesOriginal, searchTerm])
+
   // Carregar dados iniciais
   useEffect(() => {
-    // Os dados serão carregados apenas se o usuário estiver autenticado (validado pelo HeaderUniversal)
     const userData = localStorage.getItem('ballarin_user')
     if (userData) {
       loadPacientes()
@@ -93,30 +108,13 @@ export default function PacientesPage() {
       console.log('📋 Carregando pacientes...')
       const data = await supabaseApi.getPacientes()
       console.log('📊 Dados recebidos:', data)
-      setPacientes(data)
+      setPacientesOriginal(data) // ✅ Salva na lista original
     } catch (error) {
       showFeedback('error', 'Erro', 'Falha ao carregar pacientes')
       console.error('Erro ao carregar pacientes:', error)
     } finally {
       setLoading(false)
     }
-  }
-
-  // ✅ FUNÇÃO DE BUSCA CORRIGIDA - Campo nome_completo
-  const handleSearch = () => {
-    if (!searchTerm.trim()) {
-      loadPacientes()
-      return
-    }
-    
-    const filteredPacientes = pacientes.filter(paciente =>
-      paciente.nome_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||  // ✅ CORRIGIDO
-      paciente.cpf?.includes(searchTerm) ||
-      paciente.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      paciente.celular?.includes(searchTerm) ||
-      (paciente.endereco_completo && paciente.endereco_completo.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
-    setPacientes(filteredPacientes)
   }
 
   const showFeedback = (type: 'success' | 'error', title: string, message: string) => {
@@ -130,18 +128,17 @@ export default function PacientesPage() {
 
   // ✅ HANDLER APÓS CRIAR CLÍNICA
   const handleClinicaCriada = async () => {
-    // Recarregar dados após criar clínica se necessário
     setShowNovaClinicaModal(false)
   }
 
-  // ✅ MAPEAMENTO MODAL CORRIGIDO - Campo nome_completo
+  // ✅ MAPEAMENTO MODAL CORRIGIDO
   const openModal = (type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
     setModalType(type)
     setSelectedPaciente(paciente || null)
     
     if (type === 'edit' && paciente) {
       setPacienteForm({
-        nome_completo: paciente.nome_completo || '',      // ✅ CORRIGIDO
+        nome_completo: paciente.nome_completo || '',
         cpf: paciente.cpf || '',
         data_nascimento: paciente.data_nascimento || '',
         genero: paciente.genero || '',                  
@@ -167,7 +164,7 @@ export default function PacientesPage() {
 
   // CRIAR PACIENTE
   const handleCreatePaciente = async () => {
-    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {  // ✅ CORRIGIDO
+    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {
       showFeedback('error', 'Erro de Validação', 'Nome completo e CPF são obrigatórios')
       return
     }
@@ -176,7 +173,7 @@ export default function PacientesPage() {
       setSubmitting(true)
       await supabaseApi.createPaciente({
         ...pacienteForm,
-        termo_aceite_dados: true  // Valor padrão
+        termo_aceite_dados: true
       })
       
       showFeedback('success', 'Sucesso', 'Paciente cadastrado com sucesso!')
@@ -194,7 +191,7 @@ export default function PacientesPage() {
   const handleUpdatePaciente = async () => {
     if (!selectedPaciente) return
 
-    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {  // ✅ CORRIGIDO
+    if (!pacienteForm.nome_completo || !pacienteForm.cpf) {
       showFeedback('error', 'Erro de Validação', 'Nome completo e CPF são obrigatórios')
       return
     }
@@ -214,8 +211,7 @@ export default function PacientesPage() {
     }
   }
 
-  // ✅ FUNÇÃO DELETAR REMOVIDA - Método não existe no supabaseApi
-  // Em vez de deletar, vamos inativar o paciente
+  // ✅ Inativar paciente (soft delete)
   const handleInactivatePaciente = async () => {
     if (!selectedPaciente) return
 
@@ -251,7 +247,7 @@ export default function PacientesPage() {
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
         
-        {/* ✅ HEADER UNIVERSAL - COM CALLBACK NOVA CLÍNICA */}
+        {/* ✅ HEADER UNIVERSAL */}
         <HeaderUniversal 
           titulo="Gestão de Pacientes" 
           descricao="Cadastro e acompanhamento de pacientes da sua clínica"
@@ -259,24 +255,41 @@ export default function PacientesPage() {
           showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
-        {/* Controles */}
+        {/* ✅ CONTROLES - Busca em tempo real (sem botão) */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="flex-1 flex gap-2">
-            <Input
-              placeholder="Pesquisar por nome, CPF, email ou celular..."  
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1"
-            />
-            <Button onClick={handleSearch} icon={Search} size="sm">
-              Buscar
-            </Button>
+          <div className="flex-1">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-clinic-gray-500" />
+              <input
+                type="text"
+                placeholder="Pesquisar por nome, CPF, email ou celular..."  
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg pl-10 pr-4 py-2.5 text-clinic-white placeholder-clinic-gray-500 focus:outline-none focus:border-clinic-cyan"
+              />
+              {/* ✅ Botão limpar quando tem texto */}
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-clinic-gray-500 hover:text-clinic-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
           <Button onClick={() => openModal('create')} icon={UserPlus}>
             Novo Paciente
           </Button>
         </div>
+
+        {/* ✅ Contador de resultados */}
+        {searchTerm && (
+          <p className="text-clinic-gray-400 text-sm mb-4">
+            {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''} encontrado{pacientes.length !== 1 ? 's' : ''}
+            {searchTerm && ` para "${searchTerm}"`}
+          </p>
+        )}
 
         {/* Lista de Pacientes */}
         <Card>
@@ -291,6 +304,14 @@ export default function PacientesPage() {
               <p className="text-clinic-gray-400">
                 {searchTerm ? 'Nenhum paciente encontrado com os critérios de busca' : 'Nenhum paciente cadastrado'}
               </p>
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="mt-2 text-clinic-cyan hover:underline text-sm"
+                >
+                  Limpar busca
+                </button>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -600,7 +621,7 @@ export default function PacientesPage() {
           </Modal>
         )}
 
-        {/* ✅ MODAL INATIVAR PACIENTE (mudança de "excluir" para "inativar") */}
+        {/* MODAL INATIVAR PACIENTE */}
         {modalType === 'delete' && selectedPaciente && (
           <Modal
             isOpen={isModalOpen}
@@ -665,7 +686,7 @@ export default function PacientesPage() {
           </div>
         </Modal>
         
-        {/* ✅ MODAL NOVA CLÍNICA */}
+        {/* MODAL NOVA CLÍNICA */}
         <NovaClinicaModal 
           isOpen={showNovaClinicaModal}
           onClose={() => setShowNovaClinicaModal(false)}

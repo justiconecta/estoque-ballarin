@@ -513,6 +513,21 @@ export const supabaseApi = {
 
       if (error) throw error
 
+      // ✅ Buscar profissionais separadamente (FK pode não estar configurada)
+      const profissionaisIds = Array.from(new Set((data || []).map(v => v.id_profissional).filter(Boolean)))
+      let profissionaisMap = new Map<number, any>()
+      
+      if (profissionaisIds.length > 0) {
+        const { data: profissionaisData } = await supabase
+          .from('profissionais')
+          .select('id, nome, perfil, percentual_profissional')
+          .in('id', profissionaisIds)
+        
+        if (profissionaisData) {
+          profissionaisData.forEach(p => profissionaisMap.set(p.id, p))
+        }
+      }
+
       // ✅ CORREÇÃO: Produtos estão no campo JSONB 'items', não em tabela separada
       // Formato: [{"id": id_sku, "qtd": quantidade}]
       
@@ -539,7 +554,7 @@ export const supabaseApi = {
         }
       }
 
-      // Enriquecer vendas com dados dos SKUs
+      // Enriquecer vendas com dados dos SKUs e Profissionais
       const vendasCompletas = (data || []).map(venda => {
         const itemsEnriquecidos = (venda.items || []).map((item: any) => ({
           id_sku: item.id,
@@ -549,7 +564,8 @@ export const supabaseApi = {
 
         return {
           ...venda,
-          itemsEnriquecidos // ✅ Array com {id_sku, quantidade, sku: {nome_produto, ...}}
+          itemsEnriquecidos, // ✅ Array com {id_sku, quantidade, sku: {nome_produto, ...}}
+          profissional: profissionaisMap.get(venda.id_profissional) || null // ✅ Dados do profissional
         }
       })
 
@@ -718,16 +734,8 @@ export const supabaseApi = {
 
       if (vendaError) throw vendaError
 
-      // 4. Inserir Itens da Venda (venda_insumos) e Baixar Estoque
+      // 4. Baixar Estoque dos Lotes (items já estão no JSONB da venda)
       for (const item of insumosDetalhados) {
-        await supabase.from('venda_insumos').insert({
-          id_venda: vendaCriada.id,
-          id_lote: item.id_lote,
-          quantidade: item.quantidade,
-          custo_total: item.custoTotalItem,
-          valor_venda_total: item.valorVendaTotalItem
-        })
-
         const novaQuantidade = item.lote.quantidade_disponivel - item.quantidade
         await this.updateLoteQuantidade(item.id_lote, novaQuantidade)
 

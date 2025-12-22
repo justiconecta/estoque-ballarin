@@ -1068,7 +1068,7 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
                       {v.pacientes?.nome_completo || 'N/A'}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
-                      {getProfissionalNome(v.id_usuario_responsavel)}
+                      {v.profissional?.nome || '—'}
                     </td>
                     {/* ✅ TOOLTIP ESTILIZADO PARA PRODUTOS - APARECE PARA BAIXO */}
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-400 max-w-[180px]">

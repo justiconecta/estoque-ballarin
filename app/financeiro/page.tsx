@@ -32,6 +32,19 @@ const TIPOS_DESPESA_OPTIONS: TipoDespesa[] = [
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 const formatPercent = (value: number) => `${(value || 0).toFixed(2)}%`
 
+// ✅ FIX: Formatar data sem problema de timezone (-1 dia)
+const formatDateBR = (dateString: string | Date) => {
+  if (!dateString) return '-'
+  const str = typeof dateString === 'string' ? dateString : dateString.toISOString()
+  // Se a data está no formato ISO (YYYY-MM-DD), extrair diretamente
+  if (str.includes('-') && str.length >= 10) {
+    const [year, month, day] = str.substring(0, 10).split('-')
+    return `${day}/${month}/${year}`
+  }
+  // Fallback para outras formatações
+  return new Date(dateString).toLocaleDateString('pt-BR')
+}
+
 // ============ INTERFACES ============
 interface SKU {
   id_sku: number
@@ -1049,7 +1062,7 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
                 return (
                   <tr key={v.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
                     <td className="px-4 py-3 text-gray-900 dark:text-white">
-                      {new Date(v.data_venda).toLocaleDateString('pt-BR')}
+                      {formatDateBR(v.data_venda)}
                     </td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
                       {v.pacientes?.nome_completo || 'N/A'}

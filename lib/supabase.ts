@@ -606,7 +606,7 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ createVenda com items JSONB + id_usuario_responsavel
+  // ✅ createVenda com items JSONB + id_profissional
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
@@ -614,7 +614,7 @@ export const supabaseApi = {
     parcelas: number
     desconto_valor: number
     valor_entrada: number
-    id_usuario_responsavel?: number | null
+    id_profissional?: number | null
     items?: number[]
     insumos: { id_lote: number; quantidade: number }[]
   }) {
@@ -686,7 +686,7 @@ export const supabaseApi = {
       // 3. Criar Venda
       const vendaCompleta = ensureClinicFilter({
         id_paciente: venda.id_paciente,
-        id_usuario_responsavel: venda.id_usuario_responsavel || null,
+        id_profissional: venda.id_profissional || null,
         data_venda: venda.data_venda,
         metodo_pagamento: venda.metodo_pagamento,
         parcelas: numeroParcelas,
@@ -1591,5 +1591,83 @@ export const supabaseApi = {
       console.error('💥 ERRO getDashboardData:', error)
       throw error
     }
+  },
+
+  // ✅ FUNÇÃO: Calcular média de saída por SKU (últimos 30 dias)
+  async getMediaSaidaPorSku(): Promise<Record<number, number>> {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) return {}
+
+      const dataLimite = new Date()
+      dataLimite.setDate(dataLimite.getDate() - 30)
+
+      const { data: movimentacoes, error } = await supabase
+        .from('movimentacoes_estoque')
+        .select('id_lote, quantidade, tipo_movimentacao')
+        .eq('id_clinica', clinicId)
+        .eq('tipo_movimentacao', 'SAIDA')
+        .gte('data_movimentacao', dataLimite.toISOString())
+
+      if (error || !movimentacoes) return {}
+
+      // Buscar lotes para mapear para SKU
+      const loteIds = Array.from(new Set(movimentacoes.map(m => m.id_lote).filter(Boolean)))
+      if (loteIds.length === 0) return {}
+
+      const { data: lotes } = await supabase
+        .from('lotes')
+        .select('id_lote, id_sku')
+        .in('id_lote', loteIds)
+
+      if (!lotes) return {}
+
+      const loteToSku = new Map(lotes.map(l => [l.id_lote, l.id_sku]))
+
+      // Agrupar saídas por SKU
+      const saidasPorSku: Record<number, number> = {}
+      movimentacoes.forEach(m => {
+        const idSku = loteToSku.get(m.id_lote)
+        if (idSku) {
+          saidasPorSku[idSku] = (saidasPorSku[idSku] || 0) + m.quantidade
+        }
+      })
+
+      // Calcular média diária (total / 30 dias)
+      const mediaPorSku: Record<number, number> = {}
+      Object.entries(saidasPorSku).forEach(([idSku, total]) => {
+        mediaPorSku[Number(idSku)] = total / 30
+      })
+
+      return mediaPorSku
+    } catch (error) {
+      console.error('💥 ERRO getMediaSaidaPorSku:', error)
+      return {}
+    }
+  },
+
+  // ✅ FUNÇÃO: Calcular status inteligente de estoque
+  calcularStatusEstoque(estoqueAtual: number, mediaSaidaDiaria: number): { status: string; cor: string; diasEstoque: number } {
+    // Se não tem média de saída (produto sem movimentação)
+    if (!mediaSaidaDiaria || mediaSaidaDiaria === 0) {
+      if (estoqueAtual > 0) {
+        return { status: 'Sem Saída', cor: 'gray', diasEstoque: 999 }
+      }
+      return { status: 'Sem Estoque', cor: 'gray', diasEstoque: 0 }
+    }
+
+    const diasEstoque = Math.round(estoqueAtual / mediaSaidaDiaria)
+
+    // Lógica baseada em dias de estoque
+    if (diasEstoque < 4) {
+      return { status: 'Crítico', cor: 'red', diasEstoque }
+    }
+    if (diasEstoque < 7) {
+      return { status: 'Baixo', cor: 'yellow', diasEstoque }
+    }
+    if (diasEstoque <= 14) {
+      return { status: 'OK', cor: 'green', diasEstoque }
+    }
+    return { status: 'Alto', cor: 'blue', diasEstoque }
   }
 }

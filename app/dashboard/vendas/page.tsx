@@ -309,14 +309,17 @@ export default function DashboardVendasPage() {
   }, [vendasPorDia, diasNoMes, diasUteisTotais, metaMensal, anoSelecionado, mesSelecionado])
 
   // ============ CÁLCULO DO MIX (PROPORÇÃO) ============
+  // NOTA: Toxina é dividida por 2 devido ao fator_correcao da categoria
 
   const mixRatio = useMemo(() => {
     const { toxina, preenchedor, biotech } = vendasPorCategoria
-    const values = [toxina, preenchedor, biotech].filter(v => v > 0)
+    const toxinaAjustada = Math.round(toxina / 2) // Ajuste fator_correcao toxina
+    
+    const values = [toxinaAjustada, preenchedor, biotech].filter(v => v > 0)
     if (values.length === 0) return { toxina: 0, preenchedor: 0, biotech: 0, formatted: '0 : 0 : 0' }
     
     const minVal = Math.min(...values)
-    const ratioT = minVal > 0 ? (toxina / minVal).toFixed(1) : '0'
+    const ratioT = minVal > 0 ? (toxinaAjustada / minVal).toFixed(1) : '0'
     const ratioP = minVal > 0 ? (preenchedor / minVal).toFixed(1) : '0'
     const ratioB = minVal > 0 ? (biotech / minVal).toFixed(1) : '0'
 
@@ -324,7 +327,7 @@ export default function DashboardVendasPage() {
     const format = (r: string) => r.endsWith('.0') ? r.slice(0, -2) : r
 
     return {
-      toxina,
+      toxina: toxinaAjustada, // Valor já ajustado
       preenchedor,
       biotech,
       formatted: `${format(ratioT)} : ${format(ratioP)} : ${format(ratioB)}`
@@ -335,9 +338,10 @@ export default function DashboardVendasPage() {
 
   const categoriaDefasada = useMemo(() => {
     const { toxina, preenchedor, biotech } = vendasPorCategoria
+    const toxinaAjustada = Math.round(toxina / 2) // Ajuste fator_correcao toxina
     
     // Se não tem dados, sem definição
-    if (toxina === 0 && preenchedor === 0 && biotech === 0) {
+    if (toxinaAjustada === 0 && preenchedor === 0 && biotech === 0) {
       return { categoria: 'Sem definição', color: 'gray' }
     }
 
@@ -358,8 +362,8 @@ export default function DashboardVendasPage() {
 
     const TIE_EPS = 0.03
 
-    // Converter para array na ordem correta
-    const real = [toxina, preenchedor, biotech]
+    // Converter para array na ordem correta (com toxina ajustada)
+    const real = [toxinaAjustada, preenchedor, biotech]
 
     // Funções auxiliares
     const bestScaleK = (realArr: number[], pattern: number[]) => {
@@ -728,7 +732,7 @@ export default function DashboardVendasPage() {
                   <label className="text-xs text-cyan-400 font-semibold">Toxina Botulínica</label>
                   <div className="bg-black/20 border-l-4 border-cyan-400 rounded-lg p-4">
                     <span className="text-3xl font-bold text-cyan-400 font-mono">
-                      {vendasPorCategoria.toxina}
+                      {mixRatio.toxina}
                     </span>
                   </div>
                 </div>
@@ -736,7 +740,7 @@ export default function DashboardVendasPage() {
                   <label className="text-xs text-green-400 font-semibold">Preenchedor</label>
                   <div className="bg-black/20 border-l-4 border-green-400 rounded-lg p-4">
                     <span className="text-3xl font-bold text-green-400 font-mono">
-                      {vendasPorCategoria.preenchedor}
+                      {mixRatio.preenchedor}
                     </span>
                   </div>
                 </div>
@@ -744,7 +748,7 @@ export default function DashboardVendasPage() {
                   <label className="text-xs text-purple-400 font-semibold">Bio / Tech</label>
                   <div className="bg-black/20 border-l-4 border-purple-400 rounded-lg p-4">
                     <span className="text-3xl font-bold text-purple-400 font-mono">
-                      {vendasPorCategoria.biotech}
+                      {mixRatio.biotech}
                     </span>
                   </div>
                 </div>

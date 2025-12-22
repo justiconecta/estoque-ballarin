@@ -34,7 +34,7 @@ const CATEGORIAS_FIXAS = [
   'Outros'
 ]
 
-// ✅ NOVO: Percentuais de desconto fixo
+// ✅ Percentuais de desconto fixo
 const DESCONTOS_FIXOS = [5, 10, 15, 20, 25, 30, 40, 50]
 
 // ✅ Função para normalizar categoria
@@ -92,25 +92,49 @@ const determinarNivelCombo = (toxina: number, preenchedor: number, especiais: nu
   }
 }
 
+// ✅ AJUSTE 2: Formatar data para DD/MM/YYYY
+const formatDateBR = (dateString: string): string => {
+  if (!dateString) return ''
+  if (dateString.includes('-') && dateString.length >= 10) {
+    const [year, month, day] = dateString.substring(0, 10).split('-')
+    return `${day}/${month}/${year}`
+  }
+  return dateString
+}
+
+// ✅ AJUSTE 2: Converter DD/MM/YYYY para YYYY-MM-DD (para salvar)
+const parseDateBR = (dateString: string): string => {
+  if (!dateString) return ''
+  if (dateString.includes('/')) {
+    const parts = dateString.split('/')
+    if (parts.length === 3) {
+      const [day, month, year] = parts
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    }
+  }
+  return dateString
+}
+
 export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVendaModalProps) {
   // ============ ESTADOS ============
   const [loading, setLoading] = useState(false)
   const [step, setStep] = useState(1)
   const [pacientes, setPacientes] = useState<Paciente[]>([])
   const [lotesDisponiveis, setLotesDisponiveis] = useState<(Lote & { skus: Sku })[]>([])
-  const [dataVenda, setDataVenda] = useState(new Date().toISOString().split('T')[0])
+  
+  // ✅ AJUSTE 2: Data em formato DD/MM/YYYY
+  const [dataVenda, setDataVenda] = useState(() => formatDateBR(new Date().toISOString().split('T')[0]))
+  
   const [selectedPacienteId, setSelectedPacienteId] = useState<number | null>(null)
   const [insumosSelecionados, setInsumosSelecionados] = useState<InsumoSelecionado[]>([])
   
-  // ✅ ITEM 6: Profissional responsável
+  // ✅ AJUSTE 5: Profissional responsável
   const [profissionais, setProfissionais] = useState<Profissional[]>([])
   const [profissionalSelecionado, setProfissionalSelecionado] = useState<number | null>(null)
   
-  // ✅ FIX UX: Usar string vazia em vez de 0 para evitar "050000"
   const [descontoValor, setDescontoValor] = useState<number | string>('')
   const [metodoPagamento, setMetodoPagamento] = useState<'PIX' | 'Débito' | 'Crédito'>('PIX')
   const [parcelas, setParcelas] = useState(1)
-  // ✅ ITEM 6: Entrada em % (não mais em R$)
   const [entradaPercentual, setEntradaPercentual] = useState<number | string>('')
   const [buscaPaciente, setBuscaPaciente] = useState('')
 
@@ -118,7 +142,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      // ✅ ITEM 6: Carregar profissionais também
       const [pacientesData, produtosData, profissionaisData] = await Promise.all([
         supabaseApi.getPacientes(),
         supabaseApi.getProdutos(),
@@ -130,13 +153,11 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
       setPacientes(pacientesData)
       setProfissionais(profissionaisData)
 
-      // ✅ LÓGICA ORIGINAL QUE FUNCIONA - SEM FILTRO EXTRA
       const lotes: (Lote & { skus: Sku })[] = []
       produtosData.forEach((prod: any) => {
         console.log(`  SKU: ${prod.nome_produto}, Lotes: ${prod.lotes?.length || 0}`)
         if (prod.lotes && prod.lotes.length > 0) {
           prod.lotes.forEach((lote: Lote) => {
-            // ✅ Adiciona TODOS os lotes retornados (já filtrados pelo getProdutos)
             lotes.push({ ...lote, skus: prod })
           })
         }
@@ -153,14 +174,13 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
 
   const resetForm = useCallback(() => {
     setStep(1)
-    setDataVenda(new Date().toISOString().split('T')[0])
+    // ✅ AJUSTE 2: Reset com formato DD/MM/YYYY
+    setDataVenda(formatDateBR(new Date().toISOString().split('T')[0]))
     setSelectedPacienteId(null)
     setInsumosSelecionados([])
-    // ✅ FIX UX: Usar string vazia no reset
     setDescontoValor('')
     setMetodoPagamento('PIX')
     setParcelas(1)
-    // ✅ ITEM 6: Reset entrada percentual e profissional
     setEntradaPercentual('')
     setProfissionalSelecionado(null)
     setBuscaPaciente('')
@@ -180,20 +200,19 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     const vendaTotal = insumosSelecionados.reduce((acc, item) =>
       acc + ((item.preco_unitario_venda || 0) * item.quantidade), 0)
 
-    // ✅ FIX UX: Converter para number antes de calcular
     const descontoNumerico = Number(descontoValor) || 0
-    // ✅ ITEM 6: Entrada em % - calcular valor em R$
     const entradaPctNumerico = Number(entradaPercentual) || 0
     
     const precoFinal = Math.max(0, vendaTotal - descontoNumerico)
     const descontoPercentual = vendaTotal > 0 ? (descontoNumerico / vendaTotal) * 100 : 0
     
-    // ✅ ITEM 6: Calcular entrada em R$ baseado no percentual sobre preço final
     const valorEntradaReais = precoFinal * (entradaPctNumerico / 100)
     const valorParcelado = Math.max(0, precoFinal - valorEntradaReais)
     const valorParcela = parcelas > 0 ? valorParcelado / parcelas : 0
     const margemTotal = vendaTotal - custoTotal
     const margemPercentual = vendaTotal > 0 ? (margemTotal / vendaTotal) * 100 : 0
+    
+    // ✅ AJUSTE 3: Margem após desconto
     const margemTotalFinal = precoFinal - custoTotal
     const margemPercentualFinal = precoFinal > 0 ? (margemTotalFinal / precoFinal) * 100 : 0
 
@@ -202,29 +221,34 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
       vendaTotal: isNaN(vendaTotal) ? 0 : vendaTotal,
       precoFinal: isNaN(precoFinal) ? 0 : precoFinal,
       descontoPercentual: isNaN(descontoPercentual) ? 0 : descontoPercentual,
-      // ✅ ITEM 6: Adicionar valorEntradaReais calculado
       entradaPercentual: isNaN(entradaPctNumerico) ? 0 : entradaPctNumerico,
       valorEntradaReais: isNaN(valorEntradaReais) ? 0 : valorEntradaReais,
       valorParcelado: isNaN(valorParcelado) ? 0 : valorParcelado,
       valorParcela: isNaN(valorParcela) ? 0 : valorParcela,
       margemTotal: isNaN(margemTotal) ? 0 : margemTotal,
       margemPercentual: isNaN(margemPercentual) ? 0 : margemPercentual,
+      // ✅ AJUSTE 3: Exportar margem final
       margemTotalFinal: isNaN(margemTotalFinal) ? 0 : margemTotalFinal,
       margemPercentualFinal: isNaN(margemPercentualFinal) ? 0 : margemPercentualFinal
     }
   }, [insumosSelecionados, descontoValor, entradaPercentual, parcelas])
 
+  // ✅ AJUSTE 1: Toxina ÷ 2 na contagem
   const contagemCategorias = useMemo(() => {
-    const counts = { toxina: 0, preenchedor: 0, especiais: 0 }
+    const counts = { toxina: 0, toxinaReal: 0, preenchedor: 0, especiais: 0 }
     insumosSelecionados.forEach(item => {
       const categoria = normalizarCategoria(item.classe_terapeutica)
-      if (categoria === 'Toxina Botulínica') counts.toxina += item.quantidade
+      if (categoria === 'Toxina Botulínica') {
+        counts.toxinaReal += item.quantidade // Quantidade original
+        counts.toxina = Math.round(counts.toxinaReal / 2) // ✅ DIVIDIR POR 2
+      }
       else if (categoria === 'Preenchedor') counts.preenchedor += item.quantidade
       else if (['Bioestimulador', 'Bioregenerador', 'Tecnologia'].includes(categoria)) counts.especiais += item.quantidade
     })
     return counts
   }, [insumosSelecionados])
 
+  // ✅ AJUSTE 1: Usar toxina ajustada no combo
   const nivelCombo = useMemo(() => {
     return determinarNivelCombo(contagemCategorias.toxina, contagemCategorias.preenchedor, contagemCategorias.especiais)
   }, [contagemCategorias])
@@ -262,10 +286,8 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     const exists = insumosSelecionados.find(i => i.id_lote === lote.id_lote)
     
     if (exists) {
-      // Remove
       setInsumosSelecionados(prev => prev.filter(i => i.id_lote !== lote.id_lote))
     } else {
-      // Adiciona
       const skuData = lote.skus as any
       setInsumosSelecionados(prev => [...prev, {
         id_lote: lote.id_lote,
@@ -293,30 +315,44 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
     ))
   }
 
-  // ✅ NOVO: Handler para botões de desconto fixo
   const handleDescontoFixo = (percentual: number) => {
     const descontoCalculado = totais.vendaTotal * (percentual / 100)
     setDescontoValor(descontoCalculado)
   }
 
+  // ✅ AJUSTE 2: Handler para data com máscara
+  const handleDataChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '')
+    if (value.length > 8) value = value.substring(0, 8)
+    
+    // Aplicar máscara DD/MM/YYYY
+    if (value.length >= 5) {
+      value = `${value.substring(0, 2)}/${value.substring(2, 4)}/${value.substring(4)}`
+    } else if (value.length >= 3) {
+      value = `${value.substring(0, 2)}/${value.substring(2)}`
+    }
+    
+    setDataVenda(value)
+  }
+
   const handleSave = async () => {
     if (!selectedPacienteId) return alert('Selecione um paciente')
     if (insumosSelecionados.length === 0) return alert('Adicione pelo menos um insumo')
+    // ✅ AJUSTE 5: Validar profissional
+    if (!profissionalSelecionado) return alert('Selecione o profissional responsável')
 
     try {
       setLoading(true)
       await supabaseApi.createVenda({
         id_paciente: selectedPacienteId,
-        data_venda: dataVenda,
+        // ✅ AJUSTE 2: Converter data para ISO antes de salvar
+        data_venda: parseDateBR(dataVenda),
         metodo_pagamento: metodoPagamento,
         parcelas: parcelas,
-        // ✅ FIX UX: Converter para number no save
         desconto_valor: Number(descontoValor) || 0,
-        // ✅ ITEM 6: Usar valor calculado em R$ (baseado no %)
         valor_entrada: totais.valorEntradaReais,
-        // ✅ ITEM 6: Profissional responsável
-        id_usuario_responsavel: profissionalSelecionado,
-        // ✅ ITEM 6: IDs dos lotes como array
+        // ✅ AJUSTE 5: Profissional responsável
+        id_profissional: profissionalSelecionado,
         items: insumosSelecionados.map(i => i.id_lote),
         insumos: insumosSelecionados.map(i => ({
           id_lote: i.id_lote,
@@ -372,12 +408,15 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
 
               {/* Data e Paciente */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ✅ AJUSTE 2: Input de data com formato DD/MM/YYYY */}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Data da Venda</label>
                   <input
-                    type="date"
+                    type="text"
                     value={dataVenda}
-                    onChange={(e) => setDataVenda(e.target.value)}
+                    onChange={handleDataChange}
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
                     className="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:border-cyan-400 outline-none"
                   />
                 </div>
@@ -428,14 +467,13 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 </div>
               </div>
 
-              {/* ✅ ITEM 6: CATEGORIAS COM DESIGN DESTACADO */}
+              {/* Categorias */}
               {CATEGORIAS_FIXAS.map(categoria => {
                 const lotesCategoria = lotesPorCategoria[categoria] || []
                 const insumosDaCategoria = insumosSelecionados.filter(i => normalizarCategoria(i.classe_terapeutica) === categoria)
 
                 if (lotesCategoria.length === 0 && insumosDaCategoria.length === 0) return null
 
-                // ✅ ITEM 6: Cores por categoria para destaque
                 const coresCategoria: Record<string, { bg: string; border: string; text: string; icon: string }> = {
                   'Toxina Botulínica': { bg: 'bg-pink-500/10', border: 'border-pink-500/40', text: 'text-pink-400', icon: '💉' },
                   'Preenchedor': { bg: 'bg-blue-500/10', border: 'border-blue-500/40', text: 'text-blue-400', icon: '✨' },
@@ -448,7 +486,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
 
                 return (
                   <div key={categoria} className="mb-6">
-                    {/* ✅ ITEM 6: Título da categoria com DESTAQUE MAIOR */}
                     <div className={`flex items-center gap-3 mb-4 p-3 rounded-lg ${cores.bg} border ${cores.border}`}>
                       <span className="text-2xl">{cores.icon}</span>
                       <div className="flex-1">
@@ -462,7 +499,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                       )}
                     </div>
 
-                    {/* Cards de produtos */}
                     <div className="space-y-2 pl-2">
                       {lotesCategoria.map(lote => {
                         const skuData = lote.skus as any
@@ -478,7 +514,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                                 : 'border border-slate-600 bg-slate-900 hover:bg-slate-800'
                             }`}
                           >
-                            {/* Header clicável */}
                             <div
                               onClick={() => handleToggleInsumo(lote)}
                               className="px-4 py-3 flex justify-between items-center cursor-pointer"
@@ -492,7 +527,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                                 </div>
                               </div>
                               
-                              {/* Ícone Check */}
                               <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
                                 isSelected ? 'bg-teal-500 scale-100' : 'bg-slate-700 scale-75 opacity-30'
                               }`}>
@@ -500,7 +534,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                               </div>
                             </div>
 
-                            {/* Área de quantidade (expande quando selecionado) */}
                             <div className={`overflow-hidden transition-all duration-300 bg-slate-800 border-t border-slate-700 ${
                               isSelected ? 'max-h-14 opacity-100 py-2 px-4' : 'max-h-0 opacity-0 py-0'
                             }`}>
@@ -526,7 +559,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 )
               })}
 
-              {/* Resumo com gamificação */}
+              {/* ✅ AJUSTE 1: Resumo com Toxina ÷ 2 */}
               <div className={`rounded-xl p-5 bg-slate-950 transition-all duration-500 ${nivelCombo.borderClass}`}>
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-white font-semibold">Resumo de Itens</h4>
@@ -548,7 +581,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                   </ul>
                 )}
 
-                {/* Stats do Combo */}
+                {/* ✅ AJUSTE 1: Stats do Combo com Toxina ÷ 2 */}
                 <div className="flex gap-4 pt-4 border-t border-slate-800">
                   <div className="text-center flex-1">
                     <p className="text-xs text-slate-500">Toxina</p>
@@ -573,7 +606,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
           ) : (
             /* Step 2: Resumo e Pagamento */
             <div className="space-y-5">
-              {/* Resumo */}
+              {/* ✅ AJUSTE 1 + 3: Resumo com Toxina ÷ 2 e Margem Final */}
               <div className={`rounded-xl p-5 bg-slate-800 ${nivelCombo.borderClass}`}>
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-white">Resumo de Itens</h3>
@@ -593,15 +626,36 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                     </div>
                   ))}
                 </div>
+                
+                {/* ✅ AJUSTE 1: Proporção com Toxina ÷ 2 */}
                 <div className="grid grid-cols-3 gap-2 p-3 bg-slate-900 rounded-lg">
-                  <div className="text-center"><p className="text-xs text-slate-400">Toxina</p><p className="text-lg font-bold text-white">{contagemCategorias.toxina}</p></div>
-                  <div className="text-center border-x border-slate-700"><p className="text-xs text-slate-400">Preenchedor</p><p className="text-lg font-bold text-white">{contagemCategorias.preenchedor}</p></div>
-                  <div className="text-center"><p className="text-xs text-slate-400">Especiais</p><p className="text-lg font-bold text-white">{contagemCategorias.especiais}</p></div>
+                  <div className="text-center">
+                    <p className="text-xs text-slate-400">Toxina</p>
+                    <p className="text-lg font-bold text-white">{contagemCategorias.toxina}</p>
+                  </div>
+                  <div className="text-center border-x border-slate-700">
+                    <p className="text-xs text-slate-400">Preenchedor</p>
+                    <p className="text-lg font-bold text-white">{contagemCategorias.preenchedor}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-slate-400">Especiais</p>
+                    <p className="text-lg font-bold text-white">{contagemCategorias.especiais}</p>
+                  </div>
                 </div>
+                
                 <div className="space-y-2 pt-4 border-t border-slate-600 mt-4">
-                  <div className="flex justify-between"><span className="text-slate-400">Valor Total:</span><span className="text-white font-bold">{formatCurrency(totais.vendaTotal)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">Custo Total:</span><span className="text-slate-300">{formatCurrency(totais.custoTotal)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">Margem:</span><span className="text-green-400">{totais.margemPercentual.toFixed(1)}%</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Valor Total:</span>
+                    <span className="text-white font-bold">{formatCurrency(totais.vendaTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Custo Total:</span>
+                    <span className="text-slate-300">{formatCurrency(totais.custoTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Margem (s/ desconto):</span>
+                    <span className="text-green-400">{totais.margemPercentual.toFixed(1)}%</span>
+                  </div>
                 </div>
               </div>
 
@@ -609,7 +663,6 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
               <div className="bg-slate-800 rounded-lg p-4">
                 <h4 className="text-sm font-bold text-cyan-400 mb-3">Desconto</h4>
                 
-                {/* ✅ NOVO: Botões de desconto fixo */}
                 <div className="mb-4">
                   <label className="block text-xs text-slate-400 mb-2">Atalhos de Desconto</label>
                   <div className="grid grid-cols-4 gap-2">
@@ -638,23 +691,42 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                       className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" 
                     />
                   </div>
-                  <div className="flex items-end"><div className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2"><span className="text-slate-400 text-sm">Percentual: </span><span className="text-cyan-400 font-bold">{totais.descontoPercentual.toFixed(1)}%</span></div></div>
+                  <div className="flex items-end">
+                    <div className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2">
+                      <span className="text-slate-400 text-sm">Percentual: </span>
+                      <span className="text-cyan-400 font-bold">{totais.descontoPercentual.toFixed(1)}%</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-3 flex justify-between p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
-                  <span className="text-cyan-400 font-medium">Valor Final:</span>
-                  <span className="text-cyan-400 font-bold text-lg">{formatCurrency(totais.precoFinal)}</span>
+                
+                {/* ✅ AJUSTE 3: Valor Final COM Margem Final */}
+                <div className="mt-3 p-3 bg-cyan-500/10 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-cyan-400 font-medium">Valor Final:</span>
+                    <span className="text-cyan-400 font-bold text-lg">{formatCurrency(totais.precoFinal)}</span>
+                  </div>
+                  {/* ✅ AJUSTE 3: NOVA LINHA - Margem após desconto */}
+                  <div className="flex justify-between items-center pt-2 border-t border-cyan-500/20">
+                    <span className="text-slate-400 text-sm">Margem Real (c/ desconto):</span>
+                    <span className={`font-bold ${totais.margemPercentualFinal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {totais.margemPercentualFinal.toFixed(1)}%
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* ✅ ITEM 6: Profissional Responsável */}
+              {/* ✅ AJUSTE 5: Profissional Responsável (OBRIGATÓRIO) */}
               <div className="bg-slate-800 rounded-lg p-4">
                 <h4 className="text-sm font-bold text-cyan-400 mb-3 flex items-center gap-2">
-                  <User className="w-4 h-4" /> Profissional Responsável
+                  <User className="w-4 h-4" /> Profissional Responsável *
                 </h4>
                 <select
                   value={profissionalSelecionado || ''}
                   onChange={(e) => setProfissionalSelecionado(e.target.value ? Number(e.target.value) : null)}
-                  className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
+                  className={`w-full bg-slate-900 border rounded px-3 py-2 text-white ${
+                    profissionalSelecionado ? 'border-cyan-500' : 'border-slate-600'
+                  }`}
+                  required
                 >
                   <option value="">Selecione o profissional...</option>
                   {profissionais.map(prof => (
@@ -663,6 +735,9 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                     </option>
                   ))}
                 </select>
+                {!profissionalSelecionado && (
+                  <p className="text-xs text-yellow-400 mt-1">⚠ Campo obrigatório</p>
+                )}
               </div>
 
               {/* Pagamento */}
@@ -670,14 +745,19 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                 <h4 className="text-sm font-bold text-cyan-400 mb-3">Forma de Pagamento</h4>
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   {(['PIX', 'Débito', 'Crédito'] as const).map(metodo => (
-                    <button key={metodo} onClick={() => { setMetodoPagamento(metodo); if (metodo !== 'Crédito') setParcelas(1) }} className={`py-3 rounded-lg font-medium transition-all ${metodoPagamento === metodo ? 'bg-cyan-500 text-black' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>
+                    <button 
+                      key={metodo} 
+                      onClick={() => { setMetodoPagamento(metodo); if (metodo !== 'Crédito') setParcelas(1) }} 
+                      className={`py-3 rounded-lg font-medium transition-all ${
+                        metodoPagamento === metodo ? 'bg-cyan-500 text-black' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
                       {metodo}
                     </button>
                   ))}
                 </div>
                 {metodoPagamento === 'Crédito' && (
                   <div className="grid grid-cols-2 gap-4">
-                    {/* ✅ ITEM 6: Entrada em % (não mais em R$) */}
                     <div>
                       <label className="block text-xs text-slate-400 mb-1">Entrada (%)</label>
                       <input 
@@ -691,12 +771,20 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
                         placeholder="Ex: 30"
                         className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white" 
                       />
-                      {/* Mostrar valor em R$ calculado */}
                       {totais.valorEntradaReais > 0 && (
                         <p className="text-xs text-cyan-400 mt-1">= {formatCurrency(totais.valorEntradaReais)}</p>
                       )}
                     </div>
-                    <div><label className="block text-xs text-slate-400 mb-1">Parcelas</label><select value={parcelas} onChange={(e) => setParcelas(Number(e.target.value))} className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white">{[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}</select></div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1">Parcelas</label>
+                      <select 
+                        value={parcelas} 
+                        onChange={(e) => setParcelas(Number(e.target.value))} 
+                        className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-2 text-white"
+                      >
+                        {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => <option key={n} value={n}>{n}x</option>)}
+                      </select>
+                    </div>
                   </div>
                 )}
                 {metodoPagamento === 'Crédito' && parcelas > 1 && (
@@ -720,7 +808,7 @@ export default function NovaVendaModal({ isOpen, onClose, onSuccess }: NovaVenda
               Continuar →
             </Button>
           ) : (
-            <Button onClick={handleSave} disabled={loading}>
+            <Button onClick={handleSave} disabled={loading || !profissionalSelecionado}>
               {loading ? 'Salvando...' : '✓ Finalizar Venda'}
             </Button>
           )}

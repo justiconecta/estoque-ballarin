@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Package, 
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { Button, Input, Select, Card, Modal, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import { ProdutoComEstoque, MovimentacaoDetalhada, Usuario } from '@/types/database'
+import { ProdutoComEstoque, MovimentacaoDetalhada } from '@/types/database'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 interface MovimentacaoForm {
@@ -22,7 +22,7 @@ interface MovimentacaoForm {
   quantidade: string
   loteId?: number
   dataLote?: string
-  valorTotal?: string // ✅ NOVO: Valor total da compra em R$
+  valorTotal?: string
   observacao?: string
 }
 
@@ -35,12 +35,15 @@ export default function EstoquePage() {
   const [loading, setLoading] = useState(false)
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
+  // ✅ AJUSTE 6: Estado para média de saída por SKU
+  const [mediaSaidaPorSku, setMediaSaidaPorSku] = useState<Record<number, number>>({})
+  
   const [movForm, setMovForm] = useState<MovimentacaoForm>({
     tipo: 'SAIDA',
     quantidade: '',
     loteId: undefined,
     dataLote: '',
-    valorTotal: '', // ✅ NOVO
+    valorTotal: '',
     observacao: ''
   })
   
@@ -69,32 +72,32 @@ export default function EstoquePage() {
     showModal('success', 'Sucesso', 'Clínica criada com sucesso!')
   }
 
+  // ✅ AJUSTE 4: Formatar data sem problema de timezone
   const formatDate = (dateString: string) => {
+    if (!dateString) return '-'
+    const str = typeof dateString === 'string' ? dateString : String(dateString)
+    if (str.includes('-') && str.length >= 10) {
+      const [year, month, day] = str.substring(0, 10).split('-')
+      return `${day}/${month}/${year}`
+    }
     return new Date(dateString).toLocaleDateString('pt-BR')
   }
 
   const convertDateToISO = (dateValue: string): string => {
-  if (!dateValue) return ''
-  
-  // Se já está no formato ISO (YYYY-MM-DD) - vem do input type="date"
-  if (dateValue.includes('-') && dateValue.length === 10) {
-    return dateValue // Já está correto
-  }
-  
-  // Se está no formato DD/MM/YYYY - converter para ISO
-  if (dateValue.includes('/')) {
-    const parts = dateValue.split('/')
-    if (parts.length === 3) {
-      const [day, month, year] = parts
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    if (!dateValue) return ''
+    if (dateValue.includes('-') && dateValue.length === 10) {
+      return dateValue
     }
+    if (dateValue.includes('/')) {
+      const parts = dateValue.split('/')
+      if (parts.length === 3) {
+        const [day, month, year] = parts
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+      }
+    }
+    return dateValue
   }
-  
-  // Fallback: retornar como está
-  return dateValue
-}
 
-  // ✅ NOVA FUNÇÃO: Formatar valor monetário em tempo real
   const formatCurrency = (value: string): string => {
     const numbers = value.replace(/\D/g, '')
     if (!numbers) return ''
@@ -102,7 +105,6 @@ export default function EstoquePage() {
     return amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  // ✅ NOVA FUNÇÃO: Parse do valor formatado para número
   const parseCurrency = (value: string): number => {
     if (!value) return 0
     const numbers = value.replace(/\D/g, '')
@@ -114,6 +116,7 @@ export default function EstoquePage() {
     if (userData) {
       loadProdutos()
       loadMovimentacoes()
+      loadMediaSaida()
     }
   }, [])
 
@@ -143,6 +146,59 @@ export default function EstoquePage() {
     } catch (error) {
       console.error('Erro ao carregar movimentações:', error)
     }
+  }
+
+  // ✅ AJUSTE 6: Carregar média de saída por SKU
+  const loadMediaSaida = async () => {
+    try {
+      const media = await supabaseApi.getMediaSaidaPorSku()
+      setMediaSaidaPorSku(media)
+    } catch (error) {
+      console.error('Erro ao carregar média de saída:', error)
+    }
+  }
+
+  // ✅ AJUSTE 6: Calcular status inteligente baseado em velocidade de saída
+  const getStatusProduto = (produto: ProdutoComEstoque): { status: string; cor: string; diasEstoque: number } => {
+    const mediaDiaria = mediaSaidaPorSku[produto.id_sku] || 0
+    
+    // Se não tem média de saída (produto sem movimentação)
+    if (!mediaDiaria || mediaDiaria === 0) {
+      if (produto.estoque_total > 0) {
+        return { status: 'Sem Saída', cor: 'gray', diasEstoque: 999 }
+      }
+      return { status: 'Sem Estoque', cor: 'gray', diasEstoque: 0 }
+    }
+
+    const diasEstoque = Math.round(produto.estoque_total / mediaDiaria)
+
+    // Lógica baseada no SQL fornecido:
+    // < 4 dias → CRÍTICO
+    // < 7 dias → BAIXO
+    // ≤ 10 dias → PADRÃO
+    // > 10 dias → ALTO
+    if (diasEstoque < 4) {
+      return { status: 'Crítico', cor: 'red', diasEstoque }
+    }
+    if (diasEstoque < 7) {
+      return { status: 'Baixo', cor: 'yellow', diasEstoque }
+    }
+    if (diasEstoque <= 10) {
+      return { status: 'OK', cor: 'green', diasEstoque }
+    }
+    return { status: 'Alto', cor: 'blue', diasEstoque }
+  }
+
+  // ✅ AJUSTE 6: Classes de cor para tags
+  const getStatusClasses = (status: { status: string; cor: string }) => {
+    const corMap: Record<string, string> = {
+      red: 'bg-red-900/30 text-red-300',
+      yellow: 'bg-yellow-900/30 text-yellow-300',
+      green: 'bg-green-900/30 text-green-300',
+      blue: 'bg-blue-900/30 text-blue-300',
+      gray: 'bg-gray-900/30 text-gray-400'
+    }
+    return corMap[status.cor] || corMap.gray
   }
 
   const handleProdutoSelect = (produto: ProdutoComEstoque) => {
@@ -178,7 +234,6 @@ export default function EstoquePage() {
       const currentUser = userData ? JSON.parse(userData) : null
 
       if (movForm.tipo === 'ENTRADA') {
-        // ✅ VALIDAÇÃO: Entrada requer data E valor
         if (!movForm.dataLote) {
           showModal('error', 'Erro de Validação', 'Informe a data do lote para entrada.')
           return
@@ -192,7 +247,6 @@ export default function EstoquePage() {
         const dataValidade = convertDateToISO(movForm.dataLote)
         const valorTotalNumerico = parseCurrency(movForm.valorTotal)
         
-        // ✅ CRIAR LOTE COM VALOR TOTAL (API calculará preco_unitario)
         const novoLote = await supabaseApi.createLoteComValor({
           id_sku: selectedProduto.id_sku,
           quantidade_disponivel: quantidade,
@@ -211,7 +265,6 @@ export default function EstoquePage() {
         showModal('success', 'Sucesso', `Entrada de ${quantidade} unidades registrada!\nPreço unitário calculado: R$ ${novoLote.preco_unitario.toFixed(2)}`)
         
       } else {
-        // SAÍDA: Lógica existente mantida
         if (!movForm.loteId) {
           showModal('error', 'Erro de Validação', 'Selecione um lote para saída.')
           return
@@ -253,6 +306,7 @@ export default function EstoquePage() {
       setSelectedProduto(null)
       loadProdutos()
       loadMovimentacoes()
+      loadMediaSaida() // ✅ Recarregar média após movimentação
 
     } catch (error) {
       showModal('error', 'Erro', 'Falha ao registrar movimentação.')
@@ -297,6 +351,21 @@ export default function EstoquePage() {
                         <p className="text-clinic-gray-400 text-sm">Estoque Total</p>
                         <p className="text-clinic-cyan text-2xl font-bold">{selectedProduto.estoque_total}</p>
                         <p className="text-clinic-gray-400 text-sm">unidades</p>
+                        
+                        {/* ✅ AJUSTE 6: Tag inteligente no produto selecionado */}
+                        {(() => {
+                          const status = getStatusProduto(selectedProduto)
+                          return (
+                            <div className="mt-2">
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${getStatusClasses(status)}`}>
+                                {status.status}
+                                {status.diasEstoque < 999 && status.diasEstoque > 0 && (
+                                  <span className="ml-1 opacity-75">({status.diasEstoque}d)</span>
+                                )}
+                              </span>
+                            </div>
+                          )
+                        })()}
                       </div>
                       
                       {selectedProduto.lotes.length > 0 && (
@@ -357,7 +426,6 @@ export default function EstoquePage() {
                       />
                     </>
                   ) : (
-                    /* ✅ INTERFACE ENTRADA COM NOVO CAMPO VALOR */
                     <>
                       <Input
                         label="Quantidade Comprada"
@@ -369,7 +437,6 @@ export default function EstoquePage() {
                         required
                       />
 
-                      {/* ✅ NOVO CAMPO: Valor Total da Compra */}
                       <div className="space-y-1">
                         <label className="block text-sm font-medium text-clinic-white">
                           Valor Total da Compra (R$) *
@@ -459,40 +526,44 @@ export default function EstoquePage() {
                 </div>
               ) : (
                 <div className="space-y-3 overflow-y-auto max-h-[740px]">
-                  {produtos.map((produto) => (
-                    <div
-                      key={produto.id_sku}
-                      onClick={() => handleProdutoSelect(produto)}
-                      className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
-                        selectedProduto?.id_sku === produto.id_sku
-                          ? 'border-clinic-cyan bg-clinic-cyan/10'
-                          : 'border-clinic-gray-600 bg-clinic-gray-800 hover:border-clinic-cyan/50 hover:bg-clinic-gray-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h3 className="text-clinic-white font-medium">{produto.nome_produto}</h3>
-                          <p className="text-clinic-gray-400 text-sm">{produto.fabricante}</p>
-                          <p className="text-clinic-gray-400 text-sm">{produto.classe_terapeutica}</p>
-                          <p className="text-clinic-gray-500 text-xs mt-1">
-                            {produto.lotes.length} lote{produto.lotes.length !== 1 ? 's' : ''} disponível{produto.lotes.length !== 1 ? 'eis' : ''}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-clinic-white text-xl font-bold">{produto.estoque_total}</div>
-                          <div className="text-clinic-gray-400 text-sm">unidades</div>
-                          <div className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${
-                            produto.estoque_total < 10 ? 'bg-red-900/30 text-red-300' :
-                            produto.estoque_total < 50 ? 'bg-yellow-900/30 text-yellow-300' :
-                            'bg-green-900/30 text-green-300'
-                          }`}>
-                            {produto.estoque_total < 10 ? 'Crítico' :
-                             produto.estoque_total < 50 ? 'Baixo' : 'OK'}
+                  {produtos.map((produto) => {
+                    // ✅ AJUSTE 6: Usar status inteligente
+                    const status = getStatusProduto(produto)
+                    
+                    return (
+                      <div
+                        key={produto.id_sku}
+                        onClick={() => handleProdutoSelect(produto)}
+                        className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
+                          selectedProduto?.id_sku === produto.id_sku
+                            ? 'border-clinic-cyan bg-clinic-cyan/10'
+                            : 'border-clinic-gray-600 bg-clinic-gray-800 hover:border-clinic-cyan/50 hover:bg-clinic-gray-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h3 className="text-clinic-white font-medium">{produto.nome_produto}</h3>
+                            <p className="text-clinic-gray-400 text-sm">{produto.fabricante}</p>
+                            <p className="text-clinic-gray-400 text-sm">{produto.classe_terapeutica}</p>
+                            <p className="text-clinic-gray-500 text-xs mt-1">
+                              {produto.lotes.length} lote{produto.lotes.length !== 1 ? 's' : ''} disponível{produto.lotes.length !== 1 ? 'eis' : ''}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-clinic-white text-xl font-bold">{produto.estoque_total}</div>
+                            <div className="text-clinic-gray-400 text-sm">unidades</div>
+                            {/* ✅ AJUSTE 6: Tag inteligente com dias de estoque */}
+                            <div className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${getStatusClasses(status)}`}>
+                              {status.status}
+                              {status.diasEstoque < 999 && status.diasEstoque > 0 && (
+                                <span className="ml-1 opacity-75">({status.diasEstoque}d)</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </Card>

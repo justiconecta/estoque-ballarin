@@ -57,19 +57,21 @@ interface SKU {
 }
 
 // ============ COMPONENTE CARD CUSTOMIZADO ============
-const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'default' | 'cyan' | 'green' | 'red' }) => {
+const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'default' | 'cyan' | 'green' | 'red' | 'purple' }) => {
   const variantClasses = {
     default: 'bg-gray-100 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700',
     cyan: 'bg-cyan-50 dark:bg-cyan-500/10 border-cyan-200 dark:border-cyan-500/30',
     green: 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/30',
-    red: 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30'
+    red: 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30',
+    purple: 'bg-purple-50 dark:bg-purple-500/10 border-purple-200 dark:border-purple-500/30'
   }
 
   const textClasses = {
     default: 'text-gray-900 dark:text-white',
     cyan: 'text-cyan-700 dark:text-cyan-400',
     green: 'text-green-700 dark:text-green-400',
-    red: 'text-red-700 dark:text-red-400'
+    red: 'text-red-700 dark:text-red-400',
+    purple: 'text-purple-700 dark:text-purple-400'
   }
 
   return (
@@ -1128,7 +1130,7 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
 
       {/* Resumo */}
       {vendas.length > 0 && (
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
           <FinanceCard
             title="Total de Vendas"
             value={vendas.length}
@@ -1148,6 +1150,15 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
             title="Receita Líquida"
             value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))}
             variant="cyan"
+          />
+          <FinanceCard
+            title="Ticket Médio"
+            value={formatCurrency(
+              vendas.length > 0 
+                ? vendas.reduce((s, v) => s + (v.preco_final || 0), 0) / vendas.length 
+                : 0
+            )}
+            variant="purple"
           />
         </div>
       )}

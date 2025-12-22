@@ -1464,10 +1464,12 @@ export const supabaseApi = {
 
       if (error) throw error
 
-      // Agrupar por dia
+      // Agrupar por dia - ✅ Extrair dia diretamente da string para evitar bug de timezone
       const vendasPorDia: Record<number, number> = {}
       ;(data || []).forEach(venda => {
-        const dia = new Date(venda.data_venda).getDate()
+        // Extrair dia da string "YYYY-MM-DD" diretamente (evita conversão timezone)
+        const dataStr = String(venda.data_venda).substring(0, 10)
+        const dia = parseInt(dataStr.split('-')[2], 10)
         const valor = venda.preco_final || venda.preco_total || 0
         vendasPorDia[dia] = (vendasPorDia[dia] || 0) + valor
       })

@@ -12,8 +12,9 @@ const finalKey = envKey || SUPABASE_ANON_KEY
 
 export const supabase = createClient<Database>(finalUrl, finalKey, {
   auth: {
-    persistSession: false,
-    autoRefreshToken: false,
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
   },
   db: { schema: 'public' }
 })
@@ -33,15 +34,86 @@ function setCurrentClinic(clinicId: number, clinicInfo?: any) {
   }
 }
 
+// Função assíncrona para buscar clinic_id do usuário logado via Supabase Auth
+async function getClinicIdFromAuth(): Promise<number | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) return null
+
+    const { data } = await supabase
+      .from('usuarios_internos')
+      .select('id_clinica')
+      .eq('auth_id', session.user.id)
+      .single()
+
+    if (data?.id_clinica) {
+      // Salvar no localStorage para próximas chamadas síncronas
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('clinic_id', data.id_clinica.toString())
+      }
+      currentClinicId = data.id_clinica
+      console.log(`🔐 CLÍNICA VIA AUTH: ${data.id_clinica}`)
+      return data.id_clinica
+    }
+    return null
+  } catch (error) {
+    console.error('Erro ao buscar clínica do auth:', error)
+    return null
+  }
+}
+
 function getCurrentClinicId(): number | null {
-  if (currentClinicId === null && typeof window !== 'undefined') {
+  // Primeiro tenta do cache em memória
+  if (currentClinicId !== null) {
+    return currentClinicId
+  }
+  
+  // Depois tenta do localStorage
+  if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('clinic_id')
     if (stored) {
       currentClinicId = parseInt(stored)
-      console.log(`🔄 CLÍNICA RECUPERADA: ${currentClinicId}`)
+      console.log(`🔄 CLÍNICA RECUPERADA DO LOCALSTORAGE: ${currentClinicId}`)
+      return currentClinicId
+    }
+    
+    // Tenta pegar do ballarin_user (compatibilidade)
+    const userStr = localStorage.getItem('ballarin_user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        if (user.id_clinica) {
+          currentClinicId = user.id_clinica
+          localStorage.setItem('clinic_id', user.id_clinica.toString())
+          console.log(`🔄 CLÍNICA RECUPERADA DO USER: ${currentClinicId}`)
+          return currentClinicId
+        }
+      } catch (e) {
+        console.error('Erro ao parsear ballarin_user:', e)
+      }
     }
   }
-  return currentClinicId
+  
+  return null
+}
+
+// Função assíncrona para garantir que temos o clinic_id (chamada no início das páginas)
+async function ensureClinicId(): Promise<number | null> {
+  // Primeiro tenta síncrono
+  const syncId = getCurrentClinicId()
+  if (syncId) return syncId
+  
+  // Se não tem, busca do Supabase Auth
+  const authId = await getClinicIdFromAuth()
+  if (authId) {
+    currentClinicId = authId
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('clinic_id', authId.toString())
+    }
+    return authId
+  }
+  
+  return null
 }
 
 function clearCurrentClinic() {
@@ -86,6 +158,8 @@ function convertPeriodoToDate(periodo: string | null | undefined): string | null
 export const supabaseApi = {
   supabase,
   getCurrentClinicId,
+  getClinicIdFromAuth,
+  ensureClinicId,
 
   // Autenticação com detecção de clínica
   async authenticateUser(username: string, password: string) {
@@ -1452,7 +1526,9 @@ export const supabaseApi = {
 
       const dataInicio = `${ano}-${String(mes).padStart(2, '0')}-01`
       const ultimoDia = new Date(ano, mes, 0).getDate()
-      const dataFim = `${ano}-${String(mes).padStart(2, '0')}-${ultimoDia}`
+      const dataFim = `${ano}-${String(mes).padStart(2, '0')}-${String(ultimoDia).padStart(2, '0')}`
+
+      console.log(`📅 BUSCANDO VENDAS: ${dataInicio} até ${dataFim}`)
 
       const { data, error } = await supabase
         .from('vendas')
@@ -1464,6 +1540,9 @@ export const supabaseApi = {
 
       if (error) throw error
 
+      console.log(`📊 VENDAS RETORNADAS DO BANCO: ${data?.length || 0}`)
+      console.log('📋 DATAS DAS VENDAS:', data?.map(v => v.data_venda))
+
       // Agrupar por dia - ✅ Extrair dia diretamente da string para evitar bug de timezone
       const vendasPorDia: Record<number, number> = {}
       ;(data || []).forEach(venda => {
@@ -1472,9 +1551,10 @@ export const supabaseApi = {
         const dia = parseInt(dataStr.split('-')[2], 10)
         const valor = venda.preco_final || venda.preco_total || 0
         vendasPorDia[dia] = (vendasPorDia[dia] || 0) + valor
+        console.log(`  → Venda ID ${venda.id}: data=${dataStr}, dia=${dia}, valor=${valor}`)
       })
 
-      console.log(`📊 VENDAS POR DIA: ${Object.keys(vendasPorDia).length} dias com vendas`)
+      console.log(`📊 VENDAS POR DIA AGRUPADAS:`, vendasPorDia)
       return vendasPorDia
     } catch (error) {
       console.error('💥 ERRO getVendasPorDia:', error)

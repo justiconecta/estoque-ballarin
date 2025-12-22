@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { AuthProvider } from '@/contexts/AuthContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   keywords: ['clínica', 'estoque', 'estética', 'controle'],
   authors: [{ name: 'JustiConecta' }],
   viewport: 'width=device-width, initial-scale=1',
-  robots: 'noindex, nofollow', // Sistema interno
+  robots: 'noindex, nofollow',
 }
 
 export default function RootLayout({
@@ -21,9 +22,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.className} antialiased`}>
-        <div id="root">
+        <AuthProvider>
           {children}
-        </div>
+        </AuthProvider>
       </body>
     </html>
   )

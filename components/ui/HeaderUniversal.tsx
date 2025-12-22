@@ -9,7 +9,7 @@ import {
   LucideIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui'
-import { supabaseApi } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import { Usuario } from '@/types/database'
 
 interface HeaderUniversalProps {
@@ -19,14 +19,16 @@ interface HeaderUniversalProps {
   showNovaClinicaModal?: () => void 
 }
 
-// ✅ FUNÇÃO HELPER: Detectar Admin Geral (mesma lógica do supabaseApi)
-function checkIsAdminGeral(user: Usuario): boolean {
+// ✅ FUNÇÃO HELPER: Detectar Admin Geral
+function checkIsAdminGeral(user: any): boolean {
+  if (!user) return false
+  
   // Caso 1: Usuário literal "admin"
   if (user.usuario === 'admin') {
     return true
   }
   
-  // Caso 2: Role admin + sem clínica específica (id_clinica null ou 0)
+  // Caso 2: Role admin + sem clínica específica
   const isRoleAdmin = user.role === 'admin'
   const isIdClinicaNull = user.id_clinica == null || user.id_clinica === 0
   
@@ -36,9 +38,10 @@ function checkIsAdminGeral(user: Usuario): boolean {
 export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNovaClinicaModal }: HeaderUniversalProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const { profile, signOut } = useAuth() // ✅ Usar AuthContext
+  
   const [isDarkTheme, setIsDarkTheme] = useState(true)
   const [isAdminGeral, setIsAdminGeral] = useState(false)
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
 
   // Detectar página atual para botão ativo
   const isCurrentPage = (path: string) => {
@@ -48,7 +51,7 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
     return pathname === path
   }
 
-  // ✅ FUNÇÃO CRÍTICA: Aplica tema no DOM
+  // Aplica tema no DOM
   const applyTheme = (dark: boolean) => {
     if (typeof window !== 'undefined') {
       const html = document.documentElement
@@ -63,7 +66,7 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
     }
   }
 
-  // Função para alternar tema
+  // Alternar tema
   const toggleTheme = () => {
     const newTheme = !isDarkTheme
     setIsDarkTheme(newTheme)
@@ -71,15 +74,10 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
     applyTheme(newTheme)
   }
 
-  // Logout
+  // ✅ Logout usando AuthContext
   const handleLogout = async () => {
-    try {
-      await supabaseApi.logout()
-      router.push('/login')
-    } catch (error) {
-      console.error('Erro no logout:', error)
-      router.push('/login')
-    }
+    console.log('🚪 HeaderUniversal: Iniciando logout...')
+    await signOut()
   }
 
   // Handler para Nova Clínica
@@ -89,36 +87,27 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
     }
   }
 
-  // ✅ Carregar tema salvo e dados do usuário na montagem
+  // Carregar tema e detectar admin
   useEffect(() => {
     // Carregar tema
     const savedTheme = localStorage.getItem('ballarin_theme')
-    const dark = savedTheme !== 'light' // Default é dark
+    const dark = savedTheme !== 'light'
     setIsDarkTheme(dark)
     applyTheme(dark)
 
-    // Carregar dados do usuário
-    const userData = localStorage.getItem('ballarin_user')
-    if (userData) {
-      try {
-        const user = JSON.parse(userData) as Usuario
-        setCurrentUser(user)
-        
-        // ✅ FIX: Usar lógica correta de detecção de Admin Geral
-        const adminGeral = checkIsAdminGeral(user)
-        setIsAdminGeral(adminGeral)
-        
-        console.log('👤 HeaderUniversal:', {
-          usuario: user.usuario,
-          role: user.role,
-          id_clinica: user.id_clinica,
-          isAdminGeral: adminGeral
-        })
-      } catch (error) {
-        console.error('Erro ao parsear dados do usuário:', error)
-      }
+    // Detectar admin geral do profile do AuthContext
+    if (profile) {
+      const adminGeral = checkIsAdminGeral(profile)
+      setIsAdminGeral(adminGeral)
+      
+      console.log('👤 HeaderUniversal:', {
+        usuario: profile.usuario,
+        role: profile.role,
+        id_clinica: profile.id_clinica,
+        isAdminGeral: adminGeral
+      })
     }
-  }, [])
+  }, [profile])
 
   return (
     <header className="bg-gradient-to-r from-clinic-gray-800 via-clinic-gray-750 to-clinic-gray-700 rounded-xl p-5 mb-6 border border-clinic-gray-600 shadow-xl backdrop-blur-sm">
@@ -210,7 +199,6 @@ export function HeaderUniversal({ titulo, descricao, icone: IconeCustom, showNov
               Pacientes
             </Button>
             
-            {/* ✅ FIX: Botão Nova Clínica agora aparece corretamente para Admin Geral */}
             {isAdminGeral && showNovaClinicaModal && (
               <Button 
                 variant="secondary" 

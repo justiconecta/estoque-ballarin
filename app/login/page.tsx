@@ -15,25 +15,23 @@ import {
   Activity,
   Plus
 } from 'lucide-react'
-import { Button, Input } from '@/components/ui'
-import { supabaseApi } from '@/lib/supabase'
-import { Usuario } from '@/types/database'
+import { supabase } from '@/lib/supabase'
 
 interface LoginForm {
-  username: string
+  email: string
   password: string
 }
 
 // Ícones estéticos médicos para animação de fundo
 const aestheticIcons = [
-  Droplet,    // Ampola/soro
-  Plus,       // Cruz médica
-  Activity,   // Batimento/saúde
-  Heart,      // Coração/bem-estar
-  Sparkles,   // Resultado estético
-  Star,       // Avaliação/qualidade
-  Zap,        // Energia/tratamento
-  Crown       // Premium/excelência
+  Droplet,
+  Plus,
+  Activity,
+  Heart,
+  Sparkles,
+  Star,
+  Zap,
+  Crown
 ]
 
 // Componente customizado para ícone de seringa
@@ -52,14 +50,13 @@ const AmpouleIcon = ({ size = 16, className = "" }: { size?: number, className?:
   </svg>
 )
 
-// Array expandido com ícones médicos customizados
 const medicalAestheticIcons = [
   ...aestheticIcons,
-  SyringeIcon,   // Seringa customizada
-  AmpouleIcon    // Ampola customizada
+  SyringeIcon,
+  AmpouleIcon
 ]
 
-// Componente de ícone flutuante para efeito estético premium - mais visível
+// Componente de ícone flutuante
 const FloatingAestheticIcon = ({ 
   delay = 0, 
   duration = 15, 
@@ -96,7 +93,7 @@ const FloatingAestheticIcon = ({
   )
 }
 
-// Componente de partícula cintilante mais sutil
+// Componente de partícula cintilante
 const SparkleParticle = ({ delay = 0 }: { delay?: number }) => {
   return (
     <div 
@@ -115,11 +112,40 @@ const SparkleParticle = ({ delay = 0 }: { delay?: number }) => {
 
 export default function LoginPage() {
   const router = useRouter()
-  const [loginForm, setLoginForm] = useState<LoginForm>({ username: '', password: '' })
+  const [loginForm, setLoginForm] = useState<LoginForm>({ email: '', password: '' })
   const [loginError, setLoginError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
+
+  // Verificar se já está logado
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          // Verificar se tem perfil no sistema
+          const { data: profile } = await supabase
+            .from('usuarios_internos')
+            .select('role, ativo')
+            .eq('auth_id', session.user.id)
+            .single()
+
+          if (profile?.ativo) {
+            router.replace(profile.role === 'admin' ? '/dashboard/vendas' : '/estoque')
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar sessão:', error)
+      } finally {
+        setCheckingSession(false)
+      }
+    }
+
+    checkSession()
+  }, [router])
 
   // Animação de entrada suave
   useEffect(() => {
@@ -133,23 +159,93 @@ export default function LoginPage() {
     setLoading(true)
     
     try {
-      const user = await supabaseApi.authenticateUser(loginForm.username, loginForm.password)
-      
-      // Salvar usuário no localStorage para sessão
-      localStorage.setItem('ballarin_user', JSON.stringify(user))
-      
-      // Admin tem acesso a tudo, redireciona para dashboard
-      // Staff vai para estoque
-      if (user.role === 'admin') {
-        router.replace('/dashboard')
-      } else {
-        router.replace('/estoque')
+      // 1. Login com Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: loginForm.email,
+        password: loginForm.password,
+      })
+
+      if (authError) {
+        if (authError.message.includes('Invalid login credentials')) {
+          setLoginError('Email ou senha incorretos. Tente novamente.')
+        } else {
+          setLoginError(authError.message)
+        }
+        return
       }
+
+      if (!authData.user) {
+        setLoginError('Erro ao fazer login. Tente novamente.')
+        return
+      }
+
+      // 2. Buscar perfil do usuário
+      const { data: profile, error: profileError } = await supabase
+        .from('usuarios_internos')
+        .select('id_usuario, usuario, nome_completo, email, role, id_clinica, ativo')
+        .eq('auth_id', authData.user.id)
+        .single()
+
+      if (profileError || !profile) {
+        await supabase.auth.signOut()
+        setLoginError('Usuário não encontrado no sistema. Contate o administrador.')
+        return
+      }
+
+      if (!profile.ativo) {
+        await supabase.auth.signOut()
+        setLoginError('Sua conta foi desativada. Contate o administrador.')
+        return
+      }
+
+      // 3. Atualizar último login
+      await supabase
+        .from('usuarios_internos')
+        .update({ ultimo_login: new Date().toISOString() })
+        .eq('auth_id', authData.user.id)
+
+      // 4. Salvar info básica para compatibilidade - GARANTIR que seja síncrono
+      const userData = {
+        id_usuario: profile.id_usuario,
+        usuario: profile.usuario,
+        nome_completo: profile.nome_completo,
+        role: profile.role,
+        id_clinica: profile.id_clinica
+      }
+      
+      try {
+        localStorage.setItem('clinic_id', profile.id_clinica.toString())
+        localStorage.setItem('ballarin_user', JSON.stringify(userData))
+        console.log('✅ Login OK - clinic_id salvo:', profile.id_clinica)
+        
+        // Verificar se foi salvo corretamente
+        const savedClinicId = localStorage.getItem('clinic_id')
+        console.log('✅ Verificação - clinic_id no localStorage:', savedClinicId)
+      } catch (e) {
+        console.error('❌ Erro ao salvar localStorage:', e)
+      }
+
+      // 5. Delay para garantir persistência + usar href para reload completo
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // 6. Redirecionar usando window.location para garantir reload completo
+      const redirectUrl = profile.role === 'admin' ? '/dashboard/vendas' : '/estoque'
+      window.location.href = redirectUrl
     } catch (error) {
-      setLoginError('Usuário ou senha incorreta. Tente novamente.')
+      console.error('Erro no login:', error)
+      setLoginError('Erro ao fazer login. Tente novamente.')
     } finally {
       setLoading(false)
     }
+  }
+
+  // Loading inicial
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#000000' }}>
+        <div className="animate-spin rounded-full h-12 w-12 border-2 border-[#12f6ff] border-t-transparent"></div>
+      </div>
+    )
   }
 
   return (
@@ -157,10 +253,8 @@ export default function LoginPage() {
       
       {/* Background com ícones estéticos flutuantes */}
       <div className="absolute inset-0 overflow-hidden">
-        {/* Gradiente de fundo mais sutil */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#12f6ff]/3 via-transparent to-[#03c8d9]/3"></div>
         
-        {/* Ícones estéticos médicos flutuantes - múltiplas camadas mais visíveis */}
         {Array.from({ length: 30 }, (_, i) => (
           <FloatingAestheticIcon
             key={`aesthetic-${i}`}
@@ -171,7 +265,6 @@ export default function LoginPage() {
           />
         ))}
         
-        {/* Partículas cintilantes menores */}
         {Array.from({ length: 20 }, (_, i) => (
           <SparkleParticle key={`sparkle-${i}`} delay={i * 0.5} />
         ))}
@@ -184,7 +277,7 @@ export default function LoginPage() {
           ${isLoaded ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}
         `}>
           
-          {/* Card Principal com efeito de vidro */}
+          {/* Card Principal */}
           <div 
             className="relative rounded-3xl p-8 border shadow-2xl backdrop-blur-xl"
             style={{
@@ -194,7 +287,7 @@ export default function LoginPage() {
             }}
           >
             
-            {/* Brilho sutil no topo do card */}
+            {/* Brilho no topo */}
             <div 
               className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-1 rounded-full opacity-60"
               style={{ backgroundColor: '#12f6ff', filter: 'blur(1px)' }}
@@ -224,39 +317,33 @@ export default function LoginPage() {
                 Sistema Premium de Gestão de Clínicas
               </p>
               
-              {/* Linha decorativa estética */}
+              {/* Linha decorativa */}
               <div className="flex items-center justify-center mt-6 mb-8">
-                <div 
-                  className="w-16 h-px opacity-50"
-                  style={{ backgroundColor: '#12f6ff' }}
-                ></div>
+                <div className="w-16 h-px opacity-50" style={{ backgroundColor: '#12f6ff' }}></div>
                 <div className="mx-4 p-2 rounded-full" style={{ backgroundColor: 'rgba(18, 246, 255, 0.1)' }}>
                   <Plus className="w-4 h-4" style={{ color: '#12f6ff' }} />
                 </div>
-                <div 
-                  className="w-16 h-px opacity-50"
-                  style={{ backgroundColor: '#12f6ff' }}
-                ></div>
+                <div className="w-16 h-px opacity-50" style={{ backgroundColor: '#12f6ff' }}></div>
               </div>
             </div>
 
             {/* Formulário */}
             <form onSubmit={handleLogin} className="space-y-6">
               
-              {/* Campo Usuário */}
+              {/* Campo Email */}
               <div className="space-y-2">
                 <label 
                   className="text-sm font-medium block"
                   style={{ color: 'rgba(255, 255, 255, 0.9)' }}
                 >
-                  Usuário
+                  Email
                 </label>
                 <div className="relative">
                   <input
-                    type="text"
-                    value={loginForm.username}
-                    onChange={(e) => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
-                    placeholder="Digite seu usuário"
+                    type="email"
+                    value={loginForm.email}
+                    onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="Digite seu email"
                     className="w-full px-4 py-3 rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 backdrop-blur-sm"
                     style={{
                       backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -265,6 +352,7 @@ export default function LoginPage() {
                       color: '#ffffff',                      
                     }}
                     required
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -291,6 +379,7 @@ export default function LoginPage() {
                       color: '#ffffff'
                     }}
                     required
+                    disabled={loading}
                   />
                   <button
                     type="button"
@@ -317,7 +406,7 @@ export default function LoginPage() {
                 </div>
               )}
 
-              {/* Botão de Login Premium */}
+              {/* Botão de Login */}
               <button
                 type="submit"
                 disabled={loading}
@@ -328,7 +417,6 @@ export default function LoginPage() {
                   boxShadow: '0 10px 25px -5px rgba(18, 246, 255, 0.3), 0 0 0 1px rgba(18, 246, 255, 0.1)'
                 }}
               >
-                {/* Efeito de brilho no hover */}
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-300 bg-gradient-to-r from-transparent via-white to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
                 
                 {loading ? (
@@ -345,7 +433,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Footer estético */}
+            {/* Footer */}
             <div className="mt-8 pt-6 border-t text-center" style={{ borderColor: 'rgba(18, 246, 255, 0.1)' }}>
               <div className="flex items-center justify-center space-x-2">
                 <Heart className="w-4 h-4" style={{ color: '#12f6ff' }} />
@@ -359,7 +447,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* Adição de estilos CSS personalizados */}
+      {/* Estilos CSS */}
       <style jsx>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px) rotate(0deg); }

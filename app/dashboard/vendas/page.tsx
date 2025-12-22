@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangle } from 'lucide-react'
 import { HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
@@ -114,6 +115,10 @@ const KpiCard = ({
 
 export default function DashboardVendasPage() {
   const router = useRouter()
+  
+  // ✅ PROTEÇÃO DE ROTA - Hook adicionado
+  const { isAuthenticated, loading: authLoading, profile } = useAuth()
+  
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [anoSelecionado, setAnoSelecionado] = useState(new Date().getFullYear())
   const [mesSelecionado, setMesSelecionado] = useState(new Date().getMonth() + 1)
@@ -129,14 +134,26 @@ export default function DashboardVendasPage() {
   const [despesas, setDespesas] = useState<any[]>([])
   const [vendas, setVendas] = useState<any[]>([])
 
-  // Carregar dados
+  // ✅ PROTEÇÃO DE ROTA - Redireciona se não autenticado
   useEffect(() => {
-    loadData()
-  }, [anoSelecionado, mesSelecionado])
+    if (!authLoading && !isAuthenticated) {
+      console.log('🚫 Não autenticado, redirecionando para login...')
+      router.replace('/login')
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  // Carregar dados - agora depende de autenticação
+  useEffect(() => {
+    if (isAuthenticated && profile?.id_clinica) {
+      loadData()
+    }
+  }, [anoSelecionado, mesSelecionado, isAuthenticated, profile])
 
   useEffect(() => {
-    loadMixData()
-  }, [anoSelecionado, mesesMix])
+    if (isAuthenticated && profile?.id_clinica) {
+      loadMixData()
+    }
+  }, [anoSelecionado, mesesMix, isAuthenticated, profile])
 
   const loadData = async () => {
     setLoading(true)
@@ -438,6 +455,23 @@ export default function DashboardVendasPage() {
   const tituloMix = mesesMix.length > 0 
     ? `${mesesMix.map(m => MESES[m - 1]).join(', ')} / ${anoSelecionado}`
     : 'Nenhum mês selecionado'
+
+  // ✅ PROTEÇÃO DE ROTA - Loading enquanto verifica auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ PROTEÇÃO DE ROTA - Não renderiza se não autenticado
+  if (!isAuthenticated) {
+    return null
+  }
 
   if (loading && !parametros) {
     return (

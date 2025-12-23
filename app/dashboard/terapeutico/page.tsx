@@ -1,27 +1,20 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Bot, 
   MessageCircle, 
   Calendar,
   User,
-  Search,
-  CalendarDays
+  CalendarDays,
+  FileText
 } from 'lucide-react'
 import { Card, HeaderUniversal } from '@/components/ui'
-import { supabaseApi } from '@/lib/supabase'
+import { useData, useResumosPaciente } from '@/contexts/DataContext'
+import { useAuth } from '@/contexts/AuthContext'
+import BuscaPacienteDropdown from '@/components/BuscaPacienteDropdown'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
-
-// Tipos
-interface Usuario {
-  id?: number
-  usuario: string
-  nome_completo: string
-  role: string
-  id_clinica: number
-}
 
 interface Paciente {
   id_paciente: number
@@ -53,230 +46,116 @@ interface ResumosSemanais {
   id_clinica: number
 }
 
-// Componente de Busca de Paciente com Dropdown
-function BuscaPacienteDropdown({ 
-  onSelectPaciente, 
-  selectedPaciente,
-  className = ''
-}: { 
-  onSelectPaciente: (paciente: Paciente) => void
-  selectedPaciente: Paciente | null
-  className?: string
-}) {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [pacientes, setPacientes] = useState<Paciente[]>([])
-  const [filteredPacientes, setFilteredPacientes] = useState<Paciente[]>([])
-  const [isOpen, setIsOpen] = useState(false)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    loadPacientes()
-  }, [])
-
-  const loadPacientes = async () => {
-    try {
-      setLoading(true)
-      const data = await supabaseApi.getPacientes(100)
-      setPacientes(data)
-      setFilteredPacientes(data.slice(0, 10))
-    } catch (error) {
-      console.error('Erro ao carregar pacientes:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (searchTerm.trim()) {
-      const filtered = pacientes.filter(p => 
-        p.nome_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.cpf?.includes(searchTerm.replace(/\D/g, ''))
-      ).slice(0, 10)
-      setFilteredPacientes(filtered)
-      setIsOpen(true)
-    } else {
-      setFilteredPacientes(pacientes.slice(0, 10))
-    }
-  }, [searchTerm, pacientes])
-
-  const handleSelect = (paciente: Paciente) => {
-    onSelectPaciente(paciente)
-    setSearchTerm('')
-    setIsOpen(false)
-  }
-
-  return (
-    <div className={`relative ${className}`}>
-      <label className="block text-sm font-medium text-clinic-gray-300 mb-2">
-        Selecionar Paciente:
-      </label>
-      
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-clinic-gray-400" />
-        <input
-          type="text"
-          placeholder={selectedPaciente ? `${selectedPaciente.nome_completo} - ${selectedPaciente.cpf}` : "Buscar por nome ou CPF..."}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onFocus={() => setIsOpen(true)}
-          className="w-full pl-10 pr-4 py-2.5 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white placeholder-clinic-gray-400 focus:outline-none focus:ring-2 focus:ring-clinic-cyan focus:border-transparent"
-        />
-      </div>
-
-      {isOpen && (
-        <div 
-          className="absolute w-full mt-1 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg shadow-xl max-h-60 overflow-y-auto"
-          style={{ zIndex: 9999 }}
-        >
-          {loading ? (
-            <div className="p-4 text-center text-clinic-gray-400">Carregando...</div>
-          ) : filteredPacientes.length === 0 ? (
-            <div className="p-4 text-center text-clinic-gray-400">Nenhum paciente encontrado</div>
-          ) : (
-            filteredPacientes.map(paciente => (
-              <button
-                key={paciente.id_paciente}
-                onClick={() => handleSelect(paciente)}
-                className="w-full px-4 py-3 text-left bg-clinic-gray-800 hover:bg-clinic-gray-700 transition-colors border-b border-clinic-gray-700 last:border-b-0"
-              >
-                <p className="font-medium text-clinic-white">{paciente.nome_completo}</p>
-                <p className="text-sm text-clinic-gray-400">
-                  CPF: {paciente.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}
-                </p>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-
-      {isOpen && (
-        <div 
-          className="fixed inset-0" 
-          style={{ zIndex: 9998 }}
-          onClick={() => setIsOpen(false)}
-        />
-      )}
-    </div>
-  )
-}
-
 export default function DashboardIAPage() {
   const router = useRouter()
-  const [currentUser, setCurrentUser] = useState<Usuario | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
+  // ✅ USA AUTH CONTEXT (não localStorage)
+  const { isAuthenticated, loading: authLoading, profile } = useAuth()
+  
+  // ✅ DADOS DO CACHE GLOBAL + FUNÇÃO PARA PACIENTES COM RESUMOS
+  const { getResumoEspecifico, getPacientesComResumos, loading: dataLoading, initialized } = useData()
+  
+  const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
-  const [resumosDiarios, setResumosDiarios] = useState<ResumosDiarios[]>([])
-  const [resumosSemanais, setResumosSemanais] = useState<ResumosSemanais[]>([])
   const [selectedDate, setSelectedDate] = useState<string>('')
   const [conversaDia, setConversaDia] = useState<ResumosDiarios | null>(null)
   const [loadingConversa, setLoadingConversa] = useState(false)
   const [viewMode, setViewMode] = useState<'diario' | 'semanal'>('diario')
+  
+  // ✅ ESTADOS PARA RESUMO SEMANAL SELECIONADO
+  const [selectedResumoSemanal, setSelectedResumoSemanal] = useState<ResumosSemanais | null>(null)
+  
+  // ✅ ESTADO PARA PACIENTES COM RESUMOS
+  const [pacientesComResumos, setPacientesComResumos] = useState<Paciente[]>([])
+  const [loadingPacientes, setLoadingPacientes] = useState(true)
 
+  // ✅ HOOK DE RESUMOS DO PACIENTE (com cache)
+  const { resumosDiarios, resumosSemanais, loading: resumosLoading } = useResumosPaciente(selectedPaciente?.cpf || null)
+
+  // ✅ CARREGAR PACIENTES COM RESUMOS QUANDO INICIALIZAR
   useEffect(() => {
-    const userData = localStorage.getItem('ballarin_user')
-    if (!userData) {
-      router.push('/login')
-      return
-    }
-    
-    try {
-      const user = JSON.parse(userData) as Usuario
-      setCurrentUser(user)
-    } catch {
-      router.push('/login')
-    } finally {
-      setLoading(false)
-    }
-  }, [router])
-
-  const handleShowNovaClinicaModal = () => {
-    setShowNovaClinicaModal(true)
-  }
-
-  const handleClinicaCriada = () => {
-    setShowNovaClinicaModal(false)
-  }
-
-  // ✅ CARREGAR RESUMOS - DIÁRIOS E SEMANAIS
-  const loadResumosPaciente = useCallback(async (paciente: Paciente) => {
-    if (!paciente.cpf) return
-    
-    try {
-      setLoading(true)
-      console.log(`📊 CARREGANDO RESUMOS PARA: ${paciente.nome_completo} (${paciente.cpf})`)
+    const loadPacientesComResumos = async () => {
+      if (!initialized) return
       
-      // Carregar diários
-      const diarios = await supabaseApi.getResumosDiariosPaciente(paciente.cpf)
-      setResumosDiarios(diarios || [])
-      
-      // Carregar semanais - com verificação de existência da função
+      setLoadingPacientes(true)
       try {
-        if (typeof supabaseApi.getResumosDiariosPaciente === 'function') {
-          const semanais = await supabaseApi.getResumosDiariosPaciente(paciente.cpf)
-          setResumosSemanais(semanais || [])
-        } else {
-          console.log('⚠️ Função getResumosSemanasPaciente não disponível')
-          setResumosSemanais([])
-        }
-      } catch (err) {
-        console.log('⚠️ Erro ao carregar semanais:', err)
-        setResumosSemanais([])
+        const pacientes = await getPacientesComResumos()
+        setPacientesComResumos(pacientes)
+        console.log(`✅ Dashboard Terapêutico: ${pacientes.length} pacientes com resumos`)
+      } catch (error) {
+        console.error('❌ Erro ao carregar pacientes com resumos:', error)
+      } finally {
+        setLoadingPacientes(false)
       }
-      
-      // Auto-selecionar primeira data se disponível
-      if (diarios && diarios.length > 0) {
-        const primeiraDataReal = diarios[0].data_resumo
-        console.log(`✅ AUTO-SELECIONANDO DATA REAL: ${primeiraDataReal}`)
-        setSelectedDate(primeiraDataReal)
-        loadConversaDia(paciente.cpf, primeiraDataReal)
-      } else {
-        setSelectedDate('')
-        setConversaDia(null)
-      }
-      
-    } catch (error) {
-      console.error('❌ Erro ao carregar resumos:', error)
-      setResumosDiarios([])
-      setResumosSemanais([])
-    } finally {
-      setLoading(false)
     }
-  }, [])
+    
+    loadPacientesComResumos()
+  }, [initialized, getPacientesComResumos])
 
+  // Carregar conversa específica (diário)
   const loadConversaDia = useCallback(async (cpf: string, dataResumo: string) => {
     if (!cpf || !dataResumo) return
     
+    setLoadingConversa(true)
     try {
-      setLoadingConversa(true)
-      console.log(`💬 CARREGANDO CONVERSA EXATA: CPF=${cpf}, Data=${dataResumo}`)
-      
-      const conversa = await supabaseApi.getResumoEspecifico(cpf, dataResumo)
+      console.log(`💬 Carregando conversa: CPF=${cpf}, Data=${dataResumo}`)
+      const conversa = await getResumoEspecifico(cpf, dataResumo)
       setConversaDia(conversa)
-      
+      // Limpar resumo semanal quando selecionar diário
+      setSelectedResumoSemanal(null)
     } catch (error) {
       console.error('❌ Erro ao carregar conversa:', error)
       setConversaDia(null)
     } finally {
       setLoadingConversa(false)
     }
+  }, [getResumoEspecifico])
+
+  // Handler de seleção de paciente
+  const handleSelectPaciente = useCallback((paciente: Paciente) => {
+    console.log(`👤 Paciente selecionado: ${paciente.nome_completo}`)
+    setSelectedPaciente(paciente)
+    setSelectedDate('')
+    setConversaDia(null)
+    setSelectedResumoSemanal(null)
   }, [])
 
-  const handleSelectPaciente = useCallback((paciente: Paciente) => {
-    console.log(`👤 PACIENTE SELECIONADO: ${paciente.nome_completo} (${paciente.cpf})`)
-    setSelectedPaciente(paciente)
-    loadResumosPaciente(paciente)
-  }, [loadResumosPaciente])
+  // Auto-selecionar primeira data quando resumos carregam
+  useEffect(() => {
+    if (viewMode === 'diario' && resumosDiarios.length > 0 && !selectedDate && selectedPaciente) {
+      const primeiraData = resumosDiarios[0].data_resumo
+      setSelectedDate(primeiraData)
+      loadConversaDia(selectedPaciente.cpf, primeiraData)
+    }
+  }, [resumosDiarios, selectedDate, selectedPaciente, loadConversaDia, viewMode])
 
+  // Auto-selecionar primeiro resumo semanal quando troca para modo semanal
+  useEffect(() => {
+    if (viewMode === 'semanal' && resumosSemanais.length > 0 && !selectedResumoSemanal && selectedPaciente) {
+      setSelectedResumoSemanal(resumosSemanais[0])
+      setConversaDia(null)
+      setSelectedDate('')
+    }
+  }, [viewMode, resumosSemanais, selectedResumoSemanal, selectedPaciente])
+
+  // Handler de seleção de data (diário)
   const handleSelectDate = useCallback((dataResumo: string) => {
-    console.log(`📅 DATA SELECIONADA: ${dataResumo}`)
     setSelectedDate(dataResumo)
+    setSelectedResumoSemanal(null)
     if (selectedPaciente?.cpf) {
       loadConversaDia(selectedPaciente.cpf, dataResumo)
     }
   }, [selectedPaciente?.cpf, loadConversaDia])
 
+  // ✅ Handler de seleção de resumo semanal
+  const handleSelectResumoSemanal = useCallback((resumo: ResumosSemanais) => {
+    console.log(`📅 Resumo semanal selecionado: ${resumo.data_inicio_semana} - ${resumo.data_fim_semana}`)
+    setSelectedResumoSemanal(resumo)
+    setConversaDia(null)
+    setSelectedDate('')
+  }, [])
+
+  // Formatador de data
   const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -289,130 +168,187 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // Render Conversa - Parser WhatsApp Style
-  const renderConversa = useCallback((resumoInteracoes: string) => {
-    if (!resumoInteracoes || resumoInteracoes.trim() === '') {
-      return (
-        <div className="text-center py-8">
-          <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
-          <p className="text-clinic-gray-400">Conversa vazia ou sem conteúdo</p>
-        </div>
-      )
-    }
-    
-    try {
-      let mensagens: Array<{speaker: string, texto: string}> = []
-      
-      const blocosPaciente = resumoInteracoes.split(/\*\*PACIENTE\*\*:?\s*/i).filter(bloco => bloco.trim())
-      
-      blocosPaciente.forEach((bloco) => {
-        const partesBloco = bloco.split(/\*\*(EVELYN|AGENTE|AGENT)\s*IA\*\*:?\s*/i)
-        
-        if (partesBloco.length >= 2) {
-          const mensagemPaciente = partesBloco[0]?.trim()
-          if (mensagemPaciente) {
-            mensagens.push({ speaker: 'PACIENTE', texto: mensagemPaciente })
-          }
-          
-          const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim()
-          if (respostaIA) {
-            mensagens.push({ speaker: 'Agente IA', texto: respostaIA })
-          }
-        } else {
-          const textoLimpo = bloco.trim()
-          if (textoLimpo) {
-            mensagens.push({ speaker: 'PACIENTE', texto: textoLimpo })
-          }
-        }
-      })
-      
-      if (mensagens.length === 0) {
-        const partes = resumoInteracoes.split(/\*\*(PACIENTE|EVELYN|AGENTE|AGENT|IA)\*\*:?\s*/gi)
-        
-        for (let i = 1; i < partes.length; i += 2) {
-          const speaker = partes[i - 1]?.toUpperCase() || ''
-          const texto = partes[i]?.trim() || ''
-          
-          if (texto) {
-            const isPatient = speaker.includes('PACIENTE')
-            mensagens.push({
-              speaker: isPatient ? 'PACIENTE' : 'Agente IA',
-              texto: texto
-            })
-          }
-        }
-      }
-      
-      if (mensagens.length === 0) {
+  // Formatador de CPF
+  const formatCPF = useCallback((cpf: string) => {
+    if (!cpf) return ''
+    return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  }, [])
+
+  // Render Conversa - Parser WhatsApp Style (memoizado)
+  const renderConversa = useMemo(() => {
+    return (resumoInteracoes: string) => {
+      if (!resumoInteracoes || resumoInteracoes.trim() === '') {
         return (
           <div className="text-center py-8">
-            <p className="text-yellow-400 mb-4">⚠️ Não foi possível parsear a conversa</p>
-            <div className="bg-clinic-gray-800 p-4 rounded-lg text-left text-xs text-clinic-gray-300 max-h-40 overflow-y-auto">
-              <pre className="whitespace-pre-wrap">{resumoInteracoes}</pre>
-            </div>
+            <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
+            <p className="text-clinic-gray-400">Conversa vazia ou sem conteúdo</p>
           </div>
         )
       }
       
-      // Render WhatsApp Style
-      return (
-        <div className="space-y-4 p-2">
-          {mensagens.map((mensagem, index) => {
-            const isPatient = mensagem.speaker === 'PACIENTE'
+      try {
+        let mensagens: Array<{speaker: string, texto: string}> = []
+        
+        const blocosPaciente = resumoInteracoes.split(/\*\*PACIENTE\*\*:?\s*/i).filter(bloco => bloco.trim())
+        
+        blocosPaciente.forEach((bloco) => {
+          const partesBloco = bloco.split(/\*\*(EVELYN|AGENTE|AGENT)\s*IA\*\*:?\s*/i)
+          
+          if (partesBloco.length >= 2) {
+            const mensagemPaciente = partesBloco[0]?.trim()
+            if (mensagemPaciente) {
+              mensagens.push({ speaker: 'PACIENTE', texto: mensagemPaciente })
+            }
             
-            return (
-              <div 
-                key={`msg-${index}-${mensagem.speaker}`}
-                className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}
-              >
+            const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim()
+            if (respostaIA) {
+              mensagens.push({ speaker: 'Agente IA', texto: respostaIA })
+            }
+          } else {
+            const textoLimpo = bloco.trim()
+            if (textoLimpo) {
+              mensagens.push({ speaker: 'PACIENTE', texto: textoLimpo })
+            }
+          }
+        })
+        
+        if (mensagens.length === 0) {
+          const partes = resumoInteracoes.split(/\*\*(PACIENTE|EVELYN|AGENTE|AGENT|IA)\*\*:?\s*/gi)
+          
+          for (let i = 1; i < partes.length; i += 2) {
+            const speaker = partes[i - 1]?.toUpperCase() || ''
+            const texto = partes[i]?.trim() || ''
+            
+            if (texto) {
+              const isPatient = speaker.includes('PACIENTE')
+              mensagens.push({
+                speaker: isPatient ? 'PACIENTE' : 'Agente IA',
+                texto: texto
+              })
+            }
+          }
+        }
+        
+        if (mensagens.length === 0) {
+          return (
+            <div className="text-center py-8">
+              <p className="text-yellow-400 mb-4">⚠️ Não foi possível parsear a conversa</p>
+              <div className="bg-clinic-gray-800 p-4 rounded-lg text-left text-xs text-clinic-gray-300 max-h-40 overflow-y-auto">
+                <pre className="whitespace-pre-wrap">{resumoInteracoes}</pre>
+              </div>
+            </div>
+          )
+        }
+        
+        // Render WhatsApp Style
+        return (
+          <div className="space-y-4 p-2">
+            {mensagens.map((mensagem, index) => {
+              const isPatient = mensagem.speaker === 'PACIENTE'
+              
+              return (
                 <div 
-                  className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
-                    isPatient 
-                      ? 'bg-cyan-600 text-white rounded-br-sm'
-                      : 'bg-purple-600 text-white rounded-bl-sm'
-                  }`}
+                  key={`msg-${index}`}
+                  className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className={`text-xs font-semibold mb-1 opacity-90 ${
-                    isPatient ? 'text-cyan-100' : 'text-purple-100'
-                  }`}>
-                    {mensagem.speaker}
-                  </div>
-                  
-                  <div className="text-sm leading-relaxed">
-                    {mensagem.texto}
-                  </div>
-                  
-                  <div className={`text-xs mt-1 opacity-75 text-right ${
-                    isPatient ? 'text-cyan-200' : 'text-purple-200'
-                  }`}>
-                    {new Date().toLocaleTimeString('pt-BR', { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
+                  <div 
+                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
+                      isPatient 
+                        ? 'bg-cyan-600 text-white rounded-br-sm'
+                        : 'bg-purple-600 text-white rounded-bl-sm'
+                    }`}
+                  >
+                    <p className="text-xs font-bold mb-1 opacity-80">
+                      {isPatient ? '👤 Paciente' : '🤖 Agente IA'}
+                    </p>
+                    <p className="text-sm whitespace-pre-wrap">{mensagem.texto}</p>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )
-      
-    } catch (error) {
-      console.error('❌ ERRO ao renderizar conversa:', error)
-      return (
-        <div className="text-center py-8">
-          <p className="text-red-400">Erro ao renderizar conversa</p>
-        </div>
-      )
+              )
+            })}
+          </div>
+        )
+      } catch (error) {
+        console.error('Erro ao parsear conversa:', error)
+        return (
+          <div className="text-center py-8 text-red-400">
+            Erro ao processar conversa
+          </div>
+        )
+      }
     }
   }, [])
 
-  if (loading && !currentUser) {
+  // ✅ Render Resumo Semanal (formatado bonito)
+  const renderResumoSemanal = useCallback((resumo: ResumosSemanais) => {
+    if (!resumo.resumo_geral_semana || resumo.resumo_geral_semana.trim() === '') {
+      return (
+        <div className="text-center py-8">
+          <FileText className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
+          <p className="text-clinic-gray-400">Resumo semanal vazio ou sem conteúdo</p>
+        </div>
+      )
+    }
+
+    // Dividir o resumo em parágrafos
+    const paragrafos = resumo.resumo_geral_semana.split('\n').filter(p => p.trim())
+
+    return (
+      <div className="p-4 space-y-4">
+        {/* Header do Resumo */}
+        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4">
+          <div className="flex items-center mb-2">
+            <CalendarDays className="h-5 w-5 mr-2 text-purple-400" />
+            <span className="text-purple-300 font-medium">Período da Semana</span>
+          </div>
+          <p className="text-clinic-white text-lg font-semibold">
+            {formatDate(resumo.data_inicio_semana)} — {formatDate(resumo.data_fim_semana)}
+          </p>
+          <p className="text-clinic-gray-400 text-sm mt-1">
+            Gerado em: {formatDate(resumo.data_geracao)}
+          </p>
+        </div>
+
+        {/* Conteúdo do Resumo */}
+        <div className="bg-clinic-gray-800 rounded-lg p-4">
+          <h4 className="text-clinic-cyan font-medium mb-3 flex items-center">
+            <FileText className="h-4 w-4 mr-2" />
+            Resumo Geral da Semana
+          </h4>
+          <div className="space-y-3 text-clinic-gray-200 text-sm leading-relaxed">
+            {paragrafos.map((paragrafo, index) => (
+              <p key={index} className="whitespace-pre-wrap">
+                {paragrafo}
+              </p>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }, [formatDate])
+
+  // ============ LOADING STATES ============
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-clinic-black flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
-          <p className="text-clinic-gray-400">Carregando dashboard...</p>
+          <p className="text-clinic-gray-400">Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
+
+  if (!initialized) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Carregando dados...</p>
         </div>
       </div>
     )
@@ -421,39 +357,35 @@ export default function DashboardIAPage() {
   return (
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
-        
-        {/* Header Universal */}
         <HeaderUniversal 
-          titulo="Interações Paciente - IA" 
-          descricao="Acompanhe todas as conversas entre pacientes e sua assistente virtual"
+          titulo="Dashboard IA - Paciente" 
+          descricao="Acompanhe as interações dos pacientes com a Agente IA"
           icone={Bot}
-          showNovaClinicaModal={handleShowNovaClinicaModal}
+          showNovaClinicaModal={() => setShowNovaClinicaModal(true)}
         />
 
-    {/* Navegação por Tabs */}
-<div className="mb-8">
-  <div className="border-b border-clinic-gray-700">
-    <nav className="flex space-x-8">
-      <button
-        onClick={() => router.push('/dashboard/marketing')}
-        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-      >
-        Marketing e Terapêutico
-      </button>
-      <button
-        className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
-      >
-        IA - Paciente
-      </button>
-      <button
-        onClick={() => router.push('/dashboard/vendas')}
-        className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-      >
-        Comercial
-      </button>
-    </nav>
-  </div>
-</div>
+        {/* Navegação entre dashboards */}
+        <div className="mb-6">
+          <div className="bg-clinic-gray-800 rounded-lg p-1 inline-flex">
+            <nav className="flex space-x-1">
+              <button
+                onClick={() => router.push('/dashboard/marketing')}
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+              >
+                Marketing e Terapêutico
+              </button>
+              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
+                IA - Paciente
+              </button>
+              <button
+                onClick={() => router.push('/dashboard/vendas')}
+                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+              >
+                Comercial
+              </button>
+            </nav>
+          </div>
+        </div>
 
         {/* Conteúdo Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -464,11 +396,21 @@ export default function DashboardIAPage() {
               Dados do Paciente
             </h2>
             
+            {/* ✅ COMPONENTE COM PACIENTES QUE TÊM RESUMOS */}
             <BuscaPacienteDropdown
               onSelectPaciente={handleSelectPaciente}
               selectedPaciente={selectedPaciente}
+              pacientesList={pacientesComResumos}
+              placeholder={loadingPacientes ? "Carregando pacientes..." : "Buscar paciente com resumo..."}
               className="mb-6"
             />
+            
+            {/* Indicador de pacientes disponíveis */}
+            {!loadingPacientes && (
+              <p className="text-xs text-clinic-gray-500 -mt-4 mb-4">
+                {pacientesComResumos.length} paciente{pacientesComResumos.length !== 1 ? 's' : ''} com resumos disponíveis
+              </p>
+            )}
 
             {selectedPaciente && (
               <div className="space-y-4 mb-6">
@@ -485,7 +427,7 @@ export default function DashboardIAPage() {
                     <User className="h-4 w-4 mr-2 text-clinic-cyan" />
                     <span className="text-clinic-gray-400 text-sm">CPF:</span>
                   </div>
-                  <p className="text-clinic-white font-mono">{selectedPaciente.cpf?.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')}</p>
+                  <p className="text-clinic-white font-mono">{formatCPF(selectedPaciente.cpf)}</p>
                 </div>
               </div>
             )}
@@ -494,7 +436,10 @@ export default function DashboardIAPage() {
             {selectedPaciente && (resumosDiarios.length > 0 || resumosSemanais.length > 0) && (
               <div className="flex space-x-2 mb-4">
                 <button
-                  onClick={() => setViewMode('diario')}
+                  onClick={() => {
+                    setViewMode('diario')
+                    setSelectedResumoSemanal(null)
+                  }}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                     viewMode === 'diario'
                       ? 'bg-clinic-cyan text-clinic-black'
@@ -505,10 +450,14 @@ export default function DashboardIAPage() {
                   Diário ({resumosDiarios.length})
                 </button>
                 <button
-                  onClick={() => setViewMode('semanal')}
+                  onClick={() => {
+                    setViewMode('semanal')
+                    setConversaDia(null)
+                    setSelectedDate('')
+                  }}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                     viewMode === 'semanal'
-                      ? 'bg-clinic-cyan text-clinic-black'
+                      ? 'bg-purple-600 text-white'
                       : 'bg-clinic-gray-800 text-clinic-gray-400 hover:bg-clinic-gray-700'
                   }`}
                 >
@@ -518,8 +467,16 @@ export default function DashboardIAPage() {
               </div>
             )}
 
+            {/* Loading de resumos */}
+            {resumosLoading && (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+                <p className="text-clinic-gray-400 text-sm">Carregando resumos...</p>
+              </div>
+            )}
+
             {/* Timeline Diária */}
-            {viewMode === 'diario' && resumosDiarios.length > 0 && (
+            {!resumosLoading && viewMode === 'diario' && resumosDiarios.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-clinic-white mb-3 flex items-center">
                   <Calendar className="h-4 w-4 mr-2 text-clinic-cyan" />
@@ -536,14 +493,9 @@ export default function DashboardIAPage() {
                           : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
                       }`}
                     >
-                      <div className="font-medium">
-                        {formatDate(resumo.data_resumo)}
-                      </div>
+                      <div className="font-medium">{formatDate(resumo.data_resumo)}</div>
                       <div className="text-xs opacity-75 mt-1">
-                        {resumo.resumo_interacoes ? 
-                          `${resumo.resumo_interacoes.length} chars` : 
-                          'Sem conversa'
-                        }
+                        {resumo.resumo_interacoes ? `${resumo.resumo_interacoes.length} chars` : 'Sem conversa'}
                       </div>
                     </div>
                   ))}
@@ -551,38 +503,60 @@ export default function DashboardIAPage() {
               </div>
             )}
 
-            {/* Timeline Semanal */}
-            {viewMode === 'semanal' && resumosSemanais.length > 0 && (
+            {/* ✅ Timeline Semanal - AGORA CLICÁVEL */}
+            {!resumosLoading && viewMode === 'semanal' && resumosSemanais.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-clinic-white mb-3 flex items-center">
                   <CalendarDays className="h-4 w-4 mr-2 text-purple-400" />
                   Resumos Semanais
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
-                  {resumosSemanais.map((resumo) => (
+                  {resumosSemanais.map((resumo: ResumosSemanais) => (
                     <div
                       key={`semanal-${resumo.id_resumo_sem}`}
-                      className="p-3 rounded-lg bg-clinic-gray-800 text-clinic-gray-300"
+                      onClick={() => handleSelectResumoSemanal(resumo)}
+                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-sm ${
+                        selectedResumoSemanal?.id_resumo_sem === resumo.id_resumo_sem
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
+                      }`}
                     >
-                      <div className="font-medium text-sm">
+                      <div className="font-medium">
                         {formatDate(resumo.data_inicio_semana)} - {formatDate(resumo.data_fim_semana)}
                       </div>
-                      <div className="text-xs opacity-75 mt-2 line-clamp-3">
-                        {resumo.resumo_geral_semana?.substring(0, 150) || 'Sem resumo'}...
+                      <div className="text-xs opacity-75 mt-1 line-clamp-2">
+                        {resumo.resumo_geral_semana?.substring(0, 80) || 'Sem resumo'}...
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+
+            {/* Mensagem quando não tem resumos */}
+            {!resumosLoading && selectedPaciente && resumosDiarios.length === 0 && resumosSemanais.length === 0 && (
+              <div className="text-center py-4">
+                <FileText className="h-8 w-8 mx-auto mb-2 text-clinic-gray-500 opacity-50" />
+                <p className="text-clinic-gray-400 text-sm">Nenhum resumo encontrado para este paciente</p>
+              </div>
+            )}
           </Card>
 
-          {/* Colunas 2 e 3: Conversa do Dia */}
+          {/* Colunas 2 e 3: Área de Visualização */}
           <Card className="lg:col-span-2 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-clinic-white flex items-center">
-                <MessageCircle className="h-5 w-5 mr-2 text-purple-400" />
-                Conversa do dia {selectedDate ? formatDate(selectedDate) : ''}
+                {viewMode === 'diario' ? (
+                  <>
+                    <MessageCircle className="h-5 w-5 mr-2 text-cyan-400" />
+                    Conversa do dia {selectedDate ? formatDate(selectedDate) : ''}
+                  </>
+                ) : (
+                  <>
+                    <CalendarDays className="h-5 w-5 mr-2 text-purple-400" />
+                    Resumo Semanal
+                  </>
+                )}
               </h2>
               
               {selectedPaciente && (
@@ -593,23 +567,48 @@ export default function DashboardIAPage() {
               )}
             </div>
 
-            {/* Área da Conversa - WhatsApp Style */}
+            {/* Área de Conteúdo */}
             <div className="bg-clinic-gray-900 rounded-lg h-96 overflow-y-auto">
-              {loadingConversa ? (
+              {/* Loading */}
+              {loadingConversa && (
                 <div className="flex items-center justify-center h-full">
                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mr-3"></div>
-                  <span className="ml-2 text-clinic-gray-400">Carregando conversa...</span>
+                  <span className="ml-2 text-clinic-gray-400">Carregando...</span>
                 </div>
-              ) : conversaDia ? (
+              )}
+              
+              {/* ✅ MODO DIÁRIO - Conversa */}
+              {!loadingConversa && viewMode === 'diario' && conversaDia && (
                 renderConversa(conversaDia.resumo_interacoes)
-              ) : selectedPaciente ? (
+              )}
+              
+              {/* ✅ MODO SEMANAL - Resumo */}
+              {!loadingConversa && viewMode === 'semanal' && selectedResumoSemanal && (
+                renderResumoSemanal(selectedResumoSemanal)
+              )}
+              
+              {/* Placeholder - Diário sem seleção */}
+              {!loadingConversa && viewMode === 'diario' && !conversaDia && selectedPaciente && (
                 <div className="flex items-center justify-center h-full text-clinic-gray-400">
                   <div className="text-center">
                     <MessageCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
                     <p>Selecione uma data para ver a conversa</p>
                   </div>
                 </div>
-              ) : (
+              )}
+              
+              {/* Placeholder - Semanal sem seleção */}
+              {!loadingConversa && viewMode === 'semanal' && !selectedResumoSemanal && selectedPaciente && (
+                <div className="flex items-center justify-center h-full text-clinic-gray-400">
+                  <div className="text-center">
+                    <CalendarDays className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Selecione uma semana para ver o resumo</p>
+                  </div>
+                </div>
+              )}
+              
+              {/* Placeholder - Sem paciente */}
+              {!loadingConversa && !selectedPaciente && (
                 <div className="flex items-center justify-center h-full text-clinic-gray-400">
                   <div className="text-center">
                     <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
@@ -622,11 +621,10 @@ export default function DashboardIAPage() {
 
         </div>
 
-        {/* Modal Nova Clínica */}
         <NovaClinicaModal
           isOpen={showNovaClinicaModal}
           onClose={() => setShowNovaClinicaModal(false)}
-          onSuccess={handleClinicaCriada}
+          onSuccess={() => setShowNovaClinicaModal(false)}
         />
       </div>
     </div>

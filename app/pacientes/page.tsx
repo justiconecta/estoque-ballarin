@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Users, 
@@ -18,10 +18,11 @@ import {
 } from 'lucide-react'
 import { Button, Input, Select, Card, Modal, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import { Usuario, Paciente } from '@/types/database'
+import { useAuth } from '@/contexts/AuthContext'
+import { Paciente } from '@/types/database'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
-// ✅ INTERFACE CORRIGIDA - TODOS os campos com nomes reais da tabela
+// Interface do formulário - todos os campos com nomes reais da tabela
 interface PacienteForm {
   nome_completo: string
   cpf: string
@@ -34,7 +35,7 @@ interface PacienteForm {
   status_paciente: string
 }
 
-// ✅ FORM INICIAL CORRIGIDO
+// Form inicial
 const pacienteFormInitial: PacienteForm = {
   nome_completo: '',
   cpf: '',
@@ -50,12 +51,16 @@ const pacienteFormInitial: PacienteForm = {
 export default function PacientesPage() {
   const router = useRouter()
   
+  // ✅ USA AUTH CONTEXT
+  const { isAuthenticated, loading: authLoading, profile } = useAuth()
+  
   // Estados principais
-  const [pacientesOriginal, setPacientesOriginal] = useState<Paciente[]>([]) // ✅ Lista original
-  const [loading, setLoading] = useState(false)
+  const [pacientesOriginal, setPacientesOriginal] = useState<Paciente[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dataLoaded, setDataLoaded] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   
-  // ✅ ESTADO MODAL NOVA CLÍNICA
+  // Estado modal nova clínica
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
   // Estados de modal/form
@@ -78,7 +83,7 @@ export default function PacientesPage() {
     message: ''
   })
 
-  // ✅ FILTRO EM TEMPO REAL - Filtra enquanto digita
+  // Filtro em tempo real - Filtra enquanto digita
   const pacientes = useMemo(() => {
     if (!searchTerm.trim()) return pacientesOriginal
     
@@ -94,44 +99,59 @@ export default function PacientesPage() {
     )
   }, [pacientesOriginal, searchTerm])
 
-  // Carregar dados iniciais
-  useEffect(() => {
-    const userData = localStorage.getItem('ballarin_user')
-    if (userData) {
-      loadPacientes()
+  // ============ CARREGAR DADOS ============
+  const loadPacientes = useCallback(async () => {
+    try {
+      console.log('📋 Pacientes: Carregando...')
+      const data = await supabaseApi.getPacientes()
+      console.log(`✅ Pacientes: ${data.length} carregados`)
+      setPacientesOriginal(data)
+    } catch (error) {
+      showFeedback('error', 'Erro', 'Falha ao carregar pacientes')
+      console.error('❌ Erro ao carregar pacientes:', error)
     }
   }, [])
 
-  const loadPacientes = async () => {
+  const loadAllData = useCallback(async () => {
+    setLoading(true)
     try {
-      setLoading(true)
-      console.log('📋 Carregando pacientes...')
-      const data = await supabaseApi.getPacientes()
-      console.log('📊 Dados recebidos:', data)
-      setPacientesOriginal(data) // ✅ Salva na lista original
-    } catch (error) {
-      showFeedback('error', 'Erro', 'Falha ao carregar pacientes')
-      console.error('Erro ao carregar pacientes:', error)
+      await loadPacientes()
+      setDataLoaded(true)
     } finally {
       setLoading(false)
     }
-  }
+  }, [loadPacientes])
+
+  // ✅ CARREGAR DADOS QUANDO AUTENTICADO
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && profile?.id_clinica && !dataLoaded) {
+      console.log('🔑 Pacientes: Auth pronto, carregando dados...')
+      loadAllData()
+    }
+  }, [authLoading, isAuthenticated, profile?.id_clinica, dataLoaded, loadAllData])
+
+  // ✅ REDIRECIONAR SE NÃO AUTENTICADO
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login')
+    }
+  }, [authLoading, isAuthenticated, router])
 
   const showFeedback = (type: 'success' | 'error', title: string, message: string) => {
     setFeedbackModal({ isOpen: true, type, title, message })
   }
 
-  // ✅ CALLBACK PARA ABRIR MODAL NOVA CLÍNICA
+  // Callback para abrir modal nova clínica
   const handleShowNovaClinicaModal = () => {
     setShowNovaClinicaModal(true)
   }
 
-  // ✅ HANDLER APÓS CRIAR CLÍNICA
+  // Handler após criar clínica
   const handleClinicaCriada = async () => {
     setShowNovaClinicaModal(false)
   }
 
-  // ✅ MAPEAMENTO MODAL CORRIGIDO
+  // Mapeamento modal
   const openModal = (type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
     setModalType(type)
     setSelectedPaciente(paciente || null)
@@ -178,7 +198,7 @@ export default function PacientesPage() {
       
       showFeedback('success', 'Sucesso', 'Paciente cadastrado com sucesso!')
       closeModal()
-      loadPacientes()
+      await loadPacientes()
     } catch (error) {
       showFeedback('error', 'Erro', 'Falha ao cadastrar paciente')
       console.error('Erro ao criar paciente:', error)
@@ -202,7 +222,7 @@ export default function PacientesPage() {
       
       showFeedback('success', 'Sucesso', 'Paciente atualizado com sucesso!')
       closeModal()
-      loadPacientes()
+      await loadPacientes()
     } catch (error) {
       showFeedback('error', 'Erro', 'Falha ao atualizar paciente')
       console.error('Erro ao atualizar paciente:', error)
@@ -211,7 +231,7 @@ export default function PacientesPage() {
     }
   }
 
-  // ✅ Inativar paciente (soft delete)
+  // Inativar paciente (soft delete)
   const handleInactivatePaciente = async () => {
     if (!selectedPaciente) return
 
@@ -223,7 +243,7 @@ export default function PacientesPage() {
       
       showFeedback('success', 'Sucesso', 'Paciente inativado com sucesso!')
       closeModal()
-      loadPacientes()
+      await loadPacientes()
     } catch (error) {
       showFeedback('error', 'Erro', 'Falha ao inativar paciente')
       console.error('Erro ao inativar paciente:', error)
@@ -243,11 +263,38 @@ export default function PacientesPage() {
     }
   }
 
+  // ============ LOADING STATES ============
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null // Será redirecionado pelo useEffect
+  }
+
+  if (loading && !dataLoaded) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Carregando pacientes...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
         
-        {/* ✅ HEADER UNIVERSAL */}
+        {/* HEADER UNIVERSAL */}
         <HeaderUniversal 
           titulo="Gestão de Pacientes" 
           descricao="Cadastro e acompanhamento de pacientes da sua clínica"
@@ -255,7 +302,7 @@ export default function PacientesPage() {
           showNovaClinicaModal={handleShowNovaClinicaModal}
         />
 
-        {/* ✅ CONTROLES - Busca em tempo real (sem botão) */}
+        {/* CONTROLES - Busca em tempo real */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="flex-1">
             <div className="relative">
@@ -267,7 +314,7 @@ export default function PacientesPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg pl-10 pr-4 py-2.5 text-clinic-white placeholder-clinic-gray-500 focus:outline-none focus:border-clinic-cyan"
               />
-              {/* ✅ Botão limpar quando tem texto */}
+              {/* Botão limpar quando tem texto */}
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm('')}
@@ -283,7 +330,7 @@ export default function PacientesPage() {
           </Button>
         </div>
 
-        {/* ✅ Contador de resultados */}
+        {/* Contador de resultados */}
         {searchTerm && (
           <p className="text-clinic-gray-400 text-sm mb-4">
             {pacientes.length} paciente{pacientes.length !== 1 ? 's' : ''} encontrado{pacientes.length !== 1 ? 's' : ''}
@@ -293,7 +340,7 @@ export default function PacientesPage() {
 
         {/* Lista de Pacientes */}
         <Card>
-          {loading ? (
+          {loading && !dataLoaded ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent" />
               <span className="ml-2 text-clinic-gray-400">Carregando pacientes...</span>
@@ -696,3 +743,9 @@ export default function PacientesPage() {
     </div>
   )
 }
+
+
+
+
+
+

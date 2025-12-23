@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Package, 
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { Button, Input, Select, Card, Modal, HeaderUniversal } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
+import { useAuth } from '@/contexts/AuthContext'
 import { ProdutoComEstoque, MovimentacaoDetalhada } from '@/types/database'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
@@ -29,13 +30,17 @@ interface MovimentacaoForm {
 export default function EstoquePage() {
   const router = useRouter()
   
+  // ✅ USA AUTH CONTEXT
+  const { isAuthenticated, loading: authLoading, profile } = useAuth()
+  
   const [produtos, setProdutos] = useState<ProdutoComEstoque[]>([])
   const [movimentacoes, setMovimentacoes] = useState<MovimentacaoDetalhada[]>([])
   const [selectedProduto, setSelectedProduto] = useState<ProdutoComEstoque | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [dataLoaded, setDataLoaded] = useState(false)
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
-  // ✅ AJUSTE 6: Estado para média de saída por SKU
+  // Estado para média de saída por SKU
   const [mediaSaidaPorSku, setMediaSaidaPorSku] = useState<Record<number, number>>({})
   
   const [movForm, setMovForm] = useState<MovimentacaoForm>({
@@ -72,7 +77,7 @@ export default function EstoquePage() {
     showModal('success', 'Sucesso', 'Clínica criada com sucesso!')
   }
 
-  // ✅ AJUSTE 4: Formatar data sem problema de timezone
+  // Formatar data sem problema de timezone
   const formatDate = (dateString: string) => {
     if (!dateString) return '-'
     const str = typeof dateString === 'string' ? dateString : String(dateString)
@@ -111,54 +116,73 @@ export default function EstoquePage() {
     return parseInt(numbers) / 100
   }
 
-  useEffect(() => {
-    const userData = localStorage.getItem('ballarin_user')
-    if (userData) {
-      loadProdutos()
-      loadMovimentacoes()
-      loadMediaSaida()
-    }
-  }, [])
-
-  const loadProdutos = async () => {
+  // ============ CARREGAR DADOS ============
+  const loadProdutos = useCallback(async () => {
     try {
-      setLoading(true)
       const data = await supabaseApi.getProdutos()
       
       const produtosProcessados = data.map(produto => ({
         ...produto,
-        estoque_total: produto.lotes.reduce((sum: any, lote: { quantidade_disponivel: any }) => sum + lote.quantidade_disponivel, 0)
+        estoque_total: produto.lotes.reduce((sum: number, lote: { quantidade_disponivel: number }) => sum + lote.quantidade_disponivel, 0)
       }))
       
       setProdutos(produtosProcessados)
+      console.log(`✅ Estoque: ${produtosProcessados.length} produtos carregados`)
     } catch (error) {
+      console.error('❌ Erro ao carregar produtos:', error)
       showModal('error', 'Erro', 'Falha ao carregar produtos do Supabase')
-      console.error('Erro ao carregar produtos:', error)
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [])
 
-  const loadMovimentacoes = async () => {
+  const loadMovimentacoes = useCallback(async () => {
     try {
       const data = await supabaseApi.getMovimentacoes(50)
       setMovimentacoes(data)
+      console.log(`✅ Estoque: ${data.length} movimentações carregadas`)
     } catch (error) {
-      console.error('Erro ao carregar movimentações:', error)
+      console.error('❌ Erro ao carregar movimentações:', error)
     }
-  }
+  }, [])
 
-  // ✅ AJUSTE 6: Carregar média de saída por SKU
-  const loadMediaSaida = async () => {
+  const loadMediaSaida = useCallback(async () => {
     try {
       const media = await supabaseApi.getMediaSaidaPorSku()
       setMediaSaidaPorSku(media)
     } catch (error) {
-      console.error('Erro ao carregar média de saída:', error)
+      console.error('❌ Erro ao carregar média de saída:', error)
     }
-  }
+  }, [])
 
-  // ✅ AJUSTE 6: Calcular status inteligente baseado em velocidade de saída
+  const loadAllData = useCallback(async () => {
+    setLoading(true)
+    try {
+      await Promise.all([
+        loadProdutos(),
+        loadMovimentacoes(),
+        loadMediaSaida()
+      ])
+      setDataLoaded(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [loadProdutos, loadMovimentacoes, loadMediaSaida])
+
+  // ✅ CARREGAR DADOS QUANDO AUTENTICADO
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && profile?.id_clinica && !dataLoaded) {
+      console.log('🔑 Estoque: Auth pronto, carregando dados...')
+      loadAllData()
+    }
+  }, [authLoading, isAuthenticated, profile?.id_clinica, dataLoaded, loadAllData])
+
+  // ✅ REDIRECIONAR SE NÃO AUTENTICADO
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login')
+    }
+  }, [authLoading, isAuthenticated, router])
+
+  // Calcular status inteligente baseado em velocidade de saída
   const getStatusProduto = (produto: ProdutoComEstoque): { status: string; cor: string; diasEstoque: number } => {
     const mediaDiaria = mediaSaidaPorSku[produto.id_sku] || 0
     
@@ -172,7 +196,7 @@ export default function EstoquePage() {
 
     const diasEstoque = Math.round(produto.estoque_total / mediaDiaria)
 
-    // Lógica baseada no SQL fornecido:
+    // Lógica baseada no SQL:
     // < 4 dias → CRÍTICO
     // < 7 dias → BAIXO
     // ≤ 10 dias → PADRÃO
@@ -189,7 +213,7 @@ export default function EstoquePage() {
     return { status: 'Alto', cor: 'blue', diasEstoque }
   }
 
-  // ✅ AJUSTE 6: Classes de cor para tags
+  // Classes de cor para tags
   const getStatusClasses = (status: { status: string; cor: string }) => {
     const corMap: Record<string, string> = {
       red: 'bg-red-900/30 text-red-300',
@@ -230,8 +254,8 @@ export default function EstoquePage() {
     try {
       setLoading(true)
 
-      const userData = localStorage.getItem('ballarin_user')
-      const currentUser = userData ? JSON.parse(userData) : null
+      // ✅ USA PROFILE DO AUTH CONTEXT
+      const currentUser = profile
 
       if (movForm.tipo === 'ENTRADA') {
         if (!movForm.dataLote) {
@@ -295,6 +319,7 @@ export default function EstoquePage() {
         showModal('success', 'Sucesso', `Saída de ${quantidade} unidades registrada com sucesso!`)
       }
 
+      // Limpar formulário
       setMovForm({
         tipo: 'SAIDA',
         quantidade: '',
@@ -304,9 +329,9 @@ export default function EstoquePage() {
         observacao: ''
       })
       setSelectedProduto(null)
-      loadProdutos()
-      loadMovimentacoes()
-      loadMediaSaida() // ✅ Recarregar média após movimentação
+      
+      // Recarregar dados
+      await loadAllData()
 
     } catch (error) {
       showModal('error', 'Erro', 'Falha ao registrar movimentação.')
@@ -314,6 +339,33 @@ export default function EstoquePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ============ LOADING STATES ============
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Verificando autenticação...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null // Será redirecionado pelo useEffect
+  }
+
+  if (loading && !dataLoaded) {
+    return (
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
+          <p className="text-clinic-gray-400">Carregando estoque...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -352,7 +404,7 @@ export default function EstoquePage() {
                         <p className="text-clinic-cyan text-2xl font-bold">{selectedProduto.estoque_total}</p>
                         <p className="text-clinic-gray-400 text-sm">unidades</p>
                         
-                        {/* ✅ AJUSTE 6: Tag inteligente no produto selecionado */}
+                        {/* Tag inteligente no produto selecionado */}
                         {(() => {
                           const status = getStatusProduto(selectedProduto)
                           return (
@@ -514,7 +566,7 @@ export default function EstoquePage() {
           {/* DIREITA: Produtos em Estoque */}
           <div className="lg:min-h-[700px]">
             <Card title="Produtos em Estoque">
-              {loading ? (
+              {loading && !dataLoaded ? (
                 <div className="text-center py-12">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-clinic-cyan mx-auto mb-4"></div>
                   <p className="text-clinic-gray-400">Carregando produtos...</p>
@@ -527,7 +579,6 @@ export default function EstoquePage() {
               ) : (
                 <div className="space-y-3 overflow-y-auto max-h-[740px]">
                   {produtos.map((produto) => {
-                    // ✅ AJUSTE 6: Usar status inteligente
                     const status = getStatusProduto(produto)
                     
                     return (
@@ -552,7 +603,7 @@ export default function EstoquePage() {
                           <div className="text-right">
                             <div className="text-clinic-white text-xl font-bold">{produto.estoque_total}</div>
                             <div className="text-clinic-gray-400 text-sm">unidades</div>
-                            {/* ✅ AJUSTE 6: Tag inteligente com dias de estoque */}
+                            {/* Tag inteligente com dias de estoque */}
                             <div className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${getStatusClasses(status)}`}>
                               {status.status}
                               {status.diasEstoque < 999 && status.diasEstoque > 0 && (

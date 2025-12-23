@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   BarChart3,
@@ -12,7 +12,7 @@ import {
   MessageSquare
 } from 'lucide-react'
 import { Button, Card, HeaderUniversal } from '@/components/ui'
-import { supabaseApi } from '@/lib/supabase'
+import { useData } from '@/contexts/DataContext'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 interface ResumoIndicadoresMensal {
@@ -34,171 +34,124 @@ interface OrigemLeadStats {
   percentual: number
 }
 
+const MESES_NOMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+]
+
+const MESES_OPCOES = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+
 export default function DashboardMarketingTerapeuticoPage() {
   const router = useRouter()
   
-  // Estados principais
-  const [loading, setLoading] = useState(true)
+  // ✅ DADOS DO CACHE GLOBAL
+  const { 
+    pacientes, 
+    loading: dataLoading, 
+    initialized,
+    getResumoIndicadoresMensal,
+    getAnosDisponiveis
+  } = useData()
+  
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   
-  // Filtros separados
+  // Filtros
   const [mesSelecionado, setMesSelecionado] = useState<string>('')
   const [anoSelecionado, setAnoSelecionado] = useState<string>('')
-  const [mesesDisponiveis, setMesesDisponiveis] = useState<string[]>([])
   const [anosDisponiveis, setAnosDisponiveis] = useState<string[]>([])
   
   // Dados do mês selecionado
   const [indicadoresMes, setIndicadoresMes] = useState<ResumoIndicadoresMensal | null>(null)
-  const [totalPacientes, setTotalPacientes] = useState(0)
-  const [origemLeadStats, setOrigemLeadStats] = useState<OrigemLeadStats[]>([])
+  const [loadingIndicadores, setLoadingIndicadores] = useState(false)
+  
+  // Refs para controle
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const lastPeriodRef = useRef<string>('')
 
-  // Carregar dados iniciais
-  useEffect(() => {
-    loadInitialData()
-  }, [])
-
-  // Carregar indicadores quando mudar mês ou ano
-  useEffect(() => {
-    if (mesSelecionado && anoSelecionado) {
-      const mesAno = `${anoSelecionado}-${mesSelecionado.padStart(2, '0')}`
-      loadIndicadoresMes(mesAno)
-    }
-  }, [mesSelecionado, anoSelecionado])
-
-  const loadInitialData = async () => {
-    try {
-      setLoading(true)
-      
-      // ✅ OBTER ID DA CLÍNICA ATUAL
-      const clinicId = supabaseApi.getCurrentClinicId()
-      if (!clinicId) {
-        console.error('❌ Clínica não identificada')
-        return
-      }
-      
-      // ✅ FILTRAR POR ID_CLINICA
-      const { data: resumos, error } = await supabaseApi.supabase
-        .from('resumo_indicadores_mensal')
-        .select('mes_ano')
-        .eq('id_clinica', clinicId)
-        .order('mes_ano', { ascending: false })
-      
-      if (error) throw error
-      
-      // Extrair anos únicos
-      const anos = Array.from(new Set(
-        resumos?.map(r => r.mes_ano.split('-')[0]) || []
-      )).sort((a, b) => b.localeCompare(a))
-      
-      // Extrair meses únicos
-      const meses = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
-      
-      setAnosDisponiveis(anos)
-      setMesesDisponiveis(meses)
-      
-      // Selecionar o período mais recente por padrão
-      if (resumos && resumos.length > 0) {
-        const [ano, mes] = resumos[0].mes_ano.split('-')
-        setAnoSelecionado(ano)
-        setMesSelecionado(mes)
-      }
-      
-      // Carregar estatísticas de pacientes (não depende do mês)
-      await loadPacientesStats()
-      
-    } catch (error) {
-      console.error('Erro ao carregar dados iniciais:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadIndicadoresMes = async (mesAno: string) => {
-    try {
-      // ✅ OBTER ID DA CLÍNICA ATUAL
-      const clinicId = supabaseApi.getCurrentClinicId()
-      if (!clinicId) {
-        console.error('❌ Clínica não identificada')
-        return
-      }
-      
-      // ✅ FILTRAR POR ID_CLINICA
-      const { data, error } = await supabaseApi.supabase
-        .from('resumo_indicadores_mensal')
-        .select('*')
-        .eq('id_clinica', clinicId)
-        .eq('mes_ano', mesAno)
-        .order('data_geracao', { ascending: false })
-        .limit(1)
-      
-      if (error) throw error
-      
-      if (data && data.length > 0) {
-        setIndicadoresMes(data[0])
-      } else {
-        setIndicadoresMes(null)
-      }
-    } catch (error) {
-      console.error('❌ Erro ao carregar indicadores do mês:', error)
-      setIndicadoresMes(null)
-    }
-  }
-
-  const loadPacientesStats = async () => {
-    try {
-      const pacientes = await supabaseApi.getPacientes(1000)
-      
-      setTotalPacientes(pacientes.length)
-      
-      // Calcular estatísticas de origem
-      const origemCount = pacientes.reduce((acc, paciente) => {
-        const origem = paciente.origem_lead || 'Não informado'
-        acc[origem] = (acc[origem] || 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-      
-      const total = pacientes.length
-      if (total === 0) {
-        setOrigemLeadStats([])
-        return
-      }
-      
-      const stats: OrigemLeadStats[] = Object.entries(origemCount).map(([origem, count]) => {
-        const countNumber = Number(count)
-        return {
-          origem,
-          total: countNumber,
-          percentual: Math.round((countNumber / total) * 100)
-        }
-      }).sort((a, b) => b.total - a.total)
-      
-      setOrigemLeadStats(stats)
-    } catch (error) {
-      console.error('Erro ao carregar estatísticas de pacientes:', error)
-    }
-  }
-
-  const handleShowNovaClinicaModal = () => {
-    setShowNovaClinicaModal(true)
-  }
-
-  const formatMesNome = (mes: string) => {
-    const meses = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-    ]
-    return meses[parseInt(mes) - 1] || mes
-  }
-
-  const parseListaNumeros = (texto: string): string[] => {
-    if (!texto) return []
+  // ✅ ESTATÍSTICAS DE ORIGEM (calculadas dos pacientes do cache)
+  const origemLeadStats = useMemo((): OrigemLeadStats[] => {
+    if (pacientes.length === 0) return []
     
-    // Split por número seguido de ponto
+    const origemCount = pacientes.reduce((acc, paciente) => {
+      const origem = paciente.origem_lead || 'Não informado'
+      acc[origem] = (acc[origem] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    
+    const total = pacientes.length
+    
+    return Object.entries(origemCount)
+      .map(([origem, count]) => ({
+        origem,
+        total: Number(count),
+        percentual: Math.round((Number(count) / total) * 100)
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [pacientes])
+
+  // Carregar anos disponíveis
+  useEffect(() => {
+    if (!initialized) return
+    
+    const loadAnos = async () => {
+      const anos = await getAnosDisponiveis()
+      setAnosDisponiveis(anos)
+      
+      // Selecionar período mais recente
+      if (anos.length > 0 && !anoSelecionado) {
+        setAnoSelecionado(anos[0])
+        setMesSelecionado(String(new Date().getMonth() + 1).padStart(2, '0'))
+      }
+    }
+    
+    loadAnos()
+  }, [initialized, getAnosDisponiveis, anoSelecionado])
+
+  // ✅ CARREGAR INDICADORES COM DEBOUNCE
+  useEffect(() => {
+    if (!mesSelecionado || !anoSelecionado) return
+    
+    const mesAno = `${anoSelecionado}-${mesSelecionado.padStart(2, '0')}`
+    
+    // Evitar recarregar mesmo período
+    if (mesAno === lastPeriodRef.current) return
+    
+    // Debounce
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    
+    debounceRef.current = setTimeout(async () => {
+      console.log(`🔄 Marketing: Carregando indicadores (${mesAno})`)
+      setLoadingIndicadores(true)
+      
+      try {
+        const data = await getResumoIndicadoresMensal(mesAno)
+        setIndicadoresMes(data)
+        lastPeriodRef.current = mesAno
+      } catch (error) {
+        console.error('❌ Erro ao carregar indicadores:', error)
+        setIndicadoresMes(null)
+      } finally {
+        setLoadingIndicadores(false)
+      }
+    }, 300)
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [mesSelecionado, anoSelecionado, getResumoIndicadoresMensal])
+
+  const formatMesNome = (mes: string) => MESES_NOMES[parseInt(mes) - 1] || mes
+
+  const parseListaNumeros = useCallback((texto: string): string[] => {
+    if (!texto) return []
     return texto
       .split(/\d+\.\s*/)
       .filter(item => item.trim())
       .map(item => item.trim())
-  }
+  }, [])
+
+  // ✅ Mostrar loading enquanto NÃO inicializou OU está carregando
+  const loading = !initialized || dataLoading
 
   if (loading) {
     return (
@@ -215,21 +168,18 @@ export default function DashboardMarketingTerapeuticoPage() {
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
         
-        {/* Header Universal */}
         <HeaderUniversal 
           titulo="Marketing e Terapêutico" 
           descricao="Análise de performance de marketing e interações IA-Paciente"
           icone={BarChart3}
-          showNovaClinicaModal={handleShowNovaClinicaModal}
+          showNovaClinicaModal={() => setShowNovaClinicaModal(true)}
         />
 
         {/* Navegação por Tabs */}
         <div className="mb-8">
           <div className="border-b border-clinic-gray-700">
             <nav className="flex space-x-8">
-              <button
-                className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan"
-              >
+              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
                 Marketing e Terapêutico
               </button>
               <button
@@ -255,7 +205,6 @@ export default function DashboardMarketingTerapeuticoPage() {
               Análise de Marketing
             </h2>
             <div className="flex items-center space-x-4">
-              {/* Filtro de Mês */}
               <div className="flex items-center space-x-2">
                 <label className="text-clinic-gray-400 text-sm">Mês:</label>
                 <select
@@ -263,15 +212,12 @@ export default function DashboardMarketingTerapeuticoPage() {
                   onChange={(e) => setMesSelecionado(e.target.value)}
                   className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[140px]"
                 >
-                  {mesesDisponiveis.map(mes => (
-                    <option key={mes} value={mes}>
-                      {formatMesNome(mes)}
-                    </option>
+                  {MESES_OPCOES.map(mes => (
+                    <option key={mes} value={mes}>{formatMesNome(mes)}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Filtro de Ano */}
               <div className="flex items-center space-x-2">
                 <label className="text-clinic-gray-400 text-sm">Ano:</label>
                 <select
@@ -280,9 +226,7 @@ export default function DashboardMarketingTerapeuticoPage() {
                   className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[100px]"
                 >
                   {anosDisponiveis.map(ano => (
-                    <option key={ano} value={ano}>
-                      {ano}
-                    </option>
+                    <option key={ano} value={ano}>{ano}</option>
                   ))}
                 </select>
               </div>
@@ -292,14 +236,11 @@ export default function DashboardMarketingTerapeuticoPage() {
 
         {/* Cards de Métricas Principais */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {/* Total de Pacientes */}
           <Card>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-clinic-gray-400 text-sm">Total de Pacientes</p>
-                <p className="text-3xl font-bold text-clinic-white mt-1">
-                  {totalPacientes}
-                </p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">{pacientes.length}</p>
               </div>
               <div className="p-3 bg-clinic-cyan/20 rounded-lg">
                 <Users className="h-6 w-6 text-clinic-cyan" />
@@ -307,14 +248,11 @@ export default function DashboardMarketingTerapeuticoPage() {
             </div>
           </Card>
 
-          {/* Canais Ativos */}
           <Card>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-clinic-gray-400 text-sm">Canais Ativos</p>
-                <p className="text-3xl font-bold text-clinic-white mt-1">
-                  {origemLeadStats.length}
-                </p>
+                <p className="text-3xl font-bold text-clinic-white mt-1">{origemLeadStats.length}</p>
               </div>
               <div className="p-3 bg-blue-500/20 rounded-lg">
                 <TrendingUp className="h-6 w-6 text-blue-400" />
@@ -322,13 +260,12 @@ export default function DashboardMarketingTerapeuticoPage() {
             </div>
           </Card>
 
-          {/* FCS (preview) */}
           <Card>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-clinic-gray-400 text-sm">Fatores Críticos</p>
                 <p className="text-lg font-bold text-clinic-white mt-1">
-                  {parseListaNumeros(indicadoresMes?.fcs || '').length} identificados
+                  {loadingIndicadores ? '...' : `${parseListaNumeros(indicadoresMes?.fcs || '').length} identificados`}
                 </p>
               </div>
               <div className="p-3 bg-green-500/20 rounded-lg">
@@ -372,7 +309,12 @@ export default function DashboardMarketingTerapeuticoPage() {
 
           {/* FCS - Fatores Críticos de Sucesso */}
           <Card title="Fatores Críticos de Sucesso">
-            {!indicadoresMes?.fcs ? (
+            {loadingIndicadores ? (
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+                <p className="text-clinic-gray-400">Carregando...</p>
+              </div>
+            ) : !indicadoresMes?.fcs ? (
               <div className="text-center py-6">
                 <Target className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
                 <p className="text-clinic-gray-400">Nenhum FCS disponível para este mês</p>
@@ -391,7 +333,11 @@ export default function DashboardMarketingTerapeuticoPage() {
 
           {/* Melhorias */}
           <Card title="Melhorias Sugeridas">
-            {!indicadoresMes?.melhorias ? (
+            {loadingIndicadores ? (
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+              </div>
+            ) : !indicadoresMes?.melhorias ? (
               <div className="text-center py-6">
                 <AlertCircle className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
                 <p className="text-clinic-gray-400">Nenhuma melhoria disponível para este mês</p>
@@ -410,7 +356,11 @@ export default function DashboardMarketingTerapeuticoPage() {
 
           {/* Supervalorizado */}
           <Card title="Aspectos Supervalorizados">
-            {!indicadoresMes?.supervalorizado ? (
+            {loadingIndicadores ? (
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+              </div>
+            ) : !indicadoresMes?.supervalorizado ? (
               <div className="text-center py-6">
                 <TrendingUp className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
                 <p className="text-clinic-gray-400">Nenhum dado disponível para este mês</p>
@@ -429,7 +379,11 @@ export default function DashboardMarketingTerapeuticoPage() {
 
           {/* Temas Marketing */}
           <Card title="Temas de Marketing">
-            {!indicadoresMes?.temas_marketing ? (
+            {loadingIndicadores ? (
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+              </div>
+            ) : !indicadoresMes?.temas_marketing ? (
               <div className="text-center py-6">
                 <MessageSquare className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
                 <p className="text-clinic-gray-400">Nenhum tema disponível para este mês</p>
@@ -448,7 +402,11 @@ export default function DashboardMarketingTerapeuticoPage() {
 
           {/* Oportunidades Marketing */}
           <Card title="Oportunidades de Marketing">
-            {!indicadoresMes?.oportunidades_marketing ? (
+            {loadingIndicadores ? (
+              <div className="text-center py-6">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+              </div>
+            ) : !indicadoresMes?.oportunidades_marketing ? (
               <div className="text-center py-6">
                 <Lightbulb className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
                 <p className="text-clinic-gray-400">Nenhuma oportunidade disponível para este mês</p>
@@ -468,7 +426,6 @@ export default function DashboardMarketingTerapeuticoPage() {
 
       </div>
 
-      {/* Modal Nova Clínica */}
       <NovaClinicaModal
         isOpen={showNovaClinicaModal}
         onClose={() => setShowNovaClinicaModal(false)}

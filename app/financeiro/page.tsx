@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { PlusCircle, TrendingUp, DollarSign, Users, Target, Activity, BarChart3, Calculator, Plus, Save, X } from 'lucide-react'
+import { DollarSign, Plus, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
-import type { Servico, Despesa, Profissional, Parametros, Venda, ServicoCalculado, TipoDespesa, TIPOS_DESPESA } from '@/types/database'
+import { useData, useVendas } from '@/contexts/DataContext'
+import type { Servico, Despesa, Profissional, Parametros, ServicoCalculado, TipoDespesa } from '@/types/database'
 import NovaVendaModal from '@/components/NovaVendaModal'
 
 // ============ CONSTANTES ============
@@ -21,7 +22,6 @@ const CATEGORIAS_SKU = [
   'Outros'
 ]
 
-// ✅ TIPOS DE DESPESA
 const TIPOS_DESPESA_OPTIONS: TipoDespesa[] = [
   'Despesa Fixa',
   'Custo Fixo',
@@ -32,16 +32,13 @@ const TIPOS_DESPESA_OPTIONS: TipoDespesa[] = [
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0)
 const formatPercent = (value: number) => `${(value || 0).toFixed(2)}%`
 
-// ✅ FIX: Formatar data sem problema de timezone (-1 dia)
 const formatDateBR = (dateString: string | Date) => {
   if (!dateString) return '-'
   const str = typeof dateString === 'string' ? dateString : dateString.toISOString()
-  // Se a data está no formato ISO (YYYY-MM-DD), extrair diretamente
   if (str.includes('-') && str.length >= 10) {
     const [year, month, day] = str.substring(0, 10).split('-')
     return `${day}/${month}/${year}`
   }
-  // Fallback para outras formatações
   return new Date(dateString).toLocaleDateString('pt-BR')
 }
 
@@ -56,7 +53,7 @@ interface SKU {
   id_clinica: number
 }
 
-// ============ COMPONENTE CARD CUSTOMIZADO ============
+// ============ COMPONENTE CARD ============
 const FinanceCard = ({ title, value, variant = 'default' }: { title: string; value: string | number; variant?: 'default' | 'cyan' | 'green' | 'red' | 'purple' }) => {
   const variantClasses = {
     default: 'bg-gray-100 dark:bg-slate-800/50 border-gray-200 dark:border-slate-700',
@@ -115,28 +112,37 @@ function calcularDiaUtilAtual(ano: number, mes: number): number {
 
 // ============ COMPONENTE PRINCIPAL ============
 export default function FinanceiroPage() {
+  // ✅ DADOS DO CACHE GLOBAL
+  const { 
+    servicos, 
+    despesas, 
+    profissionais, 
+    parametros, 
+    skus, 
+    produtosComLotes,
+    loading: dataLoading,
+    initialized,
+    refreshData,
+    invalidateCache,
+    updateParametrosLocal,
+    clearVendasCache
+  } = useData()
+
+  // Estados locais de UI
   const [abaAtiva, setAbaAtiva] = useState('vendas')
   const [anosSelecionados, setAnosSelecionados] = useState([2025])
   const [mesesSelecionados, setMesesSelecionados] = useState([new Date().getMonth() + 1])
-  const [loading, setLoading] = useState(false)
   const [showNovaVendaModal, setShowNovaVendaModal] = useState(false)
 
-  // Estados de dados
-  const [servicos, setServicos] = useState<Servico[]>([])
-  const [despesas, setDespesas] = useState<Despesa[]>([])
-  const [profissionais, setProfissionais] = useState<Profissional[]>([])
-  const [parametros, setParametros] = useState<Parametros | null>(null)
-  const [vendas, setVendas] = useState<any[]>([])
-  const [skus, setSKUs] = useState<SKU[]>([])
-  // ✅ ITEM 9: Produtos com lotes disponíveis (qty > 0)
-  const [produtosComLotes, setProdutosComLotes] = useState<any[]>([])
+  // ✅ VENDAS COM DEBOUNCE - Passa valores primitivos
+  const anoAtual = anosSelecionados[0] || 2025
+  const { vendas, loading: vendasLoading, reload: reloadVendas } = useVendas(anoAtual, mesesSelecionados)
 
   // Estados de formulários
   const [mostrarFormServico, setMostrarFormServico] = useState(false)
   const [novoServico, setNovoServico] = useState({ nome: '', preco: 0, custo_insumos: 0 })
   const [mostrarFormDespesa, setMostrarFormDespesa] = useState(false)
   
-  // ✅ FIX UX ITEM 3 + ITEM 5: valor como string vazia, campo periodo adicionado
   const [novaDespesa, setNovaDespesa] = useState<{
     tipo: TipoDespesa
     categoria: string
@@ -160,111 +166,7 @@ export default function FinanceiroPage() {
   // Estado para meta temporária
   const [metaTemporaria, setMetaTemporaria] = useState<number | string>('')
 
-  // ✅ FIX: Garantir clinic_id válido antes de carregar dados
-  useEffect(() => {
-    const ensureClinicId = () => {
-      const currentClinicId = localStorage.getItem('clinic_id')
-      if (!currentClinicId) {
-        // Tentar recuperar do usuário logado
-        const userData = localStorage.getItem('ballarin_user')
-        if (userData) {
-          try {
-            const user = JSON.parse(userData)
-            if (user.id_clinica) {
-              localStorage.setItem('clinic_id', user.id_clinica.toString())
-              console.log('✅ clinic_id recuperado do usuário:', user.id_clinica)
-            }
-          } catch (e) {
-            console.error('Erro ao recuperar clinic_id:', e)
-          }
-        }
-      }
-    }
-    
-    ensureClinicId()
-    loadData()
-    loadSKUs()
-    loadProdutosComLotes() // ✅ ITEM 9: Carregar produtos para Metas
-  }, [])
-
-  // Reload vendas quando mudar período
-  useEffect(() => {
-    if (anosSelecionados.length > 0 && mesesSelecionados.length > 0) {
-      loadVendas()
-    }
-  }, [anosSelecionados, mesesSelecionados])
-
-  const loadData = async () => {
-    setLoading(true)
-    try {
-      // ✅ DEBUG: Verificar clinicId antes de carregar
-      const clinicId = supabaseApi.getCurrentClinicId()
-      console.log('🔍 DEBUG loadData - clinicId:', clinicId)
-      
-      if (!clinicId) {
-        console.error('❌ clinicId é NULL! Verificar localStorage...')
-        // Tentar recuperar do localStorage diretamente
-        const storedClinic = localStorage.getItem('clinic_id')
-        const storedUser = localStorage.getItem('ballarin_user')
-        console.log('📦 localStorage clinic_id:', storedClinic)
-        console.log('📦 localStorage ballarin_user:', storedUser)
-      }
-
-      const [servicosData, despesasData, profissionaisData, parametrosData] = await Promise.all([
-        supabaseApi.getServicos(),
-        supabaseApi.getDespesas(),
-        supabaseApi.getProfissionais(),
-        supabaseApi.getParametros()
-      ])
-
-      console.log('👥 Profissionais carregados:', profissionaisData.length, profissionaisData)
-
-      setServicos(servicosData)
-      setDespesas(despesasData)
-      setProfissionais(profissionaisData)
-      setParametros(parametrosData)
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadVendas = async () => {
-    try {
-      const ano = anosSelecionados[0] || 2025
-      const vendasData = await supabaseApi.getVendas(ano, mesesSelecionados)
-      setVendas(vendasData)
-    } catch (error) {
-      console.error('Erro ao carregar vendas:', error)
-    }
-  }
-
-  const loadSKUs = async () => {
-    try {
-      const skusData = await supabaseApi.getSKUs()
-      setSKUs(skusData)
-    } catch (error) {
-      console.error('Erro ao carregar SKUs:', error)
-      showFeedbackSKU('error', 'Falha ao carregar produtos')
-    }
-  }
-
-  // ✅ ITEM 9: Carregar produtos com lotes disponíveis para Metas
-  const loadProdutosComLotes = async () => {
-    try {
-      const produtosData = await supabaseApi.getProdutos()
-      // Filtrar apenas SKUs que têm lotes com quantidade > 0
-      const produtosComEstoque = produtosData.filter((p: any) => 
-        p.lotes && p.lotes.length > 0 && p.lotes.some((l: any) => l.quantidade_disponivel > 0)
-      )
-      setProdutosComLotes(produtosComEstoque)
-      console.log(`📊 ITEM 9: ${produtosComEstoque.length} SKUs com estoque disponível`)
-    } catch (error) {
-      console.error('Erro ao carregar produtos com lotes:', error)
-    }
-  }
-
+  // ============ HANDLERS ============
   const showFeedbackSKU = (tipo: 'success' | 'error', mensagem: string) => {
     setFeedbackSKU({ tipo, mensagem })
     setTimeout(() => setFeedbackSKU(null), 3000)
@@ -285,8 +187,6 @@ export default function FinanceiroPage() {
 
   const handleSaveSKU = async (id_sku: number) => {
     try {
-      setLoading(true)
-
       const fatorDivisao = parseFloat(editFormSKU.fator_divisao || '1')
       if (isNaN(fatorDivisao) || fatorDivisao <= 0) {
         showFeedbackSKU('error', 'Fator de divisão deve ser um número positivo')
@@ -301,12 +201,10 @@ export default function FinanceiroPage() {
       showFeedbackSKU('success', 'SKU atualizado com sucesso!')
       setEditandoSKU(null)
       setEditFormSKU({})
-      loadSKUs()
+      refreshData(['skus'])
     } catch (error) {
       console.error('Erro ao atualizar SKU:', error)
       showFeedbackSKU('error', 'Falha ao atualizar SKU')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -316,13 +214,12 @@ export default function FinanceiroPage() {
       await supabaseApi.createServico(novoServico)
       setNovoServico({ nome: '', preco: 0, custo_insumos: 0 })
       setMostrarFormServico(false)
-      loadData()
+      refreshData(['servicos'])
     } catch (error) {
       console.error('Erro ao criar serviço:', error)
     }
   }
 
-  // ✅ FIX UX ITEM 3 + ITEM 5: Converter valor para number, incluir periodo
   const handleAdicionarDespesa = async () => {
     const valorNumerico = Number(novaDespesa.valor) || 0
     if (!novaDespesa.item || valorNumerico <= 0) return
@@ -342,7 +239,7 @@ export default function FinanceiroPage() {
         periodo: `${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`
       })
       setMostrarFormDespesa(false)
-      loadData()
+      refreshData(['despesas'])
     } catch (error) {
       console.error('Erro ao criar despesa:', error)
     }
@@ -353,7 +250,7 @@ export default function FinanceiroPage() {
     try {
       await supabaseApi.createProfissional({ nome: novoProfissional.nome, horas_semanais: novoProfissional.horasSemanais })
       setNovoProfissional({ nome: '', horasSemanais: 40 })
-      loadData()
+      refreshData(['profissionais'])
     } catch (error) {
       console.error('Erro ao criar profissional:', error)
     }
@@ -362,48 +259,41 @@ export default function FinanceiroPage() {
   const handleRemoverProfissional = async (id: number) => {
     try {
       await supabaseApi.deleteProfissional(id)
-      loadData()
+      refreshData(['profissionais'])
     } catch (error) {
       console.error('Erro ao remover profissional:', error)
     }
   }
 
-  // ✅ FIX BUG 5: Handler para atualizar profissional (incluindo duracao_servico)
   const handleUpdateProfissional = async (id: number, updates: Partial<{
     nome: string
     horas_semanais: number
     percentual_profissional: number
     perfil: 'proprietario' | 'comissionado'
-    duracao_servico: number  // ✅ NOVO CAMPO
+    duracao_servico: number
   }>) => {
     try {
       await supabaseApi.updateProfissional(id, updates)
-      loadData()
+      refreshData(['profissionais'])
     } catch (error) {
       console.error('Erro ao atualizar profissional:', error)
     }
   }
 
+  // ✅ USA updateParametrosLocal (atualiza banco + estado local)
   const handleUpdateParametros = async (updates: Record<string, number | string | null>) => {
     try {
-      await supabaseApi.updateParametros(updates as any)
-      loadData()
+      await updateParametrosLocal(updates)
     } catch (error) {
       console.error('Erro ao atualizar parâmetros:', error)
     }
   }
 
-  // ✅ ITEM 8: Salvar Meta faz UPDATE (não INSERT)
   const handleUpdateMetaMensal = async (novaMeta: number) => {
     try {
-      console.log('📝 ATUALIZANDO META (UPDATE):', novaMeta)
-      // ✅ Chama updateParametros que faz UPDATE na tabela parametros
-      await supabaseApi.updateParametros({ meta_resultado_liquido_mensal: novaMeta })
-      if (parametros) {
-        setParametros({ ...parametros, meta_resultado_liquido_mensal: novaMeta })
-      }
+      console.log('📝 ATUALIZANDO META:', novaMeta)
+      await updateParametrosLocal({ meta_resultado_liquido_mensal: novaMeta })
       setMetaTemporaria('')
-      console.log('✅ META ATUALIZADA COM SUCESSO')
     } catch (error) {
       console.error('❌ Erro ao atualizar meta:', error)
       alert('Erro ao salvar meta. Verifique o console.')
@@ -420,7 +310,17 @@ export default function FinanceiroPage() {
     })
   }, [])
 
-  // Cálculos
+  const handleVendaSuccess = () => {
+    setShowNovaVendaModal(false)
+    clearVendasCache()
+    reloadVendas()
+    refreshData(['produtos'])
+  }
+
+  // Loading combinado - inclui verificação de initialized
+  const loading = !initialized || dataLoading || vendasLoading
+
+  // ============ CÁLCULOS ============
   const diasUteisTotais = useMemo(() => {
     if (anosSelecionados.length === 0) return 0
     return anosSelecionados.reduce((acc: number, ano: number) =>
@@ -454,7 +354,6 @@ export default function FinanceiroPage() {
     [totalDespesasFixas, mesesSelecionados]
   )
 
-  // ✅ CORREÇÃO ITEM 3: Taxa de Ocupação - Fórmula CORRETA
   const parametrosCalculados = useMemo(() => {
     if (!parametros) return null
 
@@ -467,8 +366,6 @@ export default function FinanceiroPage() {
     const horasOcupadas = totalServicosVendidos * parametros.duracao_media_servico_horas
 
     const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
-    
-    // ✅ CORREÇÃO: Taxa Ocupação = (horasDaEquipe / horasDasSalas) * 100
     const taxaOcupacao = horasDasSalas > 0 ? (horasDaEquipe / horasDasSalas) * 100 : 0
 
     return {
@@ -481,115 +378,73 @@ export default function FinanceiroPage() {
     }
   }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
 
-  // ✅ NOVO: Sincronizar custo_hora calculado com a tabela parametros (COLOCAR AQUI)
-useEffect(() => {
-  const sincronizarCustoHora = async () => {
-    if (!parametrosCalculados || !parametros) return
-    
-    const custoHoraCalculado = parametrosCalculados.custoHora
-    const custoHoraAtual = parametros.custo_hora || 0
-    
-    // Só atualiza se o valor for diferente (tolerância R$ 0.01) e maior que zero
-    if (custoHoraCalculado > 0 && Math.abs(custoHoraCalculado - custoHoraAtual) > 0.01) {
-      console.log('🔄 Sincronizando custo_hora:', custoHoraAtual, '→', custoHoraCalculado)
-      await supabaseApi.updateParametros({ custo_hora: custoHoraCalculado })
-      setParametros(prev => prev ? { ...prev, custo_hora: custoHoraCalculado } : prev)
+  // Sincronizar custo_hora
+  useEffect(() => {
+    const sincronizarCustoHora = async () => {
+      if (!parametrosCalculados || !parametros) return
+      
+      const custoHoraCalculado = parametrosCalculados.custoHora
+      const custoHoraAtual = parametros.custo_hora || 0
+      
+      if (custoHoraCalculado > 0 && Math.abs(custoHoraCalculado - custoHoraAtual) > 0.01) {
+        await updateParametrosLocal({ custo_hora: custoHoraCalculado })
+      }
     }
-  }
-  
-  sincronizarCustoHora()
-}, [parametrosCalculados?.custoHora, parametros?.custo_hora])
+    
+    sincronizarCustoHora()
+  }, [parametrosCalculados?.custoHora, parametros?.custo_hora, updateParametrosLocal])
 
-
-  // ✅ FIX BUG 7: DRE COMPLETO COM TRATAMENTO DE tipo=NULL
   const dreCalc = useMemo(() => {
     if (!parametros) return null
 
-    // 1. RECEITA OPERACIONAL BRUTA
     const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
-
-    // 2. DEDUÇÕES DA RECEITA
-    // 2.1 Impostos (sobre toda receita)
     const impostos = receitaBruta * (parametros.aliquota_impostos_pct / 100)
-
-    // 2.2 Taxas Financeiras (só para vendas no CRÉDITO)
     const vendasCredito = vendas.filter(v => v.metodo_pagamento === 'Crédito')
     const totalVendasCredito = vendasCredito.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
     const taxasFinanceiras = totalVendasCredito * (parametros.taxa_cartao_pct / 100)
-
     const totalDeducoes = impostos + taxasFinanceiras
-
-    // 3. RECEITA LÍQUIDA
     const receitaLiquida = receitaBruta - totalDeducoes
-
-    // 4. CUSTOS VARIÁVEIS
-    // 4.1 Custo dos Insumos (CMV)
     const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
-
-    // 4.2 Repasse Profissionais (comissionados) - ✅ Pegar da tabela despesas (categoria='Comissões')
-const repasseProfissionais = despesas
-  .filter(d => d.categoria === 'Comissões' && d.tipo === 'Custo Variável')
-  .reduce((sum, d) => sum + d.valor_mensal, 0)
-
+    const repasseProfissionais = despesas
+      .filter(d => d.categoria === 'Comissões' && d.tipo === 'Custo Variável')
+      .reduce((sum, d) => sum + d.valor_mensal, 0)
     const totalCustosVariaveis = custoInsumos + repasseProfissionais
-
-    // 5. MARGEM DE CONTRIBUIÇÃO
     const margemContribuicao = receitaLiquida - totalCustosVariaveis
     const margemContribuicaoPct = receitaBruta > 0 ? (margemContribuicao / receitaBruta) * 100 : 0
-
-    // ✅ FIX BUG 7: Despesas fixas - TRATAR tipo=NULL como 'Despesa Fixa'
     const despesasFixasMensal = despesas
       .filter(d => {
-        // Se tipo é null ou undefined, considerar como 'Despesa Fixa' (comportamento legado)
         if (d.tipo === null || d.tipo === undefined) return true
         return d.tipo === 'Despesa Fixa' || d.tipo === 'Custo Fixo'
       })
       .reduce((sum, d) => sum + d.valor_mensal, 0)
     const despesasFixas = despesasFixasMensal * mesesSelecionados.length
-
-    // 7. RESERVAS / INOVAÇÃO (% da Margem de Contribuição)
-    const modernInova = parametros.modern_inova || 10 // default 10%
+    const modernInova = parametros.modern_inova || 10
     const reservasInovacao = margemContribuicao > 0 ? margemContribuicao * (modernInova / 100) : 0
-
-    // 8. EBITDA (Operacional) = Margem - Despesas Fixas - Reservas
     const ebitda = margemContribuicao - despesasFixas - reservasInovacao
-
-    // 9. LUCRO LÍQUIDO (BOLSO) = EBITDA
     const lucroLiquidoBolso = ebitda
 
     return {
-      // Linha 1
       receitaBruta,
-      // Linha 2
       impostos,
       taxasFinanceiras,
       totalDeducoes,
       totalVendasCredito,
-      // Linha 3
       receitaLiquida,
-      // Linha 4
       custoInsumos,
       repasseProfissionais,
       totalCustosVariaveis,
-      // Linha 5
       margemContribuicao,
       margemContribuicaoPct,
-      // Linha 6
       despesasFixas,
-      // Linha 7
       modernInova,
       reservasInovacao,
-      // Linha 8
       ebitda,
-      // Linha 9
       lucroLiquidoBolso,
-      // Extras para compatibilidade
       aliquotaImpostos: parametros.aliquota_impostos_pct,
       taxaCartao: parametros.taxa_cartao_pct
     }
-  }, [parametros, vendas, profissionais, despesas, mesesSelecionados])
+  }, [parametros, vendas, despesas, mesesSelecionados])
 
-  // Manter controleCalc para compatibilidade com AbaControle
   const controleCalc = useMemo(() => {
     if (!parametros || !parametrosCalculados) return null
 
@@ -609,16 +464,10 @@ const repasseProfissionais = despesas
     }
   }, [parametros, parametrosCalculados, vendas, despesasFixasPeriodo])
 
-  // ✅ CORREÇÃO: METAS usando itemsEnriquecidos (campo items JSONB)
   const metasCalculadas = useMemo(() => {
-    // Validações
     if (!parametros || produtosComLotes.length === 0) return []
     if (!dreCalc) return []
 
-    // 1. Calcular Faturamento Necessário (engenharia reversa do DRE)
-    // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
-    // Alvo Margem = (Meta Lucro + Desp. Fixas) / (1 - %Inovação)
-    // Faturamento = Alvo Margem / Margem% atual
     const modernInova = parametros.modern_inova || 10
     const metaMensal = parametros.meta_resultado_liquido_mensal || 0
     const despesasFixas = dreCalc.despesasFixas || 0
@@ -626,22 +475,18 @@ const repasseProfissionais = despesas
     const receitaBruta = dreCalc.receitaBruta || 0
 
     const alvoMargem = (metaMensal + despesasFixas) / (1 - (modernInova / 100))
-    const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3 // default 30% se sem dados
+    const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3
     const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
 
-    // 2. Número de produtos (SKUs únicos com lotes > 0)
     const numProdutos = produtosComLotes.length
 
-    // 3. Calcular meta por produto
     return produtosComLotes.map((produto: any) => {
       const valorVenda = produto.valor_venda || 0
       
-      // Meta = (Faturamento Necessário / nº produtos) / valor_venda (arredondar para cima)
       const metaUnidades = valorVenda > 0 
         ? Math.ceil((faturamentoNecessario / numProdutos) / valorVenda)
         : 0
 
-      // ✅ CORREÇÃO: Realizado usando itemsEnriquecidos (não insumos)
       let realizado = 0
       vendas.forEach((v: any) => {
         if (v.itemsEnriquecidos && Array.isArray(v.itemsEnriquecidos)) {
@@ -653,13 +498,8 @@ const repasseProfissionais = despesas
         }
       })
 
-      // Cobertura = (realizado/meta) * 100 (%)
       const cobertura = metaUnidades > 0 ? (realizado / metaUnidades) * 100 : 0
-
-      // GAP = Meta - Realizado
       const gap = metaUnidades - realizado
-
-      // Projeção = [(Realizado * dias úteis do mês) / (Dia útil atual * Meta)] * 100
       const projecao = (diaUtilAtual > 0 && metaUnidades > 0)
         ? Math.round((realizado * diasUteisTotais) / (diaUtilAtual * metaUnidades) * 100)
         : 0
@@ -761,7 +601,6 @@ const repasseProfissionais = despesas
             />
           )}
 
-          {/* ✅ FIX BUG 5: Passa onUpdateProfissional com duracao_servico */}
           {abaAtiva === 'parametros' && parametros && parametrosCalculados && (
             <AbaParametros
               parametros={parametros}
@@ -800,7 +639,6 @@ const repasseProfissionais = despesas
             />
           )}
 
-          {/* ✅ ITEM 8: AbaControle com Faturamento Necessário */}
           {abaAtiva === 'controle' && controleCalc && parametros && (
             <AbaControle
               controle={controleCalc}
@@ -816,7 +654,6 @@ const repasseProfissionais = despesas
             />
           )}
 
-          {/* ✅ ITEM 7: DRE com novo cálculo completo */}
           {abaAtiva === 'dre' && dreCalc && (
             <AbaDRE dre={dreCalc} tituloPeriodo={tituloPeriodo} />
           )}
@@ -825,10 +662,7 @@ const repasseProfissionais = despesas
         <NovaVendaModal
           isOpen={showNovaVendaModal}
           onClose={() => setShowNovaVendaModal(false)}
-          onSuccess={() => {
-            setShowNovaVendaModal(false)
-            loadVendas()
-          }}
+          onSuccess={handleVendaSuccess}
         />
       </div>
     </div>
@@ -877,7 +711,6 @@ const FiltroPeriodo = ({ anos, setAnos, mesesSelecionados, onMesToggle }: any) =
   </div>
 )
 
-// ✅ FIX UX ITEM 3: InputLocal com tratamento para campos zero
 const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '', step }: any) => (
   <div>
     <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">{label}</label>
@@ -903,14 +736,10 @@ const InputLocal = ({ label, type = 'text', value, onChange, placeholder = '', s
   </div>
 )
 
-// ✅ ITEM 5: ABA DESPESAS COM CAMPO PERÍODO E TÍTULO CORRIGIDO
 const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa, setNovaDespesa, onAdicionar }: any) => {
-  // ✅ Helper para formatar período DATE (YYYY-MM-DD) para exibição (MM/YYYY)
   const formatPeriodo = (periodo: string | null) => {
     if (!periodo) return '—'
-    // Se já está em formato MM/YYYY, retornar
     if (periodo.match(/^\d{1,2}\/\d{4}$/)) return periodo
-    // Converter de YYYY-MM-DD para MM/YYYY
     const match = periodo.match(/^(\d{4})-(\d{2})-\d{2}$/)
     if (match) {
       const [, ano, mes] = match
@@ -931,7 +760,6 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
       {mostrarForm && (
         <div className="bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/30 rounded-lg p-6 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-            {/* Campo Período MM/YYYY */}
             <div>
               <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Período (MM/AAAA)</label>
               <input
@@ -943,7 +771,6 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
                 className="w-full bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white"
               />
             </div>
-            {/* Campo Tipo */}
             <div>
               <label className="text-sm text-gray-700 dark:text-slate-400 mb-2 block">Tipo</label>
               <select
@@ -1019,15 +846,7 @@ const AbaDespesas = ({ despesas, total, mostrarForm, setMostrarForm, novaDespesa
   )
 }
 
-// ✅ ABA VENDAS COM COLUNAS PROFISSIONAL E PRODUTOS + TOOLTIP
 const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: { vendas: any[], tituloPeriodo: string, onNovaVenda: () => void, profissionais?: any[] }) => {
-  // ✅ Helper para buscar nome do profissional
-  const getProfissionalNome = (idResponsavel: number | null) => {
-    if (!idResponsavel) return '—'
-    const prof = profissionais.find(p => p.id === idResponsavel)
-    return prof?.nome || '—'
-  }
-
   return (
     <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
       <div className="flex justify-between items-center mb-4">
@@ -1061,7 +880,6 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
               </tr>
             ) : (
               vendas.map((v: any) => {
-                // ✅ Extrair produtos com quantidade
                 const produtosDetalhados = (v.itemsEnriquecidos || [])
                   .map((item: any) => ({
                     nome: item.sku?.nome_produto || 'Produto não encontrado',
@@ -1076,23 +894,15 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
 
                 return (
                   <tr key={v.id} className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
-                    <td className="px-4 py-3 text-gray-900 dark:text-white">
-                      {formatDateBR(v.data_venda)}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
-                      {v.pacientes?.nome_completo || 'N/A'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">
-                      {v.profissional?.nome || '—'}
-                    </td>
-                    {/* ✅ TOOLTIP ESTILIZADO PARA PRODUTOS - APARECE PARA BAIXO */}
+                    <td className="px-4 py-3 text-gray-900 dark:text-white">{formatDateBR(v.data_venda)}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{v.pacientes?.nome_completo || 'N/A'}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-400">{v.profissional?.nome || '—'}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-400 max-w-[180px]">
                       <div className="relative group cursor-pointer">
                         <span className="truncate block">{produtosTexto}</span>
                         {produtosDetalhados.length > 0 && (
                           <div className="absolute left-0 top-full mt-2 hidden group-hover:block z-[100] min-w-[250px]">
                             <div className="bg-gray-900 dark:bg-slate-700 text-white text-xs rounded-lg py-3 px-4 shadow-2xl border border-gray-600 dark:border-slate-500">
-                              {/* Seta apontando para cima */}
                               <div className="absolute left-4 top-[-6px] w-3 h-3 bg-gray-900 dark:bg-slate-700 rotate-45 border-l border-t border-gray-600 dark:border-slate-500"></div>
                               <p className="font-semibold text-cyan-400 mb-2 border-b border-gray-600 pb-2">
                                 📦 {produtosDetalhados.length} {produtosDetalhados.length === 1 ? 'Produto' : 'Produtos'}
@@ -1110,18 +920,10 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-900 dark:text-white">
-                      {formatCurrency(v.preco_total)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">
-                      {v.desconto_valor > 0 ? formatCurrency(v.desconto_valor) : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-bold text-cyan-600 dark:text-cyan-400">
-                      {formatCurrency(v.preco_final)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">
-                      {formatPercent(v.margem_percentual_final || v.margem_percentual || 0)}
-                    </td>
+                    <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{formatCurrency(v.preco_total)}</td>
+                    <td className="px-4 py-3 text-right text-orange-600 dark:text-orange-400">{v.desconto_valor > 0 ? formatCurrency(v.desconto_valor) : '-'}</td>
+                    <td className="px-4 py-3 text-right font-bold text-cyan-600 dark:text-cyan-400">{formatCurrency(v.preco_final)}</td>
+                    <td className="px-4 py-3 text-right text-green-600 dark:text-green-400">{formatPercent(v.margem_percentual_final || v.margem_percentual || 0)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2 py-1 rounded text-xs font-medium ${v.metodo_pagamento === 'PIX' ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' :
                           v.metodo_pagamento === 'Débito' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' :
@@ -1141,38 +943,13 @@ const AbaVendas = ({ vendas, tituloPeriodo, onNovaVenda, profissionais = [] }: {
         </table>
       </div>
 
-      {/* Resumo */}
       {vendas.length > 0 && (
         <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
-          <FinanceCard
-            title="Total de Vendas"
-            value={vendas.length}
-            variant="cyan"
-          />
-          <FinanceCard
-            title="Receita Bruta"
-            value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_total || 0), 0))}
-            variant="green"
-          />
-          <FinanceCard
-            title="Total Descontos"
-            value={formatCurrency(vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0))}
-            variant="red"
-          />
-          <FinanceCard
-            title="Receita Líquida"
-            value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))}
-            variant="cyan"
-          />
-          <FinanceCard
-            title="Ticket Médio"
-            value={formatCurrency(
-              vendas.length > 0 
-                ? vendas.reduce((s, v) => s + (v.preco_final || 0), 0) / vendas.length 
-                : 0
-            )}
-            variant="purple"
-          />
+          <FinanceCard title="Total de Vendas" value={vendas.length} variant="cyan" />
+          <FinanceCard title="Receita Bruta" value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_total || 0), 0))} variant="green" />
+          <FinanceCard title="Total Descontos" value={formatCurrency(vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0))} variant="red" />
+          <FinanceCard title="Receita Líquida" value={formatCurrency(vendas.reduce((s, v) => s + (v.preco_final || 0), 0))} variant="cyan" />
+          <FinanceCard title="Ticket Médio" value={formatCurrency(vendas.length > 0 ? vendas.reduce((s, v) => s + (v.preco_final || 0), 0) / vendas.length : 0)} variant="purple" />
         </div>
       )}
     </div>
@@ -1253,26 +1030,15 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
                   <div className="flex justify-center gap-2">
                     {editandoId === sku.id_sku ? (
                       <>
-                        <button
-                          onClick={() => onSave(sku.id_sku)}
-                          disabled={loading}
-                          className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50"
-                        >
+                        <button onClick={() => onSave(sku.id_sku)} disabled={loading} className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50">
                           <Save className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={onCancel}
-                          disabled={loading}
-                          className="p-2 bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 rounded-lg text-red-700 dark:text-red-400 transition-colors disabled:opacity-50"
-                        >
+                        <button onClick={onCancel} disabled={loading} className="p-2 bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 rounded-lg text-red-700 dark:text-red-400 transition-colors disabled:opacity-50">
                           <X className="w-4 h-4" />
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={() => onEdit(sku)}
-                        className="px-3 py-1 bg-cyan-50 dark:bg-cyan-500/20 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 border border-cyan-200 dark:border-cyan-500/30 rounded-lg text-cyan-700 dark:text-cyan-400 text-sm transition-colors"
-                      >
+                      <button onClick={() => onEdit(sku)} className="px-3 py-1 bg-cyan-50 dark:bg-cyan-500/20 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 border border-cyan-200 dark:border-cyan-500/30 rounded-lg text-cyan-700 dark:text-cyan-400 text-sm transition-colors">
                         Editar
                       </button>
                     )}
@@ -1293,261 +1059,95 @@ const AbaGestaoSKUs = ({ skus, editandoId, editForm, setEditForm, onEdit, onSave
   </div>
 )
 
-// ✅ FIX BUG 5: ABA PARÂMETROS COM CAMPO duracao_servico
-const AbaParametros = ({ 
-  parametros, 
-  calculados, 
-  onUpdate, 
-  profissionais, 
-  novoProfissional, 
-  setNovoProfissional, 
-  onAdicionarProfissional, 
-  onRemoverProfissional,
-  onUpdateProfissional
-}: any) => {
-  // Estado local para edição de profissionais
+const AbaParametros = ({ parametros, calculados, onUpdate, profissionais, novoProfissional, setNovoProfissional, onAdicionarProfissional, onRemoverProfissional, onUpdateProfissional }: any) => {
   const [editandoProfissional, setEditandoProfissional] = useState<number | null>(null)
-  const [editFormProfissional, setEditFormProfissional] = useState<{
-    percentual_profissional?: number | string
-    perfil?: string
-    duracao_servico?: number | string  // ✅ NOVO CAMPO
-  }>({})
+  const [editFormProfissional, setEditFormProfissional] = useState<{ percentual_profissional?: number | string; perfil?: string; duracao_servico?: number | string }>({})
 
   const handleEditProfissional = (p: any) => {
     setEditandoProfissional(p.id)
-    setEditFormProfissional({
-      percentual_profissional: p.percentual_profissional ?? '',
-      perfil: p.perfil ?? '',
-      duracao_servico: p.duracao_servico ?? ''  // ✅ NOVO CAMPO
-    })
+    setEditFormProfissional({ percentual_profissional: p.percentual_profissional ?? '', perfil: p.perfil ?? '', duracao_servico: p.duracao_servico ?? '' })
   }
 
   const handleSaveProfissional = async (id: number) => {
     await onUpdateProfissional(id, {
       percentual_profissional: Number(editFormProfissional.percentual_profissional) || 0,
       perfil: editFormProfissional.perfil || null,
-      duracao_servico: Number(editFormProfissional.duracao_servico) || null  // ✅ NOVO CAMPO
+      duracao_servico: Number(editFormProfissional.duracao_servico) || null
     })
-    setEditandoProfissional(null)
-    setEditFormProfissional({})
-  }
-
-  const handleCancelEditProfissional = () => {
     setEditandoProfissional(null)
     setEditFormProfissional({})
   }
 
   return (
     <div className="space-y-6">
-      {/* ✅ SEÇÃO 1: Parâmetros Operacionais */}
       <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Parâmetros Operacionais</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <InputLocal 
-            label="Número de Salas" 
-            type="number" 
-            value={parametros.numero_salas} 
-            onChange={(v: number) => onUpdate({ numero_salas: v })} 
-          />
-          <InputLocal 
-            label="Horas/Dia" 
-            type="number" 
-            value={parametros.horas_trabalho_dia} 
-            onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} 
-          />
-          <InputLocal 
-            label="Duração Média Serviço (h)" 
-            type="number" 
-            step="0.1"
-            value={parametros.duracao_media_servico_horas} 
-            onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} 
-          />
-          <InputLocal 
-            label="Alíquota Impostos (%)" 
-            type="number" 
-            value={parametros.aliquota_impostos_pct} 
-            onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} 
-          />
-          <InputLocal 
-            label="Taxa Cartão (%)" 
-            type="number" 
-            value={parametros.taxa_cartao_pct} 
-            onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} 
-          />
-          <InputLocal 
-            label="Modernização e Inovação (%)" 
-            type="number" 
-            value={parametros.modern_inova} 
-            onChange={(v: number) => onUpdate({ modern_inova: v })} 
-          />
-          <InputLocal 
-            label="Fator Correção Marca (%)" 
-            type="number" 
-            value={parametros.fator_correcao_marca} 
-            onChange={(v: number) => onUpdate({ fator_correcao_marca: v })} 
-          />
-          <InputLocal 
-            label="Custo/Hora (R$)" 
-            type="number" 
-            value={parametros.custo_hora} 
-            onChange={(v: number) => onUpdate({ custo_hora: v })} 
-          />
+          <InputLocal label="Número de Salas" type="number" value={parametros.numero_salas} onChange={(v: number) => onUpdate({ numero_salas: v })} />
+          <InputLocal label="Horas/Dia" type="number" value={parametros.horas_trabalho_dia} onChange={(v: number) => onUpdate({ horas_trabalho_dia: v })} />
+          <InputLocal label="Duração Média Serviço (h)" type="number" step="0.1" value={parametros.duracao_media_servico_horas} onChange={(v: number) => onUpdate({ duracao_media_servico_horas: v })} />
+          <InputLocal label="Alíquota Impostos (%)" type="number" value={parametros.aliquota_impostos_pct} onChange={(v: number) => onUpdate({ aliquota_impostos_pct: v })} />
+          <InputLocal label="Taxa Cartão (%)" type="number" value={parametros.taxa_cartao_pct} onChange={(v: number) => onUpdate({ taxa_cartao_pct: v })} />
+          <InputLocal label="Modernização e Inovação (%)" type="number" value={parametros.modern_inova} onChange={(v: number) => onUpdate({ modern_inova: v })} />
+          <InputLocal label="Fator Correção Marca (%)" type="number" value={parametros.fator_correcao_marca} onChange={(v: number) => onUpdate({ fator_correcao_marca: v })} />
+          <InputLocal label="Custo/Hora (R$)" type="number" value={parametros.custo_hora} onChange={(v: number) => onUpdate({ custo_hora: v })} />
         </div>
       </div>
 
-      {/* ✅ FIX BUG 5: SEÇÃO 2: Equipe (com duracao_servico) */}
       <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Equipe</h2>
-        
-        {/* Form adicionar profissional */}
         <div className="flex gap-4 mb-4 flex-wrap">
-          <InputLocal 
-            label="Nome" 
-            value={novoProfissional.nome} 
-            onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} 
-          />
-          <InputLocal 
-            label="Horas/Semana" 
-            type="number" 
-            value={novoProfissional.horasSemanais} 
-            onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} 
-          />
-          <div className="flex items-end">
-            <Button onClick={onAdicionarProfissional}>Adicionar</Button>
-          </div>
+          <InputLocal label="Nome" value={novoProfissional.nome} onChange={(v: string) => setNovoProfissional({ ...novoProfissional, nome: v })} />
+          <InputLocal label="Horas/Semana" type="number" value={novoProfissional.horasSemanais} onChange={(v: number) => setNovoProfissional({ ...novoProfissional, horasSemanais: v })} />
+          <div className="flex items-end"><Button onClick={onAdicionarProfissional}>Adicionar</Button></div>
         </div>
-        
-        {/* Lista de profissionais */}
         <div className="space-y-3">
           {profissionais.map((p: any) => (
-            <div 
-              key={p.id} 
-              className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg gap-4"
-            >
-              {/* Info básica */}
+            <div key={p.id} className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gray-50 dark:bg-slate-700/50 rounded-lg gap-4">
               <div className="flex-1">
                 <span className="text-gray-900 dark:text-white font-medium">{p.nome}</span>
                 <span className="text-sm text-gray-500 dark:text-slate-400 ml-2">({p.horas_semanais}h/semana)</span>
               </div>
-              
-              {/* Campos editáveis ou exibição */}
               {editandoProfissional === p.id ? (
-                // Modo edição
                 <div className="flex items-center gap-3 flex-wrap">
                   <div>
                     <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Repasse %</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={editFormProfissional.percentual_profissional ?? ''}
-                      onChange={(e) => setEditFormProfissional({
-                        ...editFormProfissional,
-                        percentual_profissional: e.target.value === '' ? '' : Number(e.target.value)
-                      })}
-                      className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
-                      placeholder="0"
-                    />
+                    <input type="number" min="0" max="100" value={editFormProfissional.percentual_profissional ?? ''} onChange={(e) => setEditFormProfissional({ ...editFormProfissional, percentual_profissional: e.target.value === '' ? '' : Number(e.target.value) })} className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white" placeholder="0" />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Perfil</label>
-                    <select
-                      value={editFormProfissional.perfil ?? ''}
-                      onChange={(e) => setEditFormProfissional({
-                        ...editFormProfissional,
-                        perfil: e.target.value
-                      })}
-                      className="w-36 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
-                    >
+                    <select value={editFormProfissional.perfil ?? ''} onChange={(e) => setEditFormProfissional({ ...editFormProfissional, perfil: e.target.value })} className="w-36 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white">
                       <option value="">Selecione...</option>
                       <option value="proprietario">Proprietário</option>
                       <option value="comissionado">Comissionado</option>
                     </select>
                   </div>
-                  {/* ✅ FIX BUG 5: Campo Duração Serviço */}
                   <div>
                     <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Duração Serv. (h)</label>
-                    <input
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      value={editFormProfissional.duracao_servico ?? ''}
-                      onChange={(e) => setEditFormProfissional({
-                        ...editFormProfissional,
-                        duracao_servico: e.target.value === '' ? '' : Number(e.target.value)
-                      })}
-                      className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
-                      placeholder="1.0"
-                    />
+                    <input type="number" min="0.1" step="0.1" value={editFormProfissional.duracao_servico ?? ''} onChange={(e) => setEditFormProfissional({ ...editFormProfissional, duracao_servico: e.target.value === '' ? '' : Number(e.target.value) })} className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white" placeholder="1.0" />
                   </div>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleSaveProfissional(p.id)}
-                      className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded"
-                    >
-                      Salvar
-                    </button>
-                    <button 
-                      onClick={handleCancelEditProfissional}
-                      className="px-3 py-1 text-xs bg-gray-400 hover:bg-gray-500 text-white rounded"
-                    >
-                      Cancelar
-                    </button>
+                    <button onClick={() => handleSaveProfissional(p.id)} className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded">Salvar</button>
+                    <button onClick={() => { setEditandoProfissional(null); setEditFormProfissional({}) }} className="px-3 py-1 text-xs bg-gray-400 hover:bg-gray-500 text-white rounded">Cancelar</button>
                   </div>
                 </div>
               ) : (
-                // Modo visualização
                 <div className="flex items-center gap-4">
-                  {/* Perfil Badge */}
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${
-                    p.perfil === 'proprietario' 
-                      ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' 
-                      : p.perfil === 'comissionado'
-                        ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
-                        : 'bg-gray-100 dark:bg-slate-600 text-gray-500 dark:text-slate-400'
-                  }`}>
-                    {p.perfil === 'proprietario' ? 'Proprietário' : 
-                     p.perfil === 'comissionado' ? 'Comissionado' : 
-                     'Não definido'}
+                  <span className={`px-2 py-1 rounded text-xs font-medium ${p.perfil === 'proprietario' ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400' : p.perfil === 'comissionado' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' : 'bg-gray-100 dark:bg-slate-600 text-gray-500 dark:text-slate-400'}`}>
+                    {p.perfil === 'proprietario' ? 'Proprietário' : p.perfil === 'comissionado' ? 'Comissionado' : 'Não definido'}
                   </span>
-                  
-                  {/* Percentual */}
-                  <span className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">
-                    {p.percentual_profissional != null ? `${p.percentual_profissional}%` : '—'}
-                  </span>
-
-                  {/* ✅ FIX BUG 5: Exibir Duração */}
-                  <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                    {p.duracao_servico != null ? `${p.duracao_servico}h` : '—'}
-                  </span>
-                  
-                  {/* Botões */}
-                  <button 
-                    onClick={() => handleEditProfissional(p)}
-                    className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-xs"
-                  >
-                    Editar
-                  </button>
-                  <button 
-                    onClick={() => onRemoverProfissional(p.id)} 
-                    className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs"
-                  >
-                    Remover
-                  </button>
+                  <span className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">{p.percentual_profissional != null ? `${p.percentual_profissional}%` : '—'}</span>
+                  <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">{p.duracao_servico != null ? `${p.duracao_servico}h` : '—'}</span>
+                  <button onClick={() => handleEditProfissional(p)} className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-xs">Editar</button>
+                  <button onClick={() => onRemoverProfissional(p.id)} className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs">Remover</button>
                 </div>
               )}
             </div>
           ))}
-          
-          {profissionais.length === 0 && (
-            <p className="text-gray-500 dark:text-slate-400 text-sm text-center py-4">
-              Nenhum profissional cadastrado
-            </p>
-          )}
+          {profissionais.length === 0 && <p className="text-gray-500 dark:text-slate-400 text-sm text-center py-4">Nenhum profissional cadastrado</p>}
         </div>
       </div>
 
-      {/* ✅ SEÇÃO 3: Indicadores de Produtividade */}
       {calculados && (
         <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Indicadores de Produtividade</h2>
@@ -1563,14 +1163,10 @@ const AbaParametros = ({
   )
 }
 
-// ✅ FIX BUG 5: AbaMetas com TICKET POR PACIENTE usando duracao_servico individual
 const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUtilAtual, profissionais }: any) => {
-  // ✅ FIX BUG 5: Calcular Ticket Por Paciente usando duracao_servico de cada profissional
   const ticketPorPaciente = useMemo(() => {
     if (!parametros || !dreCalc) return 0
 
-    // Faturamento Necessário (engenharia reversa do DRE)
-    // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
     const modernInova = parametros.modern_inova || 10
     const metaMensal = parametros.meta_resultado_liquido_mensal || 0
     const despesasFixas = dreCalc.despesasFixas || 0
@@ -1581,20 +1177,15 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
     const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0.3
     const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
 
-    // ✅ FIX BUG 5: Número de Atendimentos usando duracao_servico INDIVIDUAL de cada proprietário
-    // Fórmula: Σ [(horas_semanais / duracao_servico) / 5] * diasUteis
     const profissionaisProprietarios = profissionais.filter((p: any) => p.perfil === 'proprietario')
     
     const atendimentosPorDia = profissionaisProprietarios.reduce((sum: number, p: any) => {
-      // Usar duracao_servico individual, fallback para duracao_media_servico_horas global
       const duracaoServico = p.duracao_servico || parametros.duracao_media_servico_horas || 1
       const atendDiaProfissional = (p.horas_semanais / duracaoServico) / 5
       return sum + atendDiaProfissional
     }, 0)
 
     const numeroAtendimentos = atendimentosPorDia * diasUteis
-
-    // Ticket = Faturamento Necessário / Número Atendimentos
     return numeroAtendimentos > 0 ? faturamentoNecessario / numeroAtendimentos : 0
   }, [parametros, dreCalc, profissionais, diasUteis])
 
@@ -1602,20 +1193,13 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
     <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
       <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Metas por Produto - {tituloPeriodo}</h2>
       
-      {/* ✅ Ticket Por Paciente - ACIMA DA LISTA */}
       <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg border border-purple-200 dark:border-purple-700/50">
         <div className="flex justify-between items-center">
           <div>
-            <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-400 uppercase tracking-wide">
-              Ticket Médio por Paciente
-            </h3>
-            <p className="text-xs text-purple-600 dark:text-purple-500 mt-1">
-              Valor necessário por atendimento para atingir meta
-            </p>
+            <h3 className="text-sm font-semibold text-purple-800 dark:text-purple-400 uppercase tracking-wide">Ticket Médio por Paciente</h3>
+            <p className="text-xs text-purple-600 dark:text-purple-500 mt-1">Valor necessário por atendimento para atingir meta</p>
           </div>
-          <span className="text-3xl font-bold text-purple-700 dark:text-purple-300">
-            {formatCurrency(ticketPorPaciente)}
-          </span>
+          <span className="text-3xl font-bold text-purple-700 dark:text-purple-300">{formatCurrency(ticketPorPaciente)}</span>
         </div>
       </div>
 
@@ -1644,13 +1228,7 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
                   <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{m.metaUnidades}</td>
                   <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{m.realizado}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      m.cobertura >= 100 
-                        ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' 
-                        : m.cobertura >= 50
-                          ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
-                          : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
-                    }`}>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${m.cobertura >= 100 ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : m.cobertura >= 50 ? 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400' : 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'}`}>
                       {formatPercent(m.cobertura)}
                     </span>
                   </td>
@@ -1660,13 +1238,7 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`font-medium ${
-                      m.projecao >= 100 
-                        ? 'text-green-600 dark:text-green-400' 
-                        : m.projecao >= 70
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-red-500 dark:text-red-400'
-                    }`}>
+                    <span className={`font-medium ${m.projecao >= 100 ? 'text-green-600 dark:text-green-400' : m.projecao >= 70 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-500 dark:text-red-400'}`}>
                       {m.projecao}%
                     </span>
                   </td>
@@ -1680,7 +1252,6 @@ const AbaMetas = ({ metas, tituloPeriodo, parametros, dreCalc, diasUteis, diaUti
   )
 }
 
-// ✅ AbaControle com campo Faturamento Necessário
 const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResultadoMensal, mesesSelecionados, onUpdateMeta, metaTemporaria, setMetaTemporaria }: any) => {
   const modernInova = parametros?.modern_inova || 10
   const metaMensal = metaResultadoMensal || 0
@@ -1688,14 +1259,9 @@ const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResul
   const margemContribuicao = dre?.margemContribuicao || (controle?.receitaBruta - controle?.custoInsumos) || 0
   const receitaBruta = dre?.receitaBruta || controle?.receitaBruta || 0
 
-  // Cálculos (engenharia reversa do DRE)
-  // Lucro = Margem × (1 - %Inovação) - Desp. Fixas
-  // Alvo Margem = (Meta Lucro + Desp. Fixas) / (1 - %Inovação)
   const alvoMargem = (metaMensal + despesasFixas) / (1 - (modernInova / 100))
   const margemAtualPct = receitaBruta > 0 ? margemContribuicao / receitaBruta : 0
   const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
-  
-  // Valores para exibição
   const reservasInovacao = alvoMargem * (modernInova / 100)
 
   return (
@@ -1706,55 +1272,26 @@ const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResul
         <FinanceCard title="Progresso" value={formatPercent(diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0)} variant="cyan" />
       </div>
 
-      {/* Meta + Faturamento Necessário */}
       <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400 mb-6">Meta de Resultado Mensal</h2>
         <div className="flex gap-4 items-end mb-6">
-          <InputLocal
-            label="Meta (R$)"
-            type="number"
-            value={metaTemporaria !== '' ? metaTemporaria : metaResultadoMensal}
-            onChange={(v: number | string) => setMetaTemporaria(v)}
-          />
-          <Button onClick={() => onUpdateMeta(Number(metaTemporaria) || metaResultadoMensal)}>
-            Salvar Meta
-          </Button>
+          <InputLocal label="Meta (R$)" type="number" value={metaTemporaria !== '' ? metaTemporaria : metaResultadoMensal} onChange={(v: number | string) => setMetaTemporaria(v)} />
+          <Button onClick={() => onUpdateMeta(Number(metaTemporaria) || metaResultadoMensal)}>Salvar Meta</Button>
         </div>
 
-        {/* Campo Faturamento Necessário */}
         <div className="mt-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-lg border border-amber-200 dark:border-amber-700/50">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wide">
-                Faturamento Necessário
-              </h3>
-              <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                Para atingir a meta com margem atual de {formatPercent(margemAtualPct * 100)}
-              </p>
+              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-400 uppercase tracking-wide">Faturamento Necessário</h3>
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Para atingir a meta com margem atual de {formatPercent(margemAtualPct * 100)}</p>
             </div>
-            <span className="text-2xl font-bold text-amber-700 dark:text-amber-300">
-              {formatCurrency(faturamentoNecessario)}
-            </span>
+            <span className="text-2xl font-bold text-amber-700 dark:text-amber-300">{formatCurrency(faturamentoNecessario)}</span>
           </div>
-          
-          {/* Detalhamento do cálculo */}
           <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/50 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-            <div>
-              <span className="text-amber-600 dark:text-amber-500">Alvo Margem:</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoMargem)}</span>
-            </div>
-            <div>
-              <span className="text-amber-600 dark:text-amber-500">Reservas ({modernInova}%):</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(reservasInovacao)}</span>
-            </div>
-            <div>
-              <span className="text-amber-600 dark:text-amber-500">% Inovação:</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{modernInova}%</span>
-            </div>
-            <div>
-              <span className="text-amber-600 dark:text-amber-500">Desp. Fixas:</span>
-              <span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(despesasFixas)}</span>
-            </div>
+            <div><span className="text-amber-600 dark:text-amber-500">Alvo Margem:</span><span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(alvoMargem)}</span></div>
+            <div><span className="text-amber-600 dark:text-amber-500">Reservas ({modernInova}%):</span><span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(reservasInovacao)}</span></div>
+            <div><span className="text-amber-600 dark:text-amber-500">% Inovação:</span><span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{modernInova}%</span></div>
+            <div><span className="text-amber-600 dark:text-amber-500">Desp. Fixas:</span><span className="ml-1 font-medium text-amber-800 dark:text-amber-300">{formatCurrency(despesasFixas)}</span></div>
           </div>
         </div>
       </div>
@@ -1771,22 +1308,18 @@ const AbaControle = ({ controle, dre, parametros, diasUteis, diaAtual, metaResul
   )
 }
 
-// ✅ DRE COMPLETO COM 9 LINHAS
 const AbaDRE = ({ dre, tituloPeriodo }: any) => (
   <div className="bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-6 shadow-xl">
-    {/* Header */}
     <div className="mb-6 flex items-center justify-between border-b border-gray-200 dark:border-slate-700 pb-4">
       <h2 className="text-xl font-bold text-gray-900 dark:text-cyan-400">DRE - {tituloPeriodo}</h2>
       <span className="text-xs text-gray-500 dark:text-slate-500 uppercase tracking-wider">Regime de Competência</span>
     </div>
 
-    {/* 1. RECEITA OPERACIONAL BRUTA */}
     <div className="flex justify-between items-center py-2">
       <span className="font-semibold text-gray-900 dark:text-white">1. Receita Operacional Bruta</span>
       <span className="font-bold text-green-600 dark:text-green-400">{formatCurrency(dre.receitaBruta)}</span>
     </div>
 
-    {/* 2. DEDUÇÕES DA RECEITA */}
     <div className="mt-2 mb-4">
       <div className="flex justify-between items-center py-1">
         <span className="font-medium text-gray-700 dark:text-slate-300">2. Deduções da Receita</span>
@@ -1804,13 +1337,11 @@ const AbaDRE = ({ dre, tituloPeriodo }: any) => (
       </div>
     </div>
 
-    {/* 3. RECEITA LÍQUIDA */}
     <div className="flex justify-between items-center py-3 border-t border-gray-200 dark:border-slate-700 bg-blue-50 dark:bg-slate-800/30 px-3 rounded mb-4">
       <span className="font-bold text-gray-800 dark:text-slate-100">3. (=) Receita Líquida</span>
       <span className="font-bold text-blue-600 dark:text-blue-200">{formatCurrency(dre.receitaLiquida)}</span>
     </div>
 
-    {/* 4. CUSTOS VARIÁVEIS */}
     <div className="mb-4">
       <div className="flex justify-between items-center py-1">
         <span className="font-medium text-gray-700 dark:text-slate-300">4. Custos Variáveis</span>
@@ -1828,7 +1359,6 @@ const AbaDRE = ({ dre, tituloPeriodo }: any) => (
       </div>
     </div>
 
-    {/* 5. MARGEM DE CONTRIBUIÇÃO - Destaque especial */}
     <div className="flex justify-between items-center py-4 px-4 rounded-lg bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-500/30 mb-6">
       <div className="flex flex-col">
         <span className="text-cyan-700 dark:text-cyan-400 font-bold text-lg">5. (=) Margem de Contribuição</span>
@@ -1840,19 +1370,16 @@ const AbaDRE = ({ dre, tituloPeriodo }: any) => (
       </div>
     </div>
 
-    {/* 6. DESPESAS FIXAS */}
     <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-slate-800 mb-2">
       <span className="text-gray-700 dark:text-slate-300">6. (-) Despesas Fixas</span>
       <span className="text-red-600 dark:text-red-400">- {formatCurrency(dre.despesasFixas)}</span>
     </div>
 
-    {/* 7. RESERVAS / INOVAÇÃO */}
     <div className="flex justify-between items-center py-2 border-b border-gray-200 dark:border-slate-800 mb-2">
       <span className="text-amber-600 dark:text-amber-500/90">7. (-) Reservas / Inovação ({dre.modernInova}%)</span>
       <span className="text-amber-600 dark:text-amber-500 font-medium">- {formatCurrency(dre.reservasInovacao)}</span>
     </div>
 
-    {/* 8. EBITDA */}
     <div className="flex justify-between items-center py-3 bg-gray-100 dark:bg-slate-800 rounded px-3 mb-2">
       <span className="font-bold text-gray-900 dark:text-white">8. (=) EBITDA (Operacional)</span>
       <span className={`font-bold text-lg ${dre.ebitda >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-500'}`}>
@@ -1860,7 +1387,6 @@ const AbaDRE = ({ dre, tituloPeriodo }: any) => (
       </span>
     </div>
 
-    {/* 9. LUCRO LÍQUIDO (BOLSO) - Destaque máximo */}
     <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-900 border border-gray-300 dark:border-slate-600 p-6 mt-4">
       <div className="flex justify-between items-end relative z-10">
         <div>

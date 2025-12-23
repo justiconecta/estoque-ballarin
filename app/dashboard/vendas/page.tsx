@@ -92,7 +92,7 @@ export default function DashboardVendasPage() {
   const { isAuthenticated, loading: authLoading } = useAuth()
   
   // ✅ DADOS DO CACHE GLOBAL
-  const { parametros, despesas, loading: dataLoading, initialized } = useData()
+  const { parametros, despesas, loading: dataLoading } = useData()
   
   // Estados de filtro
   const [anoSelecionado, setAnoSelecionado] = useState(new Date().getFullYear())
@@ -285,17 +285,7 @@ export default function DashboardVendasPage() {
     return null
   }
 
-  // ✅ Mostrar loading enquanto NÃO inicializou OU está carregando
-  if (!initialized) {
-    return (
-      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
-          <p className="text-clinic-gray-400">Carregando dashboard...</p>
-        </div>
-      </div>
-    )
-  }
+  // ✅ REMOVIDO check de !initialized - os hooks carregam dados independentemente
 
   return (
     <div className="min-h-screen bg-clinic-black text-white">

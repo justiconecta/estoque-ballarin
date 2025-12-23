@@ -124,11 +124,12 @@ export default function PacientesPage() {
 
   // ✅ CARREGAR DADOS QUANDO AUTENTICADO
   useEffect(() => {
-    if (!authLoading && isAuthenticated && profile?.id_clinica && !dataLoaded) {
+    // Só precisa de isAuthenticated - não depender de profile.id_clinica
+    if (!authLoading && isAuthenticated && !dataLoaded) {
       console.log('🔑 Pacientes: Auth pronto, carregando dados...')
       loadAllData()
     }
-  }, [authLoading, isAuthenticated, profile?.id_clinica, dataLoaded, loadAllData])
+  }, [authLoading, isAuthenticated, dataLoaded, loadAllData])
 
   // ✅ REDIRECIONAR SE NÃO AUTENTICADO
   useEffect(() => {
@@ -743,9 +744,3 @@ export default function PacientesPage() {
     </div>
   )
 }
-
-
-
-
-
-

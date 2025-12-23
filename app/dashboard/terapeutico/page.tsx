@@ -53,7 +53,7 @@ export default function DashboardIAPage() {
   const { isAuthenticated, loading: authLoading, profile } = useAuth()
   
   // ✅ DADOS DO CACHE GLOBAL + FUNÇÃO PARA PACIENTES COM RESUMOS
-  const { getResumoEspecifico, getPacientesComResumos, loading: dataLoading, initialized } = useData()
+  const { getResumoEspecifico, getPacientesComResumos, loading: dataLoading } = useData()
   
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)
@@ -75,7 +75,9 @@ export default function DashboardIAPage() {
   // ✅ CARREGAR PACIENTES COM RESUMOS QUANDO INICIALIZAR
   useEffect(() => {
     const loadPacientesComResumos = async () => {
-      if (!initialized) return
+      // ✅ VERIFICA CLINIC_ID DIRETAMENTE (não depende de initialized)
+      const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+      if (!clinicId) return
       
       setLoadingPacientes(true)
       try {
@@ -90,7 +92,7 @@ export default function DashboardIAPage() {
     }
     
     loadPacientesComResumos()
-  }, [initialized, getPacientesComResumos])
+  }, [getPacientesComResumos]) // ✅ Removido 'initialized' - agora verifica clinic_id diretamente
 
   // Carregar conversa específica (diário)
   const loadConversaDia = useCallback(async (cpf: string, dataResumo: string) => {
@@ -343,16 +345,7 @@ export default function DashboardIAPage() {
     return null
   }
 
-  if (!initialized) {
-    return (
-      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-clinic-cyan border-t-transparent mx-auto mb-4"></div>
-          <p className="text-clinic-gray-400">Carregando dados...</p>
-        </div>
-      </div>
-    )
-  }
+  // ✅ REMOVIDO check de !initialized - o conteúdo renderiza e os hooks carregam dados independentemente
 
   return (
     <div className="min-h-screen bg-clinic-black">

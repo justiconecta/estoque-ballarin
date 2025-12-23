@@ -577,7 +577,7 @@ export function useData() {
 
 // ============ HOOK PARA VENDAS COM DEBOUNCE ============
 export function useVendas(ano: number, meses: number[]) {
-  const { getVendas, initialized } = useData()
+  const { getVendas } = useData()
   const [vendas, setVendas] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   
@@ -596,7 +596,14 @@ export function useVendas(ano: number, meses: number[]) {
   }, [])
 
   const fetchVendas = useCallback(async (force = false) => {
-    if (!isMountedRef.current || !initialized) return
+    if (!isMountedRef.current) return
+    
+    // ✅ VERIFICA CLINIC_ID DIRETAMENTE (não depende de initialized)
+    const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+    if (!clinicId) {
+      console.log('⏳ useVendas: Aguardando clinic_id...')
+      return
+    }
 
     const sortedMeses = [...meses].sort((a, b) => a - b)
     const periodKey = `${ano}-${sortedMeses.join(',')}`
@@ -622,11 +629,10 @@ export function useVendas(ano: number, meses: number[]) {
     } finally {
       if (isMountedRef.current) setLoading(false)
     }
-  }, [ano, meses, getVendas, initialized])
+  }, [ano, meses, getVendas])
 
   useEffect(() => {
-    if (!initialized) return
-    
+    // ✅ Dispara imediatamente após mount (não espera initialized)
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = setTimeout(() => fetchVendas(), 300)
 
@@ -637,7 +643,7 @@ export function useVendas(ano: number, meses: number[]) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
     }
-  }, [ano, meses.join(','), initialized, fetchVendas])
+  }, [ano, meses.join(','), fetchVendas])
 
   const reload = useCallback(() => {
     lastFetchedKeyRef.current = ''
@@ -650,7 +656,7 @@ export function useVendas(ano: number, meses: number[]) {
 
 // ============ HOOK PARA VENDAS POR DIA ============
 export function useVendasPorDia(ano: number, mes: number) {
-  const { getVendasPorDia, initialized } = useData()
+  const { getVendasPorDia } = useData()
   const [vendasPorDia, setVendasPorDia] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(false)
   
@@ -669,7 +675,11 @@ export function useVendasPorDia(ano: number, mes: number) {
   }, [])
 
   const fetchData = useCallback(async (force = false) => {
-    if (!isMountedRef.current || !initialized) return
+    if (!isMountedRef.current) return
+    
+    // ✅ VERIFICA CLINIC_ID DIRETAMENTE
+    const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+    if (!clinicId) return
 
     const periodKey = `${ano}-${mes}`
     const now = Date.now()
@@ -693,11 +703,9 @@ export function useVendasPorDia(ano: number, mes: number) {
     } finally {
       if (isMountedRef.current) setLoading(false)
     }
-  }, [ano, mes, getVendasPorDia, initialized])
+  }, [ano, mes, getVendasPorDia])
 
   useEffect(() => {
-    if (!initialized) return
-
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = setTimeout(() => fetchData(), 300)
 
@@ -708,14 +716,14 @@ export function useVendasPorDia(ano: number, mes: number) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
     }
-  }, [ano, mes, initialized, fetchData])
+  }, [ano, mes, fetchData])
 
   return { vendasPorDia, loading }
 }
 
 // ============ HOOK PARA VENDAS POR CATEGORIA ============
 export function useVendasPorCategoria(ano: number, meses: number[]) {
-  const { getVendasPorCategoria, initialized } = useData()
+  const { getVendasPorCategoria } = useData()
   const [vendasPorCategoria, setVendasPorCategoria] = useState({ toxina: 0, preenchedor: 0, biotech: 0, total: 0 })
   const [loading, setLoading] = useState(false)
   
@@ -734,7 +742,11 @@ export function useVendasPorCategoria(ano: number, meses: number[]) {
   }, [])
 
   const fetchData = useCallback(async (force = false) => {
-    if (!isMountedRef.current || !initialized) return
+    if (!isMountedRef.current) return
+    
+    // ✅ VERIFICA CLINIC_ID DIRETAMENTE
+    const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+    if (!clinicId) return
 
     const sortedMeses = [...meses].sort((a, b) => a - b)
     const periodKey = `${ano}-${sortedMeses.join(',')}`
@@ -759,11 +771,9 @@ export function useVendasPorCategoria(ano: number, meses: number[]) {
     } finally {
       if (isMountedRef.current) setLoading(false)
     }
-  }, [ano, meses, getVendasPorCategoria, initialized])
+  }, [ano, meses, getVendasPorCategoria])
 
   useEffect(() => {
-    if (!initialized) return
-
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
     debounceTimerRef.current = setTimeout(() => fetchData(), 300)
 
@@ -774,14 +784,14 @@ export function useVendasPorCategoria(ano: number, meses: number[]) {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
     }
-  }, [ano, meses.join(','), initialized, fetchData])
+  }, [ano, meses.join(','), fetchData])
 
   return { vendasPorCategoria, loading }
 }
 
 // ============ HOOK PARA RESUMOS DE PACIENTE ============
 export function useResumosPaciente(cpf: string | null) {
-  const { getResumosDiariosPaciente, getResumosSemanaisPaciente, initialized } = useData()
+  const { getResumosDiariosPaciente, getResumosSemanaisPaciente } = useData()
   const [resumosDiarios, setResumosDiarios] = useState<any[]>([])
   const [resumosSemanais, setResumosSemanais] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
@@ -795,7 +805,10 @@ export function useResumosPaciente(cpf: string | null) {
   }, [])
 
   useEffect(() => {
-    if (!initialized || !cpf) {
+    // ✅ VERIFICA CLINIC_ID DIRETAMENTE
+    const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+    
+    if (!clinicId || !cpf) {
       setResumosDiarios([])
       setResumosSemanais([])
       return
@@ -824,7 +837,7 @@ export function useResumosPaciente(cpf: string | null) {
     }
 
     loadResumos()
-  }, [cpf, getResumosDiariosPaciente, getResumosSemanaisPaciente, initialized])
+  }, [cpf, getResumosDiariosPaciente, getResumosSemanaisPaciente])
 
   return { resumosDiarios, resumosSemanais, loading }
 }

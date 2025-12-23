@@ -169,11 +169,13 @@ export default function EstoquePage() {
 
   // ✅ CARREGAR DADOS QUANDO AUTENTICADO
   useEffect(() => {
-    if (!authLoading && isAuthenticated && profile?.id_clinica && !dataLoaded) {
+    // Só precisa de isAuthenticated - não depender de profile.id_clinica
+    // O supabaseApi usa localStorage que já está populado após login
+    if (!authLoading && isAuthenticated && !dataLoaded) {
       console.log('🔑 Estoque: Auth pronto, carregando dados...')
       loadAllData()
     }
-  }, [authLoading, isAuthenticated, profile?.id_clinica, dataLoaded, loadAllData])
+  }, [authLoading, isAuthenticated, dataLoaded, loadAllData])
 
   // ✅ REDIRECIONAR SE NÃO AUTENTICADO
   useEffect(() => {

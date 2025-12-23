@@ -121,7 +121,6 @@ export default function FinanceiroPage() {
     skus, 
     produtosComLotes,
     loading: dataLoading,
-    initialized,
     refreshData,
     invalidateCache,
     updateParametrosLocal,
@@ -317,8 +316,8 @@ export default function FinanceiroPage() {
     refreshData(['produtos'])
   }
 
-  // Loading combinado - inclui verificação de initialized
-  const loading = !initialized || dataLoading || vendasLoading
+  // Loading combinado - não depende mais de initialized
+  const loading = dataLoading || vendasLoading
 
   // ============ CÁLCULOS ============
   const diasUteisTotais = useMemo(() => {

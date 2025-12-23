@@ -38,12 +38,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 // HELPER: Limpar localStorage
 // ============================================
 
-function clearLocalStorage() {
+function clearAllStorage() {
   if (typeof window !== 'undefined') {
+    // Limpar dados do app
     localStorage.removeItem('clinic_id')
     localStorage.removeItem('clinic_info')
     localStorage.removeItem('ballarin_user')
-    console.log('🧹 LocalStorage limpo')
+    
+    // ✅ Limpar sessão do Supabase manualmente (garantia)
+    const supabaseKey = Object.keys(localStorage).find(key => 
+      key.startsWith('sb-') && key.endsWith('-auth-token')
+    )
+    if (supabaseKey) {
+      localStorage.removeItem(supabaseKey)
+      console.log('🧹 Token Supabase removido:', supabaseKey)
+    }
+    
+    console.log('🧹 LocalStorage limpo completamente')
   }
 }
 
@@ -57,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const isLoggingOut = useRef(false)
-  const initCompleted = useRef(false) // ✅ Flag para controlar quando init terminou
+  const initCompleted = useRef(false)
 
   // Carregar perfil do usuário
   const loadProfile = async (userId: string): Promise<UserProfile | null> => {
@@ -99,7 +110,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     const initAuth = async () => {
-      if (isLoggingOut.current) return
+      // ✅ Se está em processo de logout, não inicializar
+      if (isLoggingOut.current) {
+        console.log('⏭️ Ignorando initAuth - logout em andamento')
+        setLoading(false)
+        return
+      }
 
       try {
         console.log('🚀 Iniciando verificação de sessão...')
@@ -120,12 +136,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             
             if (!userProfile) {
               console.log('⚠️ Perfil não encontrado no banco, limpando sessão...')
-              clearLocalStorage()
+              clearAllStorage()
             }
           }
         } else {
           console.log('❌ Sem sessão Supabase Auth ativa')
-          // NÃO limpar localStorage aqui - pode ter login antigo válido
         }
       } catch (error) {
         console.error('❌ Erro ao inicializar auth:', error)
@@ -145,7 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, newSession) => {
         if (!mounted) return
         
-        console.log('🔔 Auth event:', event, '| isLoggingOut:', isLoggingOut.current, '| initCompleted:', initCompleted.current)
+        console.log('🔔 Auth event:', event, '| isLoggingOut:', isLoggingOut.current)
         
         // Se está fazendo logout, ignorar todos os eventos
         if (isLoggingOut.current) {
@@ -159,21 +174,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null)
           setUser(null)
           setProfile(null)
-          clearLocalStorage()
-          // Só setar loading=false se init já completou
           if (initCompleted.current) {
             setLoading(false)
           }
           return
         }
 
-        // ✅ INITIAL_SESSION: NÃO fazer nada aqui - deixar initAuth controlar
+        // ✅ INITIAL_SESSION: Ignorar - initAuth controla
         if (event === 'INITIAL_SESSION') {
           console.log('⏭️ INITIAL_SESSION - ignorando (initAuth controla)')
           return
         }
 
-        // ✅ SIGNED_IN: Carregar perfil (só se init já completou - caso de re-login)
+        // ✅ SIGNED_IN: Carregar perfil (só após init)
         if (event === 'SIGNED_IN' && newSession?.user && initCompleted.current) {
           console.log('🔄 SIGNED_IN detectado após init, recarregando perfil...')
           setSession(newSession)
@@ -201,6 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Login
   const signIn = async (email: string, password: string) => {
     try {
+      isLoggingOut.current = false // Reset flag
       setLoading(true)
       
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -247,27 +261,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  // Logout
+  // ✅ Logout CORRIGIDO - aguarda signOut antes de redirecionar
   const signOut = async () => {
-    // Ativar flag IMEDIATAMENTE para bloquear eventos
-    isLoggingOut.current = true
     console.log('🚪 Iniciando logout...')
-
-    // Limpar estado local primeiro
+    
+    // 1. Ativar flag IMEDIATAMENTE
+    isLoggingOut.current = true
+    
+    // 2. Limpar estado React
     setUser(null)
     setSession(null)
     setProfile(null)
-    clearLocalStorage()
-
-    // Redirecionar ANTES do signOut do Supabase
+    
+    // 3. Limpar TODO o localStorage (incluindo token Supabase)
+    clearAllStorage()
+    
+    try {
+      // 4. ✅ AGUARDAR signOut do Supabase completar
+      await supabase.auth.signOut()
+      console.log('✅ SignOut Supabase completado')
+    } catch (err) {
+      console.error('⚠️ Erro no signOut (ignorando):', err)
+    }
+    
+    // 5. Redirecionar DEPOIS do signOut
     if (typeof window !== 'undefined') {
+      console.log('🔄 Redirecionando para /login...')
       window.location.href = '/login'
     }
-
-    // SignOut do Supabase em background (não aguardar)
-    supabase.auth.signOut().catch(err => {
-      console.error('Erro no signOut:', err)
-    })
   }
 
   const value: AuthContextType = {

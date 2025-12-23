@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { AuthProvider } from '@/contexts/AuthContext'
@@ -6,13 +6,19 @@ import { DataProvider } from '@/contexts/DataContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
+// ✅ METADATA (sem viewport)
 export const metadata: Metadata = {
-  title: 'Ballarin',
+  title: 'JustiConecta',
   description: 'Sistema completo para clínica de estética',
   keywords: ['clínica', 'estoque', 'estética', 'controle'],
-  authors: [{ name: 'Ballarin' }],
-  viewport: 'width=device-width, initial-scale=1',
+  authors: [{ name: 'JustiConecta' }],
   robots: 'noindex, nofollow',
+}
+
+// ✅ VIEWPORT SEPARADO (Next.js 14 requirement)
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({

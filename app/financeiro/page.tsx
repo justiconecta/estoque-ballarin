@@ -481,6 +481,26 @@ export default function FinanceiroPage() {
     }
   }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
 
+  // ✅ NOVO: Sincronizar custo_hora calculado com a tabela parametros (COLOCAR AQUI)
+useEffect(() => {
+  const sincronizarCustoHora = async () => {
+    if (!parametrosCalculados || !parametros) return
+    
+    const custoHoraCalculado = parametrosCalculados.custoHora
+    const custoHoraAtual = parametros.custo_hora || 0
+    
+    // Só atualiza se o valor for diferente (tolerância R$ 0.01) e maior que zero
+    if (custoHoraCalculado > 0 && Math.abs(custoHoraCalculado - custoHoraAtual) > 0.01) {
+      console.log('🔄 Sincronizando custo_hora:', custoHoraAtual, '→', custoHoraCalculado)
+      await supabaseApi.updateParametros({ custo_hora: custoHoraCalculado })
+      setParametros(prev => prev ? { ...prev, custo_hora: custoHoraCalculado } : prev)
+    }
+  }
+  
+  sincronizarCustoHora()
+}, [parametrosCalculados?.custoHora, parametros?.custo_hora])
+
+
   // ✅ FIX BUG 7: DRE COMPLETO COM TRATAMENTO DE tipo=NULL
   const dreCalc = useMemo(() => {
     if (!parametros) return null

@@ -520,6 +520,7 @@ export const supabaseApi = {
     }
   },
 
+  // ✅ MODIFICADO: Agora atualiza SKU "Locação de Sala" automaticamente
   async updateParametros(updates: Partial<{
     numero_salas: number
     horas_trabalho_dia: number
@@ -552,6 +553,13 @@ export const supabaseApi = {
       }
       
       console.log('✅ PARÂMETROS ATUALIZADOS (UPDATE):', Object.keys(updates))
+
+      // ✅ NOVO: Se atualizou custo_hora ou fator_correcao_marca, recalcular SKU Locação de Sala
+      if (updates.custo_hora !== undefined || updates.fator_correcao_marca !== undefined) {
+        console.log('🔄 Recalculando valor_venda do SKU Locação de Sala...')
+        await this.updateSkuLocacaoSala()
+      }
+
       return data
     } catch (error) {
       console.error('💥 ERRO updateParametros:', error)
@@ -674,6 +682,7 @@ export const supabaseApi = {
   async updateSKU(id_sku: number, updates: {
     classe_terapeutica?: string
     fator_divisao?: string
+    valor_venda?: number  // ✅ ADICIONADO para permitir atualização do valor_venda
   }) {
     try {
       const clinicId = getCurrentClinicId()
@@ -696,7 +705,7 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ createVenda com items JSONB + id_profissional
+  // ✅ MODIFICADO: createVenda agora cria despesa de comissão automaticamente
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
@@ -823,6 +832,17 @@ export const supabaseApi = {
       }
 
       console.log('✅ VENDA CRIADA COM ITEMS:', vendaCriada.id, vendaCriada.items)
+
+      // ✅ NOVO: Criar despesa de comissão se profissional for comissionado
+      if (venda.id_profissional) {
+        await this.criarDespesaComissao({
+          id: vendaCriada.id,
+          id_profissional: venda.id_profissional,
+          preco_final: precoFinal,
+          data_venda: venda.data_venda
+        })
+      }
+
       return vendaCriada
 
     } catch (error) {
@@ -1759,5 +1779,171 @@ export const supabaseApi = {
       return { status: 'OK', cor: 'green', diasEstoque }
     }
     return { status: 'Alto', cor: 'blue', diasEstoque }
+  },
+
+  // ============================================================
+  // ✅ NOVAS FUNÇÕES - ITEM 1 E 2
+  // ============================================================
+
+  // ✅ ITEM 1: Auto-cálculo do valor_venda para SKU "Locação de Sala"
+  // Fórmula: valor_venda = custo_hora * fator_correcao_marca
+  async updateSkuLocacaoSala() {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      // 1. Buscar parâmetros atuais
+      const { data: parametros, error: paramError } = await supabase
+        .from('parametros')
+        .select('custo_hora, fator_correcao_marca')
+        .eq('id_clinica', clinicId)
+        .single()
+
+      if (paramError || !parametros) {
+        console.warn('⚠️ Parâmetros não encontrados para calcular Locação de Sala')
+        return null
+      }
+
+      const custoHora = parametros.custo_hora || 0
+      const fatorCorrecao = parametros.fator_correcao_marca || 1
+
+      // Se custo_hora não está definido, não atualizar
+      if (!custoHora || custoHora === 0) {
+        console.warn('⚠️ custo_hora não definido - SKU Locação de Sala não atualizado')
+        return null
+      }
+
+      // 2. Calcular novo valor_venda
+      const novoValorVenda = custoHora * fatorCorrecao
+
+      console.log('🏠 CÁLCULO LOCAÇÃO DE SALA:', {
+        custo_hora: custoHora,
+        fator_correcao_marca: fatorCorrecao,
+        valor_venda: novoValorVenda
+      })
+
+      // 3. Atualizar SKU "Locação de Sala" (buscar por nome)
+      const { data: skuAtualizado, error: updateError } = await supabase
+        .from('skus')
+        .update({ valor_venda: novoValorVenda })
+        .eq('id_clinica', clinicId)
+        .ilike('nome_produto', '%Locação de Sala%')
+        .select()
+
+      if (updateError) {
+        console.error('❌ Erro ao atualizar SKU Locação de Sala:', updateError)
+        throw updateError
+      }
+
+      if (skuAtualizado && skuAtualizado.length > 0) {
+        console.log('✅ SKU LOCAÇÃO DE SALA ATUALIZADO:', {
+          id_sku: skuAtualizado[0].id_sku,
+          nome: skuAtualizado[0].nome_produto,
+          valor_venda: novoValorVenda
+        })
+      } else {
+        console.warn('⚠️ SKU "Locação de Sala" não encontrado para esta clínica')
+      }
+
+      return skuAtualizado?.[0] || null
+    } catch (error) {
+      console.error('💥 ERRO updateSkuLocacaoSala:', error)
+      return null
+    }
+  },
+
+  // ✅ ITEM 2: Criar despesa de comissão para profissional comissionado
+  // Chamado automaticamente após criar uma venda com profissional comissionado
+  async criarDespesaComissao(venda: {
+    id: number
+    id_profissional: number | null
+    preco_final: number
+    data_venda: string
+  }) {
+    try {
+      // Se não tem profissional, ignorar
+      if (!venda.id_profissional) {
+        console.log('⏭️ Venda sem profissional - sem comissão')
+        return null
+      }
+
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) throw new Error('Clínica não identificada')
+
+      // 1. Buscar dados do profissional
+      const { data: profissional, error: profError } = await supabase
+        .from('profissionais')
+        .select('id, nome, perfil, percentual_profissional')
+        .eq('id', venda.id_profissional)
+        .eq('id_clinica', clinicId)
+        .single()
+
+      if (profError || !profissional) {
+        console.warn('⚠️ Profissional não encontrado:', venda.id_profissional)
+        return null
+      }
+
+      // 2. Verificar se é comissionado
+      if (profissional.perfil !== 'comissionado') {
+        console.log(`⏭️ Profissional ${profissional.nome} é ${profissional.perfil} - sem comissão`)
+        return null
+      }
+
+      // 3. Verificar se tem percentual definido
+      const percentual = profissional.percentual_profissional || 0
+      if (percentual <= 0) {
+        console.warn(`⚠️ Profissional ${profissional.nome} não tem percentual definido`)
+        return null
+      }
+
+      // 4. Calcular valor da comissão
+      const valorComissao = venda.preco_final * (percentual / 100)
+
+      console.log('💰 CÁLCULO COMISSÃO:', {
+        profissional: profissional.nome,
+        perfil: profissional.perfil,
+        percentual: percentual,
+        valor_venda: venda.preco_final,
+        comissao: valorComissao
+      })
+
+      // 5. Extrair mês/ano da venda para o período
+      const dataVenda = new Date(venda.data_venda)
+      const periodo = `${dataVenda.getFullYear()}-${String(dataVenda.getMonth() + 1).padStart(2, '0')}-01`
+
+      // 6. Criar despesa como "Custo Variável"
+      const despesaComissao = {
+        id_clinica: clinicId,
+        tipo: 'Custo Variável' as const,
+        categoria: 'Comissões',
+        item: `Comissão ${profissional.nome} - Venda #${venda.id}`,
+        valor_mensal: valorComissao,
+        periodo: periodo,
+        ativo: true
+      }
+
+      const { data: despesaCriada, error: despesaError } = await supabase
+        .from('despesas')
+        .insert(despesaComissao)
+        .select()
+        .single()
+
+      if (despesaError) {
+        console.error('❌ Erro ao criar despesa de comissão:', despesaError)
+        throw despesaError
+      }
+
+      console.log('✅ DESPESA COMISSÃO CRIADA:', {
+        id: despesaCriada.id,
+        profissional: profissional.nome,
+        valor: valorComissao,
+        venda_id: venda.id
+      })
+
+      return despesaCriada
+    } catch (error) {
+      console.error('💥 ERRO criarDespesaComissao:', error)
+      return null
+    }
   }
 }

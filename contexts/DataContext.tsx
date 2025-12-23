@@ -85,6 +85,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const resumoEspecificoCacheRef = useRef(new Map<string, { data: any, timestamp: number }>())
 
   // ============ LOAD ALL DATA ============
+  // ✅ OTIMIZADO: Carregamento em 2 fases para boot mais rápido
+  // Fase 1 (crítica): parametros + profissionais → initialized = true (UI pode renderizar)
+  // Fase 2 (background): restante dos dados → popula enquanto usuário já interage
   const loadAllData = useCallback(async () => {
     // ✅ USA SUPABASEAPI DIRETAMENTE (lê do localStorage)
     const clinicId = supabaseApi.getCurrentClinicId()
@@ -123,36 +126,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     console.log(`🚀 DataContext: Carregando dados para clínica ${clinicId}...`)
     
     try {
+      // ✅ FASE 1: Dados críticos (rápidos, essenciais para cálculos)
+      // Permite que a UI comece a renderizar mais cedo
+      console.log('📦 Fase 1: Carregando dados críticos...')
+      const [parametrosData, profissionaisData] = await Promise.all([
+        supabaseApi.getParametros(),
+        supabaseApi.getProfissionais()
+      ])
+      
+      setParametros(parametrosData || null)
+      setProfissionais(profissionaisData || [])
+      
+      // ✅ MARCAR INITIALIZED APÓS FASE 1
+      // UI pode começar a renderizar com dados essenciais
+      lastClinicIdRef.current = clinicId
+      lastLoadTimestamp.current = now
+      isInitializedRef.current = true
+      setInitialized(true)
+      
+      console.log('✅ Fase 1 completa - UI pode renderizar')
+      console.log(`   - Parâmetros: ${parametrosData ? 'OK' : 'NULL'}`)
+      console.log(`   - Profissionais: ${profissionaisData?.length || 0}`)
+
+      // ✅ FASE 2: Dados secundários (em paralelo, background)
+      // UI já está interativa, esses dados populam conforme chegam
+      console.log('📦 Fase 2: Carregando dados secundários (background)...')
+      
       const [
         servicosData,
         despesasData,
-        profissionaisData,
-        parametrosData,
         skusData,
         produtosData,
         pacientesData
       ] = await Promise.all([
         supabaseApi.getServicos(),
         supabaseApi.getDespesas(),
-        supabaseApi.getProfissionais(),
-        supabaseApi.getParametros(),
         supabaseApi.getSKUs(),
         supabaseApi.getProdutos(),
         supabaseApi.getPacientes()
       ])
 
-      console.log('✅ DataContext: Dados carregados!')
-      console.log(`   - Serviços: ${servicosData?.length || 0}`)
-      console.log(`   - Despesas: ${despesasData?.length || 0}`)
-      console.log(`   - Profissionais: ${profissionaisData?.length || 0}`)
-      console.log(`   - SKUs: ${skusData?.length || 0}`)
-      console.log(`   - Produtos: ${produtosData?.length || 0}`)
-      console.log(`   - Pacientes: ${pacientesData?.length || 0}`)
-
       setServicos(servicosData || [])
       setDespesas(despesasData || [])
-      setProfissionais(profissionaisData || [])
-      setParametros(parametrosData || null)
       setSKUs(skusData || [])
       setPacientes(pacientesData || [])
       
@@ -161,10 +176,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       )
       setProdutosComLotes(produtosComEstoque)
       
-      lastClinicIdRef.current = clinicId
-      lastLoadTimestamp.current = now
-      isInitializedRef.current = true
-      setInitialized(true)
+      console.log('✅ Fase 2 completa - Todos os dados carregados')
+      console.log(`   - Serviços: ${servicosData?.length || 0}`)
+      console.log(`   - Despesas: ${despesasData?.length || 0}`)
+      console.log(`   - SKUs: ${skusData?.length || 0}`)
+      console.log(`   - Produtos: ${produtosData?.length || 0}`)
+      console.log(`   - Pacientes: ${pacientesData?.length || 0}`)
       
       // Limpar retry interval se existir
       if (retryIntervalRef.current) {
@@ -499,21 +516,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!clinicId) return []
     
     try {
-      // Buscar CPFs únicos que têm resumos diários
-      const { data: cpfsDiarios, error: errDiarios } = await supabaseApi.supabase
-        .from('resumos_diarios_paciente')
-        .select('cpf')
-        .eq('id_clinica', clinicId)
+      // ✅ OTIMIZADO: Buscar CPFs em paralelo
+      const [{ data: cpfsDiarios, error: errDiarios }, { data: cpfsSemanais, error: errSemanais }] = await Promise.all([
+        supabaseApi.supabase
+          .from('resumos_diarios_paciente')
+          .select('cpf')
+          .eq('id_clinica', clinicId),
+        supabaseApi.supabase
+          .from('resumos_semanais_paciente')
+          .select('cpf')
+          .eq('id_clinica', clinicId)
+      ])
       
       if (errDiarios) {
         console.error('❌ Erro ao buscar CPFs diários:', errDiarios)
       }
-      
-      // Buscar CPFs únicos que têm resumos semanais
-      const { data: cpfsSemanais, error: errSemanais } = await supabaseApi.supabase
-        .from('resumos_semanais_paciente')
-        .select('cpf')
-        .eq('id_clinica', clinicId)
       
       if (errSemanais) {
         console.error('❌ Erro ao buscar CPFs semanais:', errSemanais)

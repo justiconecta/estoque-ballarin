@@ -569,6 +569,9 @@ export const supabaseApi = {
 
   // ============ MÓDULO FINANCEIRO - VENDAS ============
 
+  // ✅ OTIMIZADO: De 4 queries para 2 queries paralelas
+  // ANTES: vendas → profissionais → skus (sequencial)
+  // DEPOIS: vendas + (profissionais || skus) em paralelo
   async getVendas(ano: number, meses: number[]) {
     try {
       const clinicId = getCurrentClinicId()
@@ -579,6 +582,7 @@ export const supabaseApi = {
       const ultimoDia = new Date(ano, ultimoMes, 0).getDate()
       const dataFim = `${ano}-${String(ultimoMes).padStart(2, '0')}-${ultimoDia}`
 
+      // ✅ Query 1: Vendas com pacientes (JOIN nativo do Supabase)
       const { data, error } = await supabase
         .from('vendas')
         .select(`
@@ -594,28 +598,15 @@ export const supabaseApi = {
         .order('data_venda', { ascending: false })
 
       if (error) throw error
-
-      // ✅ Buscar profissionais separadamente (FK pode não estar configurada)
-      const profissionaisIds = Array.from(new Set((data || []).map(v => v.id_profissional).filter(Boolean)))
-      let profissionaisMap = new Map<number, any>()
-      
-      if (profissionaisIds.length > 0) {
-        const { data: profissionaisData } = await supabase
-          .from('profissionais')
-          .select('id, nome, perfil, percentual_profissional')
-          .in('id', profissionaisIds)
-        
-        if (profissionaisData) {
-          profissionaisData.forEach(p => profissionaisMap.set(p.id, p))
-        }
+      if (!data || data.length === 0) {
+        console.log('💵 VENDAS ENCONTRADAS: 0')
+        return []
       }
 
-      // ✅ CORREÇÃO: Produtos estão no campo JSONB 'items', não em tabela separada
-      // Formato: [{"id": id_sku, "qtd": quantidade}]
-      
-      // Coletar todos os IDs de SKUs únicos de todas as vendas
+      // ✅ Extrair IDs únicos para busca em batch
+      const profissionaisIds = Array.from(new Set(data.map(v => v.id_profissional).filter(Boolean))) as number[]
       const allSkuIds = new Set<number>()
-      ;(data || []).forEach(venda => {
+      data.forEach(venda => {
         if (venda.items && Array.isArray(venda.items)) {
           venda.items.forEach((item: any) => {
             if (item.id) allSkuIds.add(item.id)
@@ -623,21 +614,31 @@ export const supabaseApi = {
         }
       })
 
-      // Buscar nomes dos SKUs de uma só vez
-      let skuMap = new Map<number, any>()
-      if (allSkuIds.size > 0) {
-        const { data: skusData } = await supabase
-          .from('skus')
-          .select('id_sku, nome_produto, valor_venda, classe_terapeutica')
-          .in('id_sku', Array.from(allSkuIds))
+      // ✅ Query 2: Profissionais e SKUs em PARALELO (não sequencial)
+      const [profissionaisResult, skusResult] = await Promise.all([
+        profissionaisIds.length > 0
+          ? supabase
+              .from('profissionais')
+              .select('id, nome, perfil, percentual_profissional')
+              .in('id', profissionaisIds)
+          : Promise.resolve({ data: [] }),
+        allSkuIds.size > 0
+          ? supabase
+              .from('skus')
+              .select('id_sku, nome_produto, valor_venda, classe_terapeutica')
+              .in('id_sku', Array.from(allSkuIds))
+          : Promise.resolve({ data: [] })
+      ])
 
-        if (skusData) {
-          skusData.forEach(sku => skuMap.set(sku.id_sku, sku))
-        }
-      }
+      // Criar mapas para lookup O(1)
+      const profissionaisMap = new Map<number, any>()
+      ;(profissionaisResult.data || []).forEach(p => profissionaisMap.set(p.id, p))
+
+      const skuMap = new Map<number, any>()
+      ;(skusResult.data || []).forEach(sku => skuMap.set(sku.id_sku, sku))
 
       // Enriquecer vendas com dados dos SKUs e Profissionais
-      const vendasCompletas = (data || []).map(venda => {
+      const vendasCompletas = data.map(venda => {
         const itemsEnriquecidos = (venda.items || []).map((item: any) => ({
           id_sku: item.id,
           quantidade: item.qtd,
@@ -706,6 +707,7 @@ export const supabaseApi = {
   },
 
   // ✅ MODIFICADO: createVenda agora cria despesa de comissão automaticamente
+  // ✅ OTIMIZADO: Batch query para lotes (1 query ao invés de N)
   async createVenda(venda: {
     id_paciente: number
     data_venda: string
@@ -725,15 +727,23 @@ export const supabaseApi = {
         throw new Error('Nenhum insumo selecionado para a venda')
       }
 
-      // 1. Buscar dados dos lotes e SKUs para cálculos
-      const insumosDetalhados = await Promise.all(venda.insumos.map(async (item) => {
-        const { data: lote, error: loteError } = await supabase
-          .from('lotes')
-          .select('*, skus:id_sku(id_sku, nome_produto, valor_venda, classe_terapeutica)')
-          .eq('id_lote', item.id_lote)
-          .single()
+      // ✅ OTIMIZADO: Buscar TODOS os lotes em 1 query (ao invés de N queries)
+      const loteIds = venda.insumos.map(item => item.id_lote)
+      const { data: lotesData, error: lotesError } = await supabase
+        .from('lotes')
+        .select('*, skus:id_sku(id_sku, nome_produto, valor_venda, classe_terapeutica)')
+        .in('id_lote', loteIds)
 
-        if (loteError || !lote) throw new Error(`Lote ${item.id_lote} não encontrado`)
+      if (lotesError) throw lotesError
+
+      // Criar mapa para lookup O(1)
+      const lotesMap = new Map<number, any>()
+      ;(lotesData || []).forEach(lote => lotesMap.set(lote.id_lote, lote))
+
+      // Validar que todos os lotes foram encontrados e calcular valores
+      const insumosDetalhados = venda.insumos.map(item => {
+        const lote = lotesMap.get(item.id_lote)
+        if (!lote) throw new Error(`Lote ${item.id_lote} não encontrado`)
 
         const custoUnitario = lote.preco_unitario || 0
         const valorVendaUnitario = lote.skus?.valor_venda || 0
@@ -747,7 +757,7 @@ export const supabaseApi = {
           custoTotalItem,
           valorVendaTotalItem
         }
-      }))
+      })
 
       // 2. Calcular Totais da Venda
       const precoTotal = insumosDetalhados.reduce((acc, item) => acc + item.valorVendaTotalItem, 0)
@@ -1170,7 +1180,9 @@ export const supabaseApi = {
 
   // ============ PRODUTOS/ESTOQUE ============
 
-  // Produtos com FILTRO RIGOROSO
+  // ✅ OTIMIZADO: Produtos com JOIN em memória (elimina N+1 queries)
+  // ANTES: 1 query SKUs + N queries lotes (66 roundtrips para 65 SKUs)
+  // DEPOIS: 1 query SKUs + 1 query lotes (2 roundtrips total)
   async getProdutos() {
     try {
       const clinicId = getCurrentClinicId()
@@ -1178,6 +1190,7 @@ export const supabaseApi = {
 
       if (!clinicId) throw new Error('Clínica não identificada')
 
+      // ✅ Query 1: Buscar todos os SKUs ativos
       const { data: skus, error: skusError } = await supabase
         .from('skus')
         .select('*')
@@ -1186,25 +1199,42 @@ export const supabaseApi = {
 
       if (skusError) throw skusError
 
-      const produtosComLotes = await Promise.all(
-        (skus || []).map(async (sku) => {
-          const { data: lotes, error: lotesError } = await supabase
-            .from('lotes')
-            .select('*')
-            .eq('id_sku', sku.id_sku)
-            .eq('id_clinica', clinicId)
-            .gt('quantidade_disponivel', 0)
+      if (!skus || skus.length === 0) {
+        console.log('📊 PRODUTOS ENCONTRADOS: 0')
+        return []
+      }
 
-          if (lotesError) {
-            console.error('❌ ERRO LOTES:', lotesError)
-            return { ...sku, lotes: [] }
-          }
+      // ✅ Query 2: Buscar TODOS os lotes com estoque disponível para esta clínica
+      // Usa o índice idx_lotes_clinica_disponiveis para performance
+      const { data: todosLotes, error: lotesError } = await supabase
+        .from('lotes')
+        .select('*')
+        .eq('id_clinica', clinicId)
+        .gt('quantidade_disponivel', 0)
 
-          return { ...sku, lotes: lotes || [] }
-        })
-      )
+      if (lotesError) {
+        console.error('❌ ERRO LOTES:', lotesError)
+        // Fallback: retornar SKUs sem lotes
+        return skus.map(sku => ({ ...sku, lotes: [] }))
+      }
 
-      console.log(`📊 PRODUTOS ENCONTRADOS: ${produtosComLotes.length}`)
+      // ✅ JOIN em memória: Agrupar lotes por id_sku
+      const lotesPorSku = new Map<number, any[]>()
+      ;(todosLotes || []).forEach(lote => {
+        const skuId = lote.id_sku
+        if (!lotesPorSku.has(skuId)) {
+          lotesPorSku.set(skuId, [])
+        }
+        lotesPorSku.get(skuId)!.push(lote)
+      })
+
+      // ✅ Montar resultado: SKU + seus lotes
+      const produtosComLotes = skus.map(sku => ({
+        ...sku,
+        lotes: lotesPorSku.get(sku.id_sku) || []
+      }))
+
+      console.log(`📊 PRODUTOS ENCONTRADOS: ${produtosComLotes.length} (${todosLotes?.length || 0} lotes totais)`)
       return produtosComLotes
     } catch (error) {
       console.error('💥 ERRO getProdutos:', error)

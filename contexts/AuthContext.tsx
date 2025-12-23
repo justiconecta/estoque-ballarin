@@ -56,17 +56,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const isLoggingOut = useRef(false) // Flag para evitar race condition
+  const isLoggingOut = useRef(false)
+  const initCompleted = useRef(false) // ✅ Flag para controlar quando init terminou
 
   // Carregar perfil do usuário
   const loadProfile = async (userId: string): Promise<UserProfile | null> => {
-    // Se está fazendo logout, não carregar perfil
     if (isLoggingOut.current) {
       console.log('⏭️ Ignorando loadProfile - logout em andamento')
       return null
     }
 
     try {
+      console.log('🔍 Buscando perfil para auth_id:', userId)
+      
       const { data, error } = await supabase
         .from('usuarios_internos')
         .select('id_usuario, usuario, nome_completo, email, role, id_clinica, ativo')
@@ -74,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (error) {
-        console.error('Erro ao carregar perfil:', error)
+        console.error('❌ Erro ao carregar perfil:', error)
         return null
       }
 
@@ -87,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return data as UserProfile
     } catch (error) {
-      console.error('Erro ao carregar perfil:', error)
+      console.error('❌ Erro ao carregar perfil:', error)
       return null
     }
   }
@@ -97,30 +99,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let mounted = true
 
     const initAuth = async () => {
-      // Se está fazendo logout, não inicializar
       if (isLoggingOut.current) return
 
       try {
+        console.log('🚀 Iniciando verificação de sessão...')
+        
         const { data: { session: currentSession } } = await supabase.auth.getSession()
         
         if (!mounted || isLoggingOut.current) return
 
         if (currentSession?.user) {
+          console.log('✅ Sessão Supabase Auth encontrada, carregando perfil...')
           setSession(currentSession)
           setUser(currentSession.user)
+          
           const userProfile = await loadProfile(currentSession.user.id)
+          
           if (mounted && !isLoggingOut.current) {
             setProfile(userProfile)
+            
+            if (!userProfile) {
+              console.log('⚠️ Perfil não encontrado no banco, limpando sessão...')
+              clearLocalStorage()
+            }
           }
         } else {
-          // Sem sessão - limpar tudo
-          clearLocalStorage()
+          console.log('❌ Sem sessão Supabase Auth ativa')
+          // NÃO limpar localStorage aqui - pode ter login antigo válido
         }
       } catch (error) {
-        console.error('Erro ao inicializar auth:', error)
+        console.error('❌ Erro ao inicializar auth:', error)
       } finally {
         if (mounted && !isLoggingOut.current) {
+          initCompleted.current = true
           setLoading(false)
+          console.log('✅ Auth init COMPLETO - loading = false')
         }
       }
     }
@@ -132,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, newSession) => {
         if (!mounted) return
         
-        console.log('🔔 Auth event:', event, '| isLoggingOut:', isLoggingOut.current)
+        console.log('🔔 Auth event:', event, '| isLoggingOut:', isLoggingOut.current, '| initCompleted:', initCompleted.current)
         
         // Se está fazendo logout, ignorar todos os eventos
         if (isLoggingOut.current) {
@@ -140,16 +153,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return
         }
 
+        // ✅ SIGNED_OUT: Limpar tudo
         if (event === 'SIGNED_OUT') {
+          console.log('🚪 SIGNED_OUT detectado - limpando estado')
           setSession(null)
           setUser(null)
           setProfile(null)
           clearLocalStorage()
-          setLoading(false)
+          // Só setar loading=false se init já completou
+          if (initCompleted.current) {
+            setLoading(false)
+          }
           return
         }
 
-        if (event === 'SIGNED_IN' && newSession?.user) {
+        // ✅ INITIAL_SESSION: NÃO fazer nada aqui - deixar initAuth controlar
+        if (event === 'INITIAL_SESSION') {
+          console.log('⏭️ INITIAL_SESSION - ignorando (initAuth controla)')
+          return
+        }
+
+        // ✅ SIGNED_IN: Carregar perfil (só se init já completou - caso de re-login)
+        if (event === 'SIGNED_IN' && newSession?.user && initCompleted.current) {
+          console.log('🔄 SIGNED_IN detectado após init, recarregando perfil...')
           setSession(newSession)
           setUser(newSession.user)
           const userProfile = await loadProfile(newSession.user.id)
@@ -158,8 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        if (mounted && !isLoggingOut.current) {
-          setLoading(false)
+        // ✅ TOKEN_REFRESHED: Apenas atualizar sessão
+        if (event === 'TOKEN_REFRESHED' && newSession) {
+          console.log('🔄 Token refreshed')
+          setSession(newSession)
         }
       }
     )
@@ -200,6 +228,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: new Error('Usuário desativado') }
         }
 
+        setSession(data.session)
+        setUser(data.user)
         setProfile(userProfile)
 
         // Atualizar último login

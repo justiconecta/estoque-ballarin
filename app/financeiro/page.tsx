@@ -1,7 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { useVirtualizer } from '@tanstack/react-virtual'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { DollarSign, Plus, Save, X } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
@@ -144,7 +143,7 @@ const FinanceCard = React.memo(function FinanceCard({
   )
 })
 
-// ✅ InputLocal memoizado com handlers internos
+// ✅ InputLocal memoizado
 const InputLocal = React.memo(function InputLocal({ 
   label, 
   type = 'text', 
@@ -156,7 +155,7 @@ const InputLocal = React.memo(function InputLocal({
   label: string
   type?: string
   value: any
-  onChange: (v: any) => void
+  onChange: (value: any) => void
   placeholder?: string
   step?: string
 }) {
@@ -267,24 +266,23 @@ const FiltroPeriodo = React.memo(function FiltroPeriodo({
   )
 })
 
-// ✅ VendaRow memoizado para virtualização
+// ✅ VendaRow memoizada
 const VendaRow = React.memo(function VendaRow({ venda }: { venda: any }) {
-  const produtosDetalhados = useMemo(() => 
-    (venda.itemsEnriquecidos || [])
+  const { produtosDetalhados, produtosTexto } = useMemo(() => {
+    const detalhados = (venda.itemsEnriquecidos || [])
       .map((item: any) => ({
         nome: item.sku?.nome_produto || 'Produto não encontrado',
         qtd: item.quantidade || 0
       }))
-      .filter((p: any) => p.nome !== 'Produto não encontrado'),
-    [venda.itemsEnriquecidos]
-  )
-  
-  const produtosTexto = useMemo(() => {
-    const nomes = produtosDetalhados.map((p: any) => p.nome)
-    return nomes.length > 0 
+      .filter((p: any) => p.nome !== 'Produto não encontrado')
+    
+    const nomes = detalhados.map((p: any) => p.nome)
+    const texto = nomes.length > 0 
       ? nomes.slice(0, 2).join(', ') + (nomes.length > 2 ? ` +${nomes.length - 2}` : '')
       : '—'
-  }, [produtosDetalhados])
+    
+    return { produtosDetalhados: detalhados, produtosTexto: texto }
+  }, [venda.itemsEnriquecidos])
 
   return (
     <tr className="border-b border-gray-100 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30">
@@ -333,10 +331,10 @@ const VendaRow = React.memo(function VendaRow({ venda }: { venda: any }) {
   )
 })
 
-// ✅ DespesaRow memoizado
+// ✅ DespesaRow memoizada
 const DespesaRow = React.memo(function DespesaRow({ despesa }: { despesa: Despesa }) {
-  const tipoClass = useMemo(() => {
-    switch (despesa.tipo) {
+  const tipoBadgeClass = useMemo(() => {
+    switch(despesa.tipo) {
       case 'Despesa Fixa': return 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
       case 'Custo Fixo': return 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400'
       case 'Despesa Variável': return 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
@@ -349,7 +347,7 @@ const DespesaRow = React.memo(function DespesaRow({ despesa }: { despesa: Despes
     <tr className="border-b border-gray-100 dark:border-slate-700/50">
       <td className="px-4 py-3 text-gray-600 dark:text-slate-400 font-mono text-xs">{formatPeriodo(despesa.periodo)}</td>
       <td className="px-4 py-3">
-        <span className={`px-2 py-1 rounded text-xs font-medium ${tipoClass}`}>
+        <span className={`px-2 py-1 rounded text-xs font-medium ${tipoBadgeClass}`}>
           {despesa.tipo || 'Não definido'}
         </span>
       </td>
@@ -360,38 +358,33 @@ const DespesaRow = React.memo(function DespesaRow({ despesa }: { despesa: Despes
   )
 })
 
-// ✅ SKURow memoizado
+// ✅ SKURow memoizada
 const SKURow = React.memo(function SKURow({
   sku,
-  editandoId,
+  isEditing,
   editForm,
-  setEditForm,
+  onEditFormChange,
   onEdit,
   onSave,
   onCancel,
   loading
 }: {
   sku: SKU
-  editandoId: number | null
+  isEditing: boolean
   editForm: { classe_terapeutica?: string; fator_divisao?: string }
-  setEditForm: (form: any) => void
-  onEdit: (sku: SKU) => void
-  onSave: (id: number) => void
+  onEditFormChange: (form: { classe_terapeutica?: string; fator_divisao?: string }) => void
+  onEdit: () => void
+  onSave: () => void
   onCancel: () => void
   loading: boolean
 }) {
-  const isEditing = editandoId === sku.id_sku
-
   const handleClasseChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setEditForm((prev: any) => ({ ...prev, classe_terapeutica: e.target.value }))
-  }, [setEditForm])
+    onEditFormChange({ ...editForm, classe_terapeutica: e.target.value })
+  }, [editForm, onEditFormChange])
 
   const handleFatorChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditForm((prev: any) => ({ ...prev, fator_divisao: e.target.value }))
-  }, [setEditForm])
-
-  const handleSaveClick = useCallback(() => onSave(sku.id_sku), [onSave, sku.id_sku])
-  const handleEditClick = useCallback(() => onEdit(sku), [onEdit, sku])
+    onEditFormChange({ ...editForm, fator_divisao: e.target.value })
+  }, [editForm, onEditFormChange])
 
   return (
     <tr className="border-b border-gray-100 dark:border-slate-700/50">
@@ -438,7 +431,7 @@ const SKURow = React.memo(function SKURow({
         <div className="flex justify-center gap-2">
           {isEditing ? (
             <>
-              <button onClick={handleSaveClick} disabled={loading} className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50">
+              <button onClick={onSave} disabled={loading} className="p-2 bg-green-50 dark:bg-green-500/20 hover:bg-green-100 dark:hover:bg-green-500/30 border border-green-200 dark:border-green-500/30 rounded-lg text-green-700 dark:text-green-400 transition-colors disabled:opacity-50">
                 <Save className="w-4 h-4" />
               </button>
               <button onClick={onCancel} disabled={loading} className="p-2 bg-red-50 dark:bg-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/30 border border-red-200 dark:border-red-500/30 rounded-lg text-red-700 dark:text-red-400 transition-colors disabled:opacity-50">
@@ -446,7 +439,7 @@ const SKURow = React.memo(function SKURow({
               </button>
             </>
           ) : (
-            <button onClick={handleEditClick} className="px-3 py-1 bg-cyan-50 dark:bg-cyan-500/20 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 border border-cyan-200 dark:border-cyan-500/30 rounded-lg text-cyan-700 dark:text-cyan-400 text-sm transition-colors">
+            <button onClick={onEdit} className="px-3 py-1 bg-cyan-50 dark:bg-cyan-500/20 hover:bg-cyan-100 dark:hover:bg-cyan-500/30 border border-cyan-200 dark:border-cyan-500/30 rounded-lg text-cyan-700 dark:text-cyan-400 text-sm transition-colors">
               Editar
             </button>
           )}
@@ -456,46 +449,28 @@ const SKURow = React.memo(function SKURow({
   )
 })
 
-// ✅ ProfissionalRow memoizado
+// ✅ ProfissionalRow memoizada
 const ProfissionalRow = React.memo(function ProfissionalRow({
   profissional,
-  editandoId,
+  isEditing,
   editForm,
-  setEditForm,
+  onEditFormChange,
   onEdit,
   onSave,
   onCancel,
   onRemover
 }: {
   profissional: any
-  editandoId: number | null
+  isEditing: boolean
   editForm: { percentual_profissional?: number | string; perfil?: string; duracao_servico?: number | string }
-  setEditForm: (form: any) => void
-  onEdit: (p: any) => void
-  onSave: (id: number) => void
+  onEditFormChange: (form: any) => void
+  onEdit: () => void
+  onSave: () => void
   onCancel: () => void
-  onRemover: (id: number) => void
+  onRemover: () => void
 }) {
-  const isEditing = editandoId === profissional.id
-
-  const handlePercentualChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditForm((prev: any) => ({ ...prev, percentual_profissional: e.target.value === '' ? '' : Number(e.target.value) }))
-  }, [setEditForm])
-
-  const handlePerfilChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setEditForm((prev: any) => ({ ...prev, perfil: e.target.value }))
-  }, [setEditForm])
-
-  const handleDuracaoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditForm((prev: any) => ({ ...prev, duracao_servico: e.target.value === '' ? '' : Number(e.target.value) }))
-  }, [setEditForm])
-
-  const handleSaveClick = useCallback(() => onSave(profissional.id), [onSave, profissional.id])
-  const handleEditClick = useCallback(() => onEdit(profissional), [onEdit, profissional])
-  const handleRemoverClick = useCallback(() => onRemover(profissional.id), [onRemover, profissional.id])
-
-  const perfilClass = useMemo(() => {
-    switch (profissional.perfil) {
+  const perfilBadgeClass = useMemo(() => {
+    switch(profissional.perfil) {
       case 'proprietario': return 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400'
       case 'comissionado': return 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
       default: return 'bg-gray-100 dark:bg-slate-600 text-gray-500 dark:text-slate-400'
@@ -503,7 +478,7 @@ const ProfissionalRow = React.memo(function ProfissionalRow({
   }, [profissional.perfil])
 
   const perfilLabel = useMemo(() => {
-    switch (profissional.perfil) {
+    switch(profissional.perfil) {
       case 'proprietario': return 'Proprietário'
       case 'comissionado': return 'Comissionado'
       default: return 'Não definido'
@@ -525,7 +500,7 @@ const ProfissionalRow = React.memo(function ProfissionalRow({
               min="0" 
               max="100" 
               value={editForm.percentual_profissional ?? ''} 
-              onChange={handlePercentualChange} 
+              onChange={(e) => onEditFormChange({ ...editForm, percentual_profissional: e.target.value === '' ? '' : Number(e.target.value) })} 
               className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white" 
               placeholder="0" 
             />
@@ -534,7 +509,7 @@ const ProfissionalRow = React.memo(function ProfissionalRow({
             <label className="text-xs text-gray-500 dark:text-slate-400 block mb-1">Perfil</label>
             <select 
               value={editForm.perfil ?? ''} 
-              onChange={handlePerfilChange} 
+              onChange={(e) => onEditFormChange({ ...editForm, perfil: e.target.value })} 
               className="w-36 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white"
             >
               <option value="">Selecione...</option>
@@ -549,19 +524,19 @@ const ProfissionalRow = React.memo(function ProfissionalRow({
               min="0.1" 
               step="0.1" 
               value={editForm.duracao_servico ?? ''} 
-              onChange={handleDuracaoChange} 
+              onChange={(e) => onEditFormChange({ ...editForm, duracao_servico: e.target.value === '' ? '' : Number(e.target.value) })} 
               className="w-20 px-2 py-1 text-sm bg-white dark:bg-slate-600 border border-gray-300 dark:border-slate-500 rounded text-gray-900 dark:text-white" 
               placeholder="1.0" 
             />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleSaveClick} className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded">Salvar</button>
+            <button onClick={onSave} className="px-3 py-1 text-xs bg-green-500 hover:bg-green-600 text-white rounded">Salvar</button>
             <button onClick={onCancel} className="px-3 py-1 text-xs bg-gray-400 hover:bg-gray-500 text-white rounded">Cancelar</button>
           </div>
         </div>
       ) : (
         <div className="flex items-center gap-4">
-          <span className={`px-2 py-1 rounded text-xs font-medium ${perfilClass}`}>
+          <span className={`px-2 py-1 rounded text-xs font-medium ${perfilBadgeClass}`}>
             {perfilLabel}
           </span>
           <span className="text-sm text-cyan-600 dark:text-cyan-400 font-medium">
@@ -570,27 +545,24 @@ const ProfissionalRow = React.memo(function ProfissionalRow({
           <span className="text-sm text-amber-600 dark:text-amber-400 font-medium">
             {profissional.duracao_servico != null ? `${profissional.duracao_servico}h` : '—'}
           </span>
-          <button onClick={handleEditClick} className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-xs">Editar</button>
-          <button onClick={handleRemoverClick} className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs">Remover</button>
+          <button onClick={onEdit} className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-700 text-xs">Editar</button>
+          <button onClick={onRemover} className="text-red-600 dark:text-red-400 hover:text-red-700 text-xs">Remover</button>
         </div>
       )}
     </div>
   )
 })
 
-// ✅ MetaRow memoizado
+// ✅ MetaRow memoizada
 const MetaRow = React.memo(function MetaRow({ meta }: { meta: any }) {
-  const coberturaClass = useMemo(() => {
+  const coberturaBadgeClass = useMemo(() => {
     if (meta.cobertura >= 100) return 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400'
     if (meta.cobertura >= 50) return 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400'
     return 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400'
   }, [meta.cobertura])
 
-  const gapDisplay = useMemo(() => {
-    if (meta.gap > 0) return { text: `-${meta.gap}`, class: 'text-red-500 dark:text-red-400' }
-    if (meta.gap === 0) return { text: '✓', class: 'text-green-600 dark:text-green-400' }
-    return { text: `+${Math.abs(meta.gap)}`, class: 'text-green-600 dark:text-green-400' }
-  }, [meta.gap])
+  const gapClass = meta.gap > 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'
+  const gapText = meta.gap > 0 ? `-${meta.gap}` : meta.gap === 0 ? '✓' : `+${Math.abs(meta.gap)}`
 
   const projecaoClass = useMemo(() => {
     if (meta.projecao >= 100) return 'text-green-600 dark:text-green-400'
@@ -604,12 +576,12 @@ const MetaRow = React.memo(function MetaRow({ meta }: { meta: any }) {
       <td className="px-4 py-3 text-center text-gray-600 dark:text-slate-400">{meta.metaUnidades}</td>
       <td className="px-4 py-3 text-center text-gray-900 dark:text-white font-bold">{meta.realizado}</td>
       <td className="px-4 py-3 text-center">
-        <span className={`px-2 py-1 rounded text-xs font-medium ${coberturaClass}`}>
+        <span className={`px-2 py-1 rounded text-xs font-medium ${coberturaBadgeClass}`}>
           {formatPercent(meta.cobertura)}
         </span>
       </td>
       <td className="px-4 py-3 text-center">
-        <span className={gapDisplay.class}>{gapDisplay.text}</span>
+        <span className={gapClass}>{gapText}</span>
       </td>
       <td className="px-4 py-3 text-center">
         <span className={`font-medium ${projecaoClass}`}>{meta.projecao}%</span>
@@ -620,7 +592,7 @@ const MetaRow = React.memo(function MetaRow({ meta }: { meta: any }) {
 
 // ============ ABAS MEMOIZADAS ============
 
-// ✅ AbaVendas com virtualização
+// ✅ AbaVendas memoizada
 const AbaVendas = React.memo(function AbaVendas({ 
   vendas, 
   tituloPeriodo, 
@@ -630,20 +602,11 @@ const AbaVendas = React.memo(function AbaVendas({
   tituloPeriodo: string
   onNovaVenda: () => void
 }) {
-  const parentRef = useRef<HTMLDivElement>(null)
-  
-  const rowVirtualizer = useVirtualizer({
-    count: vendas.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 52,
-    overscan: 5,
-  })
-
-  const totais = useMemo(() => ({
-    count: vendas.length,
-    bruta: vendas.reduce((s, v) => s + (v.preco_total || 0), 0),
+  const metricas = useMemo(() => ({
+    total: vendas.length,
+    receitaBruta: vendas.reduce((s, v) => s + (v.preco_total || 0), 0),
     descontos: vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0),
-    liquida: vendas.reduce((s, v) => s + (v.preco_final || 0), 0),
+    receitaLiquida: vendas.reduce((s, v) => s + (v.preco_final || 0), 0),
     ticketMedio: vendas.length > 0 ? vendas.reduce((s, v) => s + (v.preco_final || 0), 0) / vendas.length : 0
   }), [vendas])
 
@@ -655,7 +618,6 @@ const AbaVendas = React.memo(function AbaVendas({
           <Plus className="w-4 h-4 mr-2" /> Nova Venda
         </Button>
       </div>
-      
       <div className="overflow-visible">
         <table className="w-full text-sm">
           <thead>
@@ -672,61 +634,27 @@ const AbaVendas = React.memo(function AbaVendas({
               <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Parcelas</th>
             </tr>
           </thead>
+          <tbody>
+            {vendas.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
+                  Nenhuma venda encontrada no período selecionado
+                </td>
+              </tr>
+            ) : (
+              vendas.map((venda: any) => <VendaRow key={venda.id} venda={venda} />)
+            )}
+          </tbody>
         </table>
-        
-        {vendas.length === 0 ? (
-          <div className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
-            Nenhuma venda encontrada no período selecionado
-          </div>
-        ) : vendas.length <= 15 ? (
-          // Sem virtualização para poucos itens
-          <table className="w-full text-sm">
-            <tbody>
-              {vendas.map((v: any) => (
-                <VendaRow key={v.id} venda={v} />
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          // Com virtualização para muitos itens
-          <div ref={parentRef} className="max-h-[500px] overflow-auto">
-            <table className="w-full text-sm">
-              <tbody>
-                <tr style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
-                  <td colSpan={10} style={{ padding: 0 }}>
-                    {rowVirtualizer.getVirtualItems().map((virtualRow) => (
-                      <div
-                        key={virtualRow.key}
-                        style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: '100%',
-                          transform: `translateY(${virtualRow.start}px)`,
-                        }}
-                      >
-                        <table className="w-full text-sm">
-                          <tbody>
-                            <VendaRow venda={vendas[virtualRow.index]} />
-                          </tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       {vendas.length > 0 && (
         <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
-          <FinanceCard title="Total de Vendas" value={totais.count} variant="cyan" />
-          <FinanceCard title="Receita Bruta" value={formatCurrency(totais.bruta)} variant="green" />
-          <FinanceCard title="Total Descontos" value={formatCurrency(totais.descontos)} variant="red" />
-          <FinanceCard title="Receita Líquida" value={formatCurrency(totais.liquida)} variant="cyan" />
-          <FinanceCard title="Ticket Médio" value={formatCurrency(totais.ticketMedio)} variant="purple" />
+          <FinanceCard title="Total de Vendas" value={metricas.total} variant="cyan" />
+          <FinanceCard title="Receita Bruta" value={formatCurrency(metricas.receitaBruta)} variant="green" />
+          <FinanceCard title="Total Descontos" value={formatCurrency(metricas.descontos)} variant="red" />
+          <FinanceCard title="Receita Líquida" value={formatCurrency(metricas.receitaLiquida)} variant="cyan" />
+          <FinanceCard title="Ticket Médio" value={formatCurrency(metricas.ticketMedio)} variant="purple" />
         </div>
       )}
     </div>
@@ -744,8 +672,18 @@ const AbaGestaoSKUs = React.memo(function AbaGestaoSKUs({
   onCancel, 
   feedback, 
   loading 
-}: any) {
-  const stats = useMemo(() => ({
+}: {
+  skus: SKU[]
+  editandoId: number | null
+  editForm: { classe_terapeutica?: string; fator_divisao?: string }
+  setEditForm: (form: { classe_terapeutica?: string; fator_divisao?: string }) => void
+  onEdit: (sku: SKU) => void
+  onSave: (id: number) => void
+  onCancel: () => void
+  feedback: { tipo: 'success' | 'error'; mensagem: string } | null
+  loading: boolean
+}) {
+  const metricas = useMemo(() => ({
     total: skus.length,
     categorias: new Set(skus.map((s: SKU) => s.classe_terapeutica)).size,
     ativos: skus.filter((s: SKU) => s.status_estoque === 'Ativo').length
@@ -784,11 +722,11 @@ const AbaGestaoSKUs = React.memo(function AbaGestaoSKUs({
                 <SKURow
                   key={sku.id_sku}
                   sku={sku}
-                  editandoId={editandoId}
+                  isEditing={editandoId === sku.id_sku}
                   editForm={editForm}
-                  setEditForm={setEditForm}
-                  onEdit={onEdit}
-                  onSave={onSave}
+                  onEditFormChange={setEditForm}
+                  onEdit={() => onEdit(sku)}
+                  onSave={() => onSave(sku.id_sku)}
                   onCancel={onCancel}
                   loading={loading}
                 />
@@ -799,9 +737,9 @@ const AbaGestaoSKUs = React.memo(function AbaGestaoSKUs({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-        <FinanceCard title="Total de SKUs" value={stats.total} variant="cyan" />
-        <FinanceCard title="Categorias Ativas" value={stats.categorias} variant="green" />
-        <FinanceCard title="SKUs Ativos" value={stats.ativos} />
+        <FinanceCard title="Total de SKUs" value={metricas.total} variant="cyan" />
+        <FinanceCard title="Categorias Ativas" value={metricas.categorias} variant="green" />
+        <FinanceCard title="SKUs Ativos" value={metricas.ativos} />
       </div>
     </div>
   )
@@ -816,30 +754,21 @@ const AbaDespesas = React.memo(function AbaDespesas({
   novaDespesa, 
   setNovaDespesa, 
   onAdicionar 
-}: any) {
-  const handleToggleForm = useCallback(() => {
-    setMostrarForm((prev: boolean) => !prev)
-  }, [setMostrarForm])
-
-  const handlePeriodoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setNovaDespesa((prev: any) => ({ ...prev, periodo: e.target.value }))
-  }, [setNovaDespesa])
-
-  const handleTipoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNovaDespesa((prev: any) => ({ ...prev, tipo: e.target.value }))
-  }, [setNovaDespesa])
-
-  const handleCategoriaChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    setNovaDespesa((prev: any) => ({ ...prev, categoria: e.target.value }))
-  }, [setNovaDespesa])
-
-  const handleItemChange = useCallback((v: string) => {
-    setNovaDespesa((prev: any) => ({ ...prev, item: v }))
-  }, [setNovaDespesa])
-
-  const handleValorChange = useCallback((v: number | string) => {
-    setNovaDespesa((prev: any) => ({ ...prev, valor: v }))
-  }, [setNovaDespesa])
+}: {
+  despesas: Despesa[]
+  total: number
+  mostrarForm: boolean
+  setMostrarForm: (show: boolean) => void
+  novaDespesa: any
+  setNovaDespesa: (despesa: any) => void
+  onAdicionar: () => void
+}) {
+  const handleToggleForm = useCallback(() => setMostrarForm(!mostrarForm), [mostrarForm, setMostrarForm])
+  const handlePeriodoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setNovaDespesa({ ...novaDespesa, periodo: e.target.value }), [novaDespesa, setNovaDespesa])
+  const handleTipoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => setNovaDespesa({ ...novaDespesa, tipo: e.target.value }), [novaDespesa, setNovaDespesa])
+  const handleCategoriaChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => setNovaDespesa({ ...novaDespesa, categoria: e.target.value }), [novaDespesa, setNovaDespesa])
+  const handleItemChange = useCallback((v: string) => setNovaDespesa({ ...novaDespesa, item: v }), [novaDespesa, setNovaDespesa])
+  const handleValorChange = useCallback((v: number | string) => setNovaDespesa({ ...novaDespesa, valor: v }), [novaDespesa, setNovaDespesa])
 
   return (
     <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
@@ -907,9 +836,7 @@ const AbaDespesas = React.memo(function AbaDespesas({
             </tr>
           </thead>
           <tbody>
-            {despesas.map((d: Despesa) => (
-              <DespesaRow key={d.id} despesa={d} />
-            ))}
+            {despesas.map((despesa: Despesa) => <DespesaRow key={despesa.id} despesa={despesa} />)}
             <tr className="bg-cyan-50 dark:bg-cyan-500/10 font-bold">
               <td colSpan={4} className="px-4 py-3 text-cyan-700 dark:text-cyan-400">TOTAL</td>
               <td className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">{formatCurrency(total)}</td>
@@ -929,9 +856,16 @@ const AbaParametros = React.memo(function AbaParametros({
   profissionais, 
   onRemoverProfissional, 
   onUpdateProfissional 
-}: any) {
+}: {
+  parametros: any
+  calculados: any
+  onUpdate: (updates: any) => void
+  profissionais: any[]
+  onRemoverProfissional: (id: number) => void
+  onUpdateProfissional: (id: number, updates: any) => void
+}) {
   const [editandoProfissional, setEditandoProfissional] = useState<number | null>(null)
-  const [editFormProfissional, setEditFormProfissional] = useState<{ percentual_profissional?: number | string; perfil?: string; duracao_servico?: number | string }>({})
+  const [editFormProfissional, setEditFormProfissional] = useState<any>({})
 
   const handleEditProfissional = useCallback((p: any) => {
     setEditandoProfissional(p.id)
@@ -950,7 +884,7 @@ const AbaParametros = React.memo(function AbaParametros({
     })
     setEditandoProfissional(null)
     setEditFormProfissional({})
-  }, [onUpdateProfissional, editFormProfissional])
+  }, [editFormProfissional, onUpdateProfissional])
 
   const handleCancelEdit = useCallback(() => {
     setEditandoProfissional(null)
@@ -990,13 +924,13 @@ const AbaParametros = React.memo(function AbaParametros({
             <ProfissionalRow
               key={p.id}
               profissional={p}
-              editandoId={editandoProfissional}
+              isEditing={editandoProfissional === p.id}
               editForm={editFormProfissional}
-              setEditForm={setEditFormProfissional}
-              onEdit={handleEditProfissional}
-              onSave={handleSaveProfissional}
+              onEditFormChange={setEditFormProfissional}
+              onEdit={() => handleEditProfissional(p)}
+              onSave={() => handleSaveProfissional(p.id)}
               onCancel={handleCancelEdit}
-              onRemover={onRemoverProfissional}
+              onRemover={() => onRemoverProfissional(p.id)}
             />
           ))}
           {profissionais.length === 0 && (
@@ -1029,7 +963,15 @@ const AbaMetas = React.memo(function AbaMetas({
   diasUteis, 
   diaUtilAtual, 
   profissionais 
-}: any) {
+}: {
+  metas: any[]
+  tituloPeriodo: string
+  parametros: any
+  dreCalc: any
+  diasUteis: number
+  diaUtilAtual: number
+  profissionais: any[]
+}) {
   const ticketPorPaciente = useMemo(() => {
     if (!parametros || !dreCalc) return 0
 
@@ -1088,9 +1030,7 @@ const AbaMetas = React.memo(function AbaMetas({
               </tr>
             </thead>
             <tbody>
-              {metas.map((m: any, i: number) => (
-                <MetaRow key={m.idSku || i} meta={m} />
-              ))}
+              {metas.map((meta: any, index: number) => <MetaRow key={meta.idSku || index} meta={meta} />)}
             </tbody>
           </table>
         </div>
@@ -1107,11 +1047,20 @@ const AbaControle = React.memo(function AbaControle({
   diasUteis, 
   diaAtual, 
   metaResultadoMensal, 
-  mesesSelecionados, 
   onUpdateMeta, 
   metaTemporaria, 
   setMetaTemporaria 
-}: any) {
+}: {
+  controle: any
+  dre: any
+  parametros: any
+  diasUteis: number
+  diaAtual: number
+  metaResultadoMensal: number
+  onUpdateMeta: (meta: number) => void
+  metaTemporaria: number | string
+  setMetaTemporaria: (meta: number | string) => void
+}) {
   const calculos = useMemo(() => {
     const modernInova = parametros?.modern_inova || 10
     const metaMensal = metaResultadoMensal || 0
@@ -1124,35 +1073,19 @@ const AbaControle = React.memo(function AbaControle({
     const faturamentoNecessario = margemAtualPct > 0 ? alvoMargem / margemAtualPct : 0
     const reservasInovacao = alvoMargem * (modernInova / 100)
 
-    return {
-      modernInova,
-      despesasFixas,
-      alvoMargem,
-      margemAtualPct,
-      faturamentoNecessario,
-      reservasInovacao
-    }
+    return { modernInova, despesasFixas, margemAtualPct, alvoMargem, faturamentoNecessario, reservasInovacao }
   }, [parametros, metaResultadoMensal, dre, controle])
 
   const handleSaveMeta = useCallback(() => {
     onUpdateMeta(Number(metaTemporaria) || metaResultadoMensal)
-  }, [onUpdateMeta, metaTemporaria, metaResultadoMensal])
-
-  const handleMetaChange = useCallback((v: number | string) => {
-    setMetaTemporaria(v)
-  }, [setMetaTemporaria])
-
-  const progressoPct = useMemo(() => 
-    diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0,
-    [diasUteis, diaAtual]
-  )
+  }, [metaTemporaria, metaResultadoMensal, onUpdateMeta])
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <FinanceCard title="Dias Úteis" value={diasUteis} />
         <FinanceCard title="Dia Útil Atual" value={diaAtual} />
-        <FinanceCard title="Progresso" value={formatPercent(progressoPct)} variant="cyan" />
+        <FinanceCard title="Progresso" value={formatPercent(diasUteis > 0 ? (diaAtual / diasUteis) * 100 : 0)} variant="cyan" />
       </div>
 
       <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
@@ -1162,7 +1095,7 @@ const AbaControle = React.memo(function AbaControle({
             label="Meta (R$)" 
             type="number" 
             value={metaTemporaria !== '' ? metaTemporaria : metaResultadoMensal} 
-            onChange={handleMetaChange} 
+            onChange={setMetaTemporaria} 
           />
           <Button onClick={handleSaveMeta}>Salvar Meta</Button>
         </div>
@@ -1484,13 +1417,12 @@ export default function FinanceiroPage() {
     , 0)
   }, [anosSelecionados, mesesSelecionados])
 
-  // ✅ CORREÇÃO: Total de TODAS despesas para exibição na aba Despesas
+  // Total de TODAS as despesas (para aba Despesas)
   const totalDespesas = useMemo(() =>
     despesas.reduce((sum, d) => sum + d.valor_mensal, 0),
-    [despesas]
-  )
+  [despesas])
 
-  // ✅ CORREÇÃO: Total de APENAS despesas fixas (para Controle e cálculos)
+  // ✅ Total de APENAS despesas fixas (para Controle e cálculos - CORREÇÃO MANTIDA)
   const totalDespesasFixas = useMemo(() =>
     despesas
       .filter(d => {
@@ -1498,23 +1430,21 @@ export default function FinanceiroPage() {
         return d.tipo === 'Despesa Fixa' || d.tipo === 'Custo Fixo'
       })
       .reduce((sum, d) => sum + d.valor_mensal, 0),
-    [despesas]
-  )
+  [despesas])
 
   const despesasFixasPeriodo = useMemo(() =>
     totalDespesasFixas * mesesSelecionados.length,
-    [totalDespesasFixas, mesesSelecionados]
-  )
+  [totalDespesasFixas, mesesSelecionados])
 
   const parametrosCalculados = useMemo(() => {
     if (!parametros) return null
 
-    const totalHorasSemanais = profissionais.reduce((sum: number, p: any) => sum + p.horas_semanais, 0)
+    const totalHorasSemanais = profissionais.reduce((sum, p) => sum + p.horas_semanais, 0)
     const horasDaEquipe = (totalHorasSemanais / 5) * diasUteisTotais
     const horasDasSalas = parametros.numero_salas * parametros.horas_trabalho_dia * diasUteisTotais
     const horasProdutivasPotenciais = Math.min(horasDaEquipe, horasDasSalas)
 
-    const totalServicosVendidos = vendas.reduce((sum: number, v: any) => sum + (v.servicos?.length || 0), 0)
+    const totalServicosVendidos = vendas.reduce((sum, v) => sum + (v.servicos?.length || 0), 0)
     const horasOcupadas = totalServicosVendidos * parametros.duracao_media_servico_horas
 
     const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
@@ -1530,33 +1460,31 @@ export default function FinanceiroPage() {
     }
   }, [parametros, profissionais, diasUteisTotais, despesasFixasPeriodo, vendas])
 
-  // Sincronizar custo_hora
+  // Sincronizar custo_hora - valores extraídos para dependências estáveis
+  const custoHoraCalculado = parametrosCalculados?.custoHora ?? 0
+  const custoHoraAtual = parametros?.custo_hora ?? 0
+  
   useEffect(() => {
     const sincronizarCustoHora = async () => {
-      if (!parametrosCalculados || !parametros) return
-      
-      const custoHoraCalculado = parametrosCalculados.custoHora
-      const custoHoraAtual = parametros.custo_hora || 0
-      
       if (custoHoraCalculado > 0 && Math.abs(custoHoraCalculado - custoHoraAtual) > 0.01) {
         await updateParametrosLocal({ custo_hora: custoHoraCalculado })
       }
     }
     
     sincronizarCustoHora()
-  }, [parametrosCalculados?.custoHora, parametros?.custo_hora, updateParametrosLocal])
+  }, [custoHoraCalculado, custoHoraAtual, updateParametrosLocal])
 
   const dreCalc = useMemo(() => {
     if (!parametros) return null
 
-    const receitaBruta = vendas.reduce((sum: number, v: any) => sum + (v.preco_final || v.preco_total || 0), 0)
+    const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
     const impostos = receitaBruta * (parametros.aliquota_impostos_pct / 100)
-    const vendasCredito = vendas.filter((v: any) => v.metodo_pagamento === 'Crédito')
-    const totalVendasCredito = vendasCredito.reduce((sum: number, v: any) => sum + (v.preco_final || v.preco_total || 0), 0)
+    const vendasCredito = vendas.filter(v => v.metodo_pagamento === 'Crédito')
+    const totalVendasCredito = vendasCredito.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
     const taxasFinanceiras = totalVendasCredito * (parametros.taxa_cartao_pct / 100)
     const totalDeducoes = impostos + taxasFinanceiras
     const receitaLiquida = receitaBruta - totalDeducoes
-    const custoInsumos = vendas.reduce((sum: number, v: any) => sum + (v.custo_total || 0), 0)
+    const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
     const repasseProfissionais = despesas
       .filter(d => d.categoria === 'Comissões' && d.tipo === 'Custo Variável')
       .reduce((sum, d) => sum + d.valor_mensal, 0)
@@ -1600,8 +1528,8 @@ export default function FinanceiroPage() {
   const controleCalc = useMemo(() => {
     if (!parametros || !parametrosCalculados) return null
 
-    const receitaBruta = vendas.reduce((sum: number, v: any) => sum + (v.preco_final || v.preco_total || 0), 0)
-    const custoInsumos = vendas.reduce((sum: number, v: any) => sum + (v.custo_total || 0), 0)
+    const receitaBruta = vendas.reduce((sum, v) => sum + (v.preco_final || v.preco_total || 0), 0)
+    const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
     const lucroBruto = receitaBruta - custoInsumos
     const impostos = receitaBruta * (parametros.aliquota_impostos_pct / 100)
     const resultadoLiquido = lucroBruto - despesasFixasPeriodo - impostos
@@ -1685,11 +1613,7 @@ export default function FinanceiroPage() {
     { id: 'dre', label: 'DRE' }
   ], [])
 
-  // Handler memoizado para troca de aba
-  const handleAbaClick = useCallback((id: string) => {
-    setAbaAtiva(id)
-  }, [])
-
+  // ============ LOADING STATE ============
   if (loading && !servicos.length) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900 flex items-center justify-center">
@@ -1714,7 +1638,7 @@ export default function FinanceiroPage() {
           {abas.map(aba => (
             <button
               key={aba.id}
-              onClick={() => handleAbaClick(aba.id)}
+              onClick={() => setAbaAtiva(aba.id)}
               className={`px-4 py-2 rounded-lg font-semibold whitespace-nowrap transition-all text-sm ${abaAtiva === aba.id
                 ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg'
                 : 'bg-white dark:bg-slate-800/50 text-cyan-600 dark:text-cyan-400 hover:bg-gray-100 dark:hover:bg-slate-700/50 border border-gray-200 dark:border-slate-700'
@@ -1800,7 +1724,6 @@ export default function FinanceiroPage() {
               diasUteis={diasUteisTotais}
               diaAtual={diaUtilAtual}
               metaResultadoMensal={Number(metaTemporaria) || parametros.meta_resultado_liquido_mensal}
-              mesesSelecionados={mesesSelecionados}
               onUpdateMeta={handleUpdateMetaMensal}
               metaTemporaria={metaTemporaria}
               setMetaTemporaria={setMetaTemporaria}

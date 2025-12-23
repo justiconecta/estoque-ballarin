@@ -243,7 +243,7 @@ const ConversaDisplay = React.memo(function ConversaDisplay({
   )
 })
 
-// ✅ Componente para resumo semanal
+// ✅ Componente para resumo semanal - CORRIGIDO: useMemo ANTES do early return
 const ResumoSemanalDisplay = React.memo(function ResumoSemanalDisplay({
   resumo,
   formatDate
@@ -251,7 +251,16 @@ const ResumoSemanalDisplay = React.memo(function ResumoSemanalDisplay({
   resumo: ResumosSemanais
   formatDate: (date: string) => string
 }) {
-  if (!resumo.resumo_geral_semana || resumo.resumo_geral_semana.trim() === '') {
+  // ✅ HOOKS PRIMEIRO - antes de qualquer return condicional
+  const paragrafos = useMemo(() => {
+    if (!resumo.resumo_geral_semana || resumo.resumo_geral_semana.trim() === '') {
+      return []
+    }
+    return resumo.resumo_geral_semana.split('\n').filter(p => p.trim())
+  }, [resumo.resumo_geral_semana])
+
+  // Agora podemos fazer o early return
+  if (paragrafos.length === 0) {
     return (
       <div className="text-center py-8">
         <FileText className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
@@ -259,12 +268,6 @@ const ResumoSemanalDisplay = React.memo(function ResumoSemanalDisplay({
       </div>
     )
   }
-
-  // Dividir o resumo em parágrafos
-  const paragrafos = useMemo(() => 
-    resumo.resumo_geral_semana.split('\n').filter(p => p.trim()),
-    [resumo.resumo_geral_semana]
-  )
 
   return (
     <div className="p-4 space-y-4">
@@ -306,10 +309,10 @@ export default function DashboardIAPage() {
   const router = useRouter()
   
   // ✅ USA AUTH CONTEXT (não localStorage)
-  const { isAuthenticated, loading: authLoading, profile } = useAuth()
+  const { isAuthenticated, loading: authLoading } = useAuth()
   
   // ✅ DADOS DO CACHE GLOBAL + FUNÇÃO PARA PACIENTES COM RESUMOS
-  const { getResumoEspecifico, getPacientesComResumos, loading: dataLoading } = useData()
+  const { getResumoEspecifico, getPacientesComResumos } = useData()
   
   const [showNovaClinicaModal, setShowNovaClinicaModal] = useState(false)
   const [selectedPaciente, setSelectedPaciente] = useState<Paciente | null>(null)

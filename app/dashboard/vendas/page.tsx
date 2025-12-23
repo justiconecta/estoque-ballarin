@@ -6,7 +6,10 @@ import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangl
 import { HeaderUniversal } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { useData, useVendas, useVendasPorDia, useVendasPorCategoria } from '@/contexts/DataContext'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart, Area, Line } from 'recharts'
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
+  ResponsiveContainer, ComposedChart, Area, Line 
+} from 'recharts'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 // ============ CONSTANTES ============
@@ -17,6 +20,7 @@ const FERIADOS_2025: Record<string, string[]> = {
   '2025': ['2025-01-01', '2025-03-03', '2025-03-04', '2025-04-18', '2025-04-21', '2025-05-01', '2025-06-19', '2025-09-07', '2025-10-12', '2025-11-02', '2025-11-15', '2025-11-20', '2025-12-25']
 }
 
+// ✅ MEMOIZADO: Funções de formatação como constantes (não recriam)
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(value || 0)
 
@@ -53,14 +57,14 @@ function calcularDiaUtilAtual(ano: number, mes: number): number {
   return diaUtilAtual
 }
 
-// ============ KPI CARD ============
-const KpiCard = ({ 
+// ============ KPI CARD - MEMOIZADO ============
+const KpiCard = React.memo(function KpiCard({ 
   label, value, subtitle, variant = 'default', progress, borderColor
 }: { 
   label: string; value: string | number; subtitle?: string
   variant?: 'default' | 'cyan' | 'green' | 'warning' | 'danger'
   progress?: number; borderColor?: string
-}) => {
+}) {
   const variantColors = {
     default: 'text-white', cyan: 'text-cyan-400', green: 'text-green-400',
     warning: 'text-amber-400', danger: 'text-red-400'
@@ -84,7 +88,45 @@ const KpiCard = ({
       )}
     </div>
   )
-}
+})
+
+// ✅ MEMOIZADO: Botão de mês do mix
+const MesButton = React.memo(function MesButton({
+  mes,
+  nome,
+  selected,
+  onClick
+}: {
+  mes: number
+  nome: string
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button 
+      onClick={onClick} 
+      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+        selected 
+          ? 'bg-cyan-500 text-black font-bold shadow-lg shadow-cyan-500/20' 
+          : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+      }`}
+    >
+      {nome}
+    </button>
+  )
+})
+
+// ✅ MEMOIZADO: Componente de loading do gráfico
+const ChartLoading = React.memo(function ChartLoading() {
+  return (
+    <div className="h-[400px] flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-500 border-t-transparent mx-auto mb-4"></div>
+        <p className="text-slate-400 text-sm">Carregando gráfico...</p>
+      </div>
+    </div>
+  )
+})
 
 // ============ COMPONENTE PRINCIPAL ============
 export default function DashboardVendasPage() {
@@ -107,7 +149,7 @@ export default function DashboardVendasPage() {
   const { vendasPorDia } = useVendasPorDia(anoSelecionado, mesSelecionado)
   const { vendasPorCategoria } = useVendasPorCategoria(anoSelecionado, mesesMix)
 
-  // Toggle mês do mix
+  // ✅ CALLBACKS MEMOIZADOS
   const handleMixMesToggle = useCallback((mes: number) => {
     setMesesMix(prev => {
       if (prev.includes(mes)) {
@@ -116,6 +158,22 @@ export default function DashboardVendasPage() {
       return [...prev, mes].sort((a, b) => a - b)
     })
   }, [])
+
+  const handleAnoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setAnoSelecionado(Number(e.target.value))
+  }, [])
+
+  const handleMesChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setMesSelecionado(Number(e.target.value))
+  }, [])
+
+  const handleShowFormulas = useCallback(() => setShowFormulas(true), [])
+  const handleCloseFormulas = useCallback(() => setShowFormulas(false), [])
+  const handleShowNovaClinica = useCallback(() => setShowNovaClinicaModal(true), [])
+  const handleCloseNovaClinica = useCallback(() => setShowNovaClinicaModal(false), [])
+
+  const handleViewModeDaily = useCallback(() => setViewMode('daily'), [])
+  const handleViewModeCumulative = useCallback(() => setViewMode('cumulative'), [])
 
   // ============ CÁLCULOS DO DRE ============
   const dreCalculado = useMemo(() => {
@@ -145,17 +203,22 @@ export default function DashboardVendasPage() {
     return { receitaBruta, margemContribuicaoPct, despesasFixas, faturamentoNecessario, alvoMargem }
   }, [parametros, vendas, despesas])
 
-  // ============ CÁLCULOS DO GRÁFICO ============
-  const diasNoMes = new Date(anoSelecionado, mesSelecionado, 0).getDate()
-  const diasUteisTotais = calcularDiasUteis(anoSelecionado, mesSelecionado)
-  const diaUtilAtual = calcularDiaUtilAtual(anoSelecionado, mesSelecionado)
+  // ============ CÁLCULOS DO GRÁFICO - MEMOIZADOS ============
+  const diasNoMes = useMemo(() => new Date(anoSelecionado, mesSelecionado, 0).getDate(), [anoSelecionado, mesSelecionado])
+  const diasUteisTotais = useMemo(() => calcularDiasUteis(anoSelecionado, mesSelecionado), [anoSelecionado, mesSelecionado])
+  const diaUtilAtual = useMemo(() => calcularDiaUtilAtual(anoSelecionado, mesSelecionado), [anoSelecionado, mesSelecionado])
 
   const metaMensal = dreCalculado?.faturamentoNecessario || 0
-  const realizadoAcumulado = Object.values(vendasPorDia).reduce((a, b) => a + b, 0)
-  const gap = metaMensal - realizadoAcumulado
-  const percentRealizado = metaMensal > 0 ? (realizadoAcumulado / metaMensal) * 100 : 0
-  const projecaoFechamento = diaUtilAtual > 0 ? (realizadoAcumulado * diasUteisTotais) / diaUtilAtual : 0
-  const projecaoPercent = metaMensal > 0 ? (projecaoFechamento / metaMensal) * 100 : 0
+  
+  const metricas = useMemo(() => {
+    const realizadoAcumulado = Object.values(vendasPorDia).reduce((a, b) => a + b, 0)
+    const gap = metaMensal - realizadoAcumulado
+    const percentRealizado = metaMensal > 0 ? (realizadoAcumulado / metaMensal) * 100 : 0
+    const projecaoFechamento = diaUtilAtual > 0 ? (realizadoAcumulado * diasUteisTotais) / diaUtilAtual : 0
+    const projecaoPercent = metaMensal > 0 ? (projecaoFechamento / metaMensal) * 100 : 0
+    
+    return { realizadoAcumulado, gap, percentRealizado, projecaoFechamento, projecaoPercent }
+  }, [vendasPorDia, metaMensal, diaUtilAtual, diasUteisTotais])
 
   // Dados do gráfico
   const chartData = useMemo(() => {
@@ -265,8 +328,31 @@ export default function DashboardVendasPage() {
     return { categoria: CATEGORIES[first].nome, color: CATEGORIES[first].color, indices: [first] }
   }, [vendasPorCategoria])
 
-  const tituloPeriodo = `${MESES[mesSelecionado - 1]} ${anoSelecionado}`
-  const tituloMix = mesesMix.length > 0 ? `${mesesMix.map(m => MESES[m - 1]).join(', ')} / ${anoSelecionado}` : 'Nenhum mês selecionado'
+  // ✅ MEMOIZADO: Títulos
+  const tituloPeriodo = useMemo(() => `${MESES[mesSelecionado - 1]} ${anoSelecionado}`, [mesSelecionado, anoSelecionado])
+  const tituloMix = useMemo(() => 
+    mesesMix.length > 0 ? `${mesesMix.map(m => MESES[m - 1]).join(', ')} / ${anoSelecionado}` : 'Nenhum mês selecionado'
+  , [mesesMix, anoSelecionado])
+
+  // ✅ MEMOIZADO: Tooltip formatters (evita recriação em cada render)
+  const tooltipFormatter = useCallback((value: number | null, name: string) => {
+    const label = name === 'vendaRealizada' ? 'Venda Realizada' : 
+                  name === 'acumuladoReal' ? 'Acumulado Real' : 
+                  name === 'metaDinamica' ? 'Meta Dinâmica' : 'Referência Meta'
+    return [formatCurrency(value || 0), label]
+  }, [])
+
+  const legendFormatter = useCallback((value: string) => {
+    const labels: Record<string, string> = {
+      'vendaRealizada': 'Venda Realizada',
+      'metaDinamica': 'Meta Dinâmica',
+      'acumuladoReal': 'Acumulado Real',
+      'acumuladoMeta': 'Referência Meta'
+    }
+    return labels[value] || value
+  }, [])
+
+  const axisTickFormatter = useCallback((val: number) => `${(val/1000).toFixed(0)}k`, [])
 
   // Loading states
   if (authLoading) {
@@ -285,8 +371,6 @@ export default function DashboardVendasPage() {
     return null
   }
 
-  // ✅ REMOVIDO check de !initialized - os hooks carregam dados independentemente
-
   return (
     <div className="min-h-screen bg-clinic-black text-white">
       <div className="container mx-auto px-4 py-6">
@@ -295,7 +379,7 @@ export default function DashboardVendasPage() {
           titulo="Comercial" 
           descricao="Acompanhamento de vendas, metas e mix de produtos"
           icone={TrendingUp}
-          showNovaClinicaModal={() => setShowNovaClinicaModal(true)}
+          showNovaClinicaModal={handleShowNovaClinica}
         />
 
         {/* Navegação por Tabs */}
@@ -320,20 +404,20 @@ export default function DashboardVendasPage() {
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-400 uppercase">Ano</label>
-              <select value={anoSelecionado} onChange={(e) => setAnoSelecionado(Number(e.target.value))} className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm">
+              <select value={anoSelecionado} onChange={handleAnoChange} className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm">
                 {ANOS_DISPONIVEIS.map(ano => (<option key={ano} value={ano}>{ano}</option>))}
               </select>
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-400 uppercase">Mês</label>
-              <select value={mesSelecionado} onChange={(e) => setMesSelecionado(Number(e.target.value))} className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm">
+              <select value={mesSelecionado} onChange={handleMesChange} className="bg-slate-800 border border-slate-700 text-white px-3 py-2 rounded-lg text-sm">
                 {MESES.map((nome, idx) => (<option key={idx + 1} value={idx + 1}>{nome}</option>))}
               </select>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
-            <button onClick={() => setShowFormulas(true)} className="px-4 py-2 bg-cyan-500/10 border border-cyan-500 text-cyan-400 rounded-full text-sm font-semibold hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-2">
+            <button onClick={handleShowFormulas} className="px-4 py-2 bg-cyan-500/10 border border-cyan-500 text-cyan-400 rounded-full text-sm font-semibold hover:bg-cyan-500 hover:text-black transition-all flex items-center gap-2">
               <Info className="w-4 h-4" /> Ver Fórmulas
             </button>
             <div className="flex items-center gap-2 bg-slate-800/50 px-4 py-2 rounded-full border border-slate-700/50">
@@ -346,17 +430,17 @@ export default function DashboardVendasPage() {
         {/* KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
           <KpiCard label="Meta Mensal (Faturamento)" value={formatCurrency(metaMensal)} subtitle={`${diasUteisTotais} Dias Úteis`} />
-          <KpiCard label="Realizado Acumulado" value={formatCurrency(realizadoAcumulado)} subtitle={`Faltam: ${formatCurrency(Math.max(0, gap))}`} variant="cyan" borderColor="#00E7FF" />
-          <KpiCard label="Atingimento Real" value={formatPercent(percentRealizado)} subtitle="(Realizado / Meta)" progress={percentRealizado} />
-          <KpiCard label="Projeção de Fechamento" value={formatCurrency(projecaoFechamento)} subtitle={`${formatPercent(projecaoPercent)} da Meta`} variant={projecaoPercent >= 100 ? 'green' : 'warning'} borderColor={projecaoPercent >= 100 ? '#00ff9d' : '#f59e0b'} />
+          <KpiCard label="Realizado Acumulado" value={formatCurrency(metricas.realizadoAcumulado)} subtitle={`Faltam: ${formatCurrency(Math.max(0, metricas.gap))}`} variant="cyan" borderColor="#00E7FF" />
+          <KpiCard label="Atingimento Real" value={formatPercent(metricas.percentRealizado)} subtitle="(Realizado / Meta)" progress={metricas.percentRealizado} />
+          <KpiCard label="Projeção de Fechamento" value={formatCurrency(metricas.projecaoFechamento)} subtitle={`${formatPercent(metricas.projecaoPercent)} da Meta`} variant={metricas.projecaoPercent >= 100 ? 'green' : 'warning'} borderColor={metricas.projecaoPercent >= 100 ? '#00ff9d' : '#f59e0b'} />
         </div>
 
         {/* Controles do Gráfico */}
         <div className="flex justify-end gap-2 mb-2">
-          <button onClick={() => setViewMode('daily')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'daily' ? 'bg-cyan-500/10 border border-cyan-500 text-cyan-400 shadow-lg shadow-cyan-500/10' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
+          <button onClick={handleViewModeDaily} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'daily' ? 'bg-cyan-500/10 border border-cyan-500 text-cyan-400 shadow-lg shadow-cyan-500/10' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
             Visão Diária
           </button>
-          <button onClick={() => setViewMode('cumulative')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'cumulative' ? 'bg-cyan-500/10 border border-cyan-500 text-cyan-400 shadow-lg shadow-cyan-500/10' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
+          <button onClick={handleViewModeCumulative} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${viewMode === 'cumulative' ? 'bg-cyan-500/10 border border-cyan-500 text-cyan-400 shadow-lg shadow-cyan-500/10' : 'bg-slate-800 border border-slate-700 text-slate-400 hover:bg-slate-700'}`}>
             Visão Acumulada
           </button>
         </div>
@@ -369,9 +453,14 @@ export default function DashboardVendasPage() {
                 <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={(val) => `${(val/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ backgroundColor: 'rgba(16, 24, 39, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} labelStyle={{ color: '#00E7FF' }} labelFormatter={(label) => `Dia ${label}`} formatter={((value: number | null, name: string) => [formatCurrency(value || 0), name === 'vendaRealizada' ? 'Venda Realizada' : 'Meta Dinâmica']) as any} />
-                  <Legend wrapperStyle={{ paddingTop: '20px' }} formatter={(value) => value === 'vendaRealizada' ? 'Venda Realizada' : 'Meta Dinâmica'} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={axisTickFormatter} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'rgba(16, 24, 39, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} 
+                    labelStyle={{ color: '#00E7FF' }} 
+                    labelFormatter={(label) => `Dia ${label}`} 
+                    formatter={tooltipFormatter as any} 
+                  />
+                  <Legend wrapperStyle={{ paddingTop: '20px' }} formatter={legendFormatter} />
                   <Bar dataKey="vendaRealizada" fill="#00E7FF" radius={[4, 4, 0, 0]} name="vendaRealizada" />
                   <Line type="monotone" dataKey="metaDinamica" stroke="#F59E0B" strokeWidth={2} strokeDasharray="5 5" dot={false} name="metaDinamica" />
                 </ComposedChart>
@@ -379,9 +468,14 @@ export default function DashboardVendasPage() {
                 <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="dia" tick={{ fill: '#64748b', fontSize: 12 }} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={(val) => `${(val/1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={{ backgroundColor: 'rgba(16, 24, 39, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} labelStyle={{ color: '#00E7FF' }} labelFormatter={(label) => `Dia ${label}`} formatter={((value: number | null, name: string) => [formatCurrency(value || 0), name === 'acumuladoReal' ? 'Acumulado Real' : 'Referência Meta']) as any} />
-                  <Legend wrapperStyle={{ paddingTop: '20px' }} formatter={(value) => value === 'acumuladoReal' ? 'Acumulado Real' : 'Referência Meta'} />
+                  <YAxis tick={{ fill: '#64748b', fontSize: 12 }} tickFormatter={axisTickFormatter} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'rgba(16, 24, 39, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} 
+                    labelStyle={{ color: '#00E7FF' }} 
+                    labelFormatter={(label) => `Dia ${label}`} 
+                    formatter={tooltipFormatter as any} 
+                  />
+                  <Legend wrapperStyle={{ paddingTop: '20px' }} formatter={legendFormatter} />
                   <defs>
                     <linearGradient id="colorReal" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="#00ff9d" stopOpacity={0.6}/>
@@ -412,11 +506,14 @@ export default function DashboardVendasPage() {
                 <div className="flex flex-wrap gap-2">
                   {MESES.map((nome, idx) => {
                     const mes = idx + 1
-                    const selected = mesesMix.includes(mes)
                     return (
-                      <button key={mes} onClick={() => handleMixMesToggle(mes)} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${selected ? 'bg-cyan-500 text-black font-bold shadow-lg shadow-cyan-500/20' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
-                        {nome}
-                      </button>
+                      <MesButton
+                        key={mes}
+                        mes={mes}
+                        nome={nome}
+                        selected={mesesMix.includes(mes)}
+                        onClick={() => handleMixMesToggle(mes)}
+                      />
                     )
                   })}
                 </div>
@@ -506,11 +603,11 @@ export default function DashboardVendasPage() {
 
         {/* Modal de Fórmulas */}
         {showFormulas && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowFormulas(false)}>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleCloseFormulas}>
             <div className="bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-auto border border-slate-700" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center p-6 border-b border-slate-700 sticky top-0 bg-slate-900">
                 <h3 className="text-xl font-semibold">Documentação</h3>
-                <button onClick={() => setShowFormulas(false)} className="text-slate-400 hover:text-white text-2xl">×</button>
+                <button onClick={handleCloseFormulas} className="text-slate-400 hover:text-white text-2xl">×</button>
               </div>
               <div className="p-6 space-y-6">
                 <div>
@@ -547,7 +644,7 @@ export default function DashboardVendasPage() {
 
       </div>
 
-      <NovaClinicaModal isOpen={showNovaClinicaModal} onClose={() => setShowNovaClinicaModal(false)} onSuccess={() => setShowNovaClinicaModal(false)} />
+      <NovaClinicaModal isOpen={showNovaClinicaModal} onClose={handleCloseNovaClinica} onSuccess={handleCloseNovaClinica} />
     </div>
   )
 }

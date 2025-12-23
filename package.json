@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.1",
     "@supabase/supabase-js": "^2.45.4",
+    "@tanstack/react-virtual": "^3.13.13",
     "lucide-react": "^0.263.1",
     "next": "14.2.8",
     "react": "^18",

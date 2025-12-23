@@ -1,17 +1,37 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    optimizePackageImports: ['lucide-react'],
+  // ✅ Otimizações de compilação
+  compiler: {
+    // Remove console.log em produção
+    removeConsole: process.env.NODE_ENV === 'production',
   },
+  
+  // ✅ Otimizações experimentais
+  experimental: {
+    // Tree-shake automático para ícones
+    optimizePackageImports: ['lucide-react', 'recharts'],
+  },
+  
+  // ✅ TypeScript e ESLint
   typescript: {
     ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: false,
   },
+  
+  // ✅ Imagens externas permitidas
   images: {
-    domains: ['jlprybnxjqzaqzsxxnuh.supabase.co'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'jlprybnxjqzaqzsxxnuh.supabase.co',
+        pathname: '/**',
+      },
+    ],
   },
+  
+  // ✅ Headers de segurança
   async headers() {
     return [
       {
@@ -35,8 +55,4 @@ const nextConfig = {
   },
 }
 
-module.exports = {
-  compiler: {
-    removeConsole: process.env.NODE_ENV === 'production'
-  }
-}
+module.exports = nextConfig

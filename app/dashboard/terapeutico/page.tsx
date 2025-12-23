@@ -46,6 +46,262 @@ interface ResumosSemanais {
   id_clinica: number
 }
 
+// ============ COMPONENTES MEMOIZADOS ============
+
+// ✅ Componente memoizado para item da timeline diária
+const TimelineDiarioItem = React.memo(function TimelineDiarioItem({
+  resumo,
+  isSelected,
+  formatDate,
+  onClick
+}: {
+  resumo: ResumosDiarios
+  isSelected: boolean
+  formatDate: (date: string) => string
+  onClick: () => void
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-center text-sm font-medium ${
+        isSelected
+          ? 'bg-clinic-cyan text-clinic-black'
+          : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
+      }`}
+    >
+      <div className="font-medium">{formatDate(resumo.data_resumo)}</div>
+      <div className="text-xs opacity-75 mt-1">
+        {resumo.resumo_interacoes ? `${resumo.resumo_interacoes.length} chars` : 'Sem conversa'}
+      </div>
+    </div>
+  )
+})
+
+// ✅ Componente memoizado para item da timeline semanal
+const TimelineSemanalItem = React.memo(function TimelineSemanalItem({
+  resumo,
+  isSelected,
+  formatDate,
+  onClick
+}: {
+  resumo: ResumosSemanais
+  isSelected: boolean
+  formatDate: (date: string) => string
+  onClick: () => void
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-sm ${
+        isSelected
+          ? 'bg-purple-600 text-white'
+          : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
+      }`}
+    >
+      <div className="font-medium">
+        {formatDate(resumo.data_inicio_semana)} - {formatDate(resumo.data_fim_semana)}
+      </div>
+      <div className="text-xs opacity-75 mt-1 line-clamp-2">
+        {resumo.resumo_geral_semana?.substring(0, 80) || 'Sem resumo'}...
+      </div>
+    </div>
+  )
+})
+
+// ✅ Componente memoizado para mensagem do chat
+const ChatMessage = React.memo(function ChatMessage({
+  speaker,
+  texto,
+  index
+}: {
+  speaker: string
+  texto: string
+  index: number
+}) {
+  const isPatient = speaker === 'PACIENTE'
+  
+  return (
+    <div className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}>
+      <div 
+        className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
+          isPatient 
+            ? 'bg-cyan-600 text-white rounded-br-sm'
+            : 'bg-purple-600 text-white rounded-bl-sm'
+        }`}
+      >
+        <p className="text-xs font-bold mb-1 opacity-80">
+          {isPatient ? '👤 Paciente' : '🤖 Agente IA'}
+        </p>
+        <p className="text-sm whitespace-pre-wrap">{texto}</p>
+      </div>
+    </div>
+  )
+})
+
+// ✅ Componente para conversa completa (WhatsApp style)
+const ConversaDisplay = React.memo(function ConversaDisplay({
+  resumoInteracoes
+}: {
+  resumoInteracoes: string
+}) {
+  // Parse das mensagens
+  const mensagens = useMemo(() => {
+    if (!resumoInteracoes || resumoInteracoes.trim() === '') {
+      return null
+    }
+    
+    try {
+      let msgs: Array<{speaker: string, texto: string}> = []
+      
+      const blocosPaciente = resumoInteracoes.split(/\*\*PACIENTE\*\*:?\s*/i).filter(bloco => bloco.trim())
+      
+      blocosPaciente.forEach((bloco) => {
+        const partesBloco = bloco.split(/\*\*(EVELYN|AGENTE|AGENT)\s*IA\*\*:?\s*/i)
+        
+        if (partesBloco.length >= 2) {
+          const mensagemPaciente = partesBloco[0]?.trim()
+          if (mensagemPaciente) {
+            msgs.push({ speaker: 'PACIENTE', texto: mensagemPaciente })
+          }
+          
+          const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim()
+          if (respostaIA) {
+            msgs.push({ speaker: 'Agente IA', texto: respostaIA })
+          }
+        } else {
+          const textoLimpo = bloco.trim()
+          if (textoLimpo) {
+            msgs.push({ speaker: 'PACIENTE', texto: textoLimpo })
+          }
+        }
+      })
+      
+      if (msgs.length === 0) {
+        const partes = resumoInteracoes.split(/\*\*(PACIENTE|EVELYN|AGENTE|AGENT|IA)\*\*:?\s*/gi)
+        
+        for (let i = 1; i < partes.length; i += 2) {
+          const speaker = partes[i - 1]?.toUpperCase() || ''
+          const texto = partes[i]?.trim() || ''
+          
+          if (texto) {
+            const isPatient = speaker.includes('PACIENTE')
+            msgs.push({
+              speaker: isPatient ? 'PACIENTE' : 'Agente IA',
+              texto: texto
+            })
+          }
+        }
+      }
+      
+      return msgs.length > 0 ? msgs : 'unparseable'
+    } catch (error) {
+      console.error('Erro ao parsear conversa:', error)
+      return 'error'
+    }
+  }, [resumoInteracoes])
+
+  // Render baseado no resultado do parse
+  if (mensagens === null) {
+    return (
+      <div className="text-center py-8">
+        <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
+        <p className="text-clinic-gray-400">Conversa vazia ou sem conteúdo</p>
+      </div>
+    )
+  }
+
+  if (mensagens === 'unparseable') {
+    return (
+      <div className="text-center py-8">
+        <p className="text-yellow-400 mb-4">⚠️ Não foi possível parsear a conversa</p>
+        <div className="bg-clinic-gray-800 p-4 rounded-lg text-left text-xs text-clinic-gray-300 max-h-40 overflow-y-auto">
+          <pre className="whitespace-pre-wrap">{resumoInteracoes}</pre>
+        </div>
+      </div>
+    )
+  }
+
+  if (mensagens === 'error') {
+    return (
+      <div className="text-center py-8 text-red-400">
+        Erro ao processar conversa
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4 p-2">
+      {mensagens.map((mensagem, index) => (
+        <ChatMessage
+          key={`msg-${index}`}
+          speaker={mensagem.speaker}
+          texto={mensagem.texto}
+          index={index}
+        />
+      ))}
+    </div>
+  )
+})
+
+// ✅ Componente para resumo semanal
+const ResumoSemanalDisplay = React.memo(function ResumoSemanalDisplay({
+  resumo,
+  formatDate
+}: {
+  resumo: ResumosSemanais
+  formatDate: (date: string) => string
+}) {
+  if (!resumo.resumo_geral_semana || resumo.resumo_geral_semana.trim() === '') {
+    return (
+      <div className="text-center py-8">
+        <FileText className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
+        <p className="text-clinic-gray-400">Resumo semanal vazio ou sem conteúdo</p>
+      </div>
+    )
+  }
+
+  // Dividir o resumo em parágrafos
+  const paragrafos = useMemo(() => 
+    resumo.resumo_geral_semana.split('\n').filter(p => p.trim()),
+    [resumo.resumo_geral_semana]
+  )
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header do Resumo */}
+      <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4">
+        <div className="flex items-center mb-2">
+          <CalendarDays className="h-5 w-5 mr-2 text-purple-400" />
+          <span className="text-purple-300 font-medium">Período da Semana</span>
+        </div>
+        <p className="text-clinic-white text-lg font-semibold">
+          {formatDate(resumo.data_inicio_semana)} — {formatDate(resumo.data_fim_semana)}
+        </p>
+        <p className="text-clinic-gray-400 text-sm mt-1">
+          Gerado em: {formatDate(resumo.data_geracao)}
+        </p>
+      </div>
+
+      {/* Conteúdo do Resumo */}
+      <div className="bg-clinic-gray-800 rounded-lg p-4">
+        <h4 className="text-clinic-cyan font-medium mb-3 flex items-center">
+          <FileText className="h-4 w-4 mr-2" />
+          Resumo Geral da Semana
+        </h4>
+        <div className="space-y-3 text-clinic-gray-200 text-sm leading-relaxed">
+          {paragrafos.map((paragrafo, index) => (
+            <p key={index} className="whitespace-pre-wrap">
+              {paragrafo}
+            </p>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ============ COMPONENTE PRINCIPAL ============
+
 export default function DashboardIAPage() {
   const router = useRouter()
   
@@ -75,7 +331,6 @@ export default function DashboardIAPage() {
   // ✅ CARREGAR PACIENTES COM RESUMOS QUANDO INICIALIZAR
   useEffect(() => {
     const loadPacientesComResumos = async () => {
-      // ✅ VERIFICA CLINIC_ID DIRETAMENTE (não depende de initialized)
       const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
       if (!clinicId) return
       
@@ -92,7 +347,7 @@ export default function DashboardIAPage() {
     }
     
     loadPacientesComResumos()
-  }, [getPacientesComResumos]) // ✅ Removido 'initialized' - agora verifica clinic_id diretamente
+  }, [getPacientesComResumos])
 
   // Carregar conversa específica (diário)
   const loadConversaDia = useCallback(async (cpf: string, dataResumo: string) => {
@@ -103,7 +358,6 @@ export default function DashboardIAPage() {
       console.log(`💬 Carregando conversa: CPF=${cpf}, Data=${dataResumo}`)
       const conversa = await getResumoEspecifico(cpf, dataResumo)
       setConversaDia(conversa)
-      // Limpar resumo semanal quando selecionar diário
       setSelectedResumoSemanal(null)
     } catch (error) {
       console.error('❌ Erro ao carregar conversa:', error)
@@ -157,7 +411,23 @@ export default function DashboardIAPage() {
     setSelectedDate('')
   }, [])
 
-  // Formatador de data
+  // ✅ Handlers de view mode
+  const handleSetViewModeDiario = useCallback(() => {
+    setViewMode('diario')
+    setSelectedResumoSemanal(null)
+  }, [])
+
+  const handleSetViewModeSemanal = useCallback(() => {
+    setViewMode('semanal')
+    setConversaDia(null)
+    setSelectedDate('')
+  }, [])
+
+  // ✅ Handlers de modal
+  const handleShowNovaClinica = useCallback(() => setShowNovaClinicaModal(true), [])
+  const handleCloseNovaClinica = useCallback(() => setShowNovaClinicaModal(false), [])
+
+  // Formatador de data (memoizado)
   const formatDate = useCallback((dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -170,164 +440,19 @@ export default function DashboardIAPage() {
     }
   }, [])
 
-  // Formatador de CPF
+  // Formatador de CPF (memoizado)
   const formatCPF = useCallback((cpf: string) => {
     if (!cpf) return ''
     return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
   }, [])
 
-  // Render Conversa - Parser WhatsApp Style (memoizado)
-  const renderConversa = useMemo(() => {
-    return (resumoInteracoes: string) => {
-      if (!resumoInteracoes || resumoInteracoes.trim() === '') {
-        return (
-          <div className="text-center py-8">
-            <MessageCircle className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
-            <p className="text-clinic-gray-400">Conversa vazia ou sem conteúdo</p>
-          </div>
-        )
-      }
-      
-      try {
-        let mensagens: Array<{speaker: string, texto: string}> = []
-        
-        const blocosPaciente = resumoInteracoes.split(/\*\*PACIENTE\*\*:?\s*/i).filter(bloco => bloco.trim())
-        
-        blocosPaciente.forEach((bloco) => {
-          const partesBloco = bloco.split(/\*\*(EVELYN|AGENTE|AGENT)\s*IA\*\*:?\s*/i)
-          
-          if (partesBloco.length >= 2) {
-            const mensagemPaciente = partesBloco[0]?.trim()
-            if (mensagemPaciente) {
-              mensagens.push({ speaker: 'PACIENTE', texto: mensagemPaciente })
-            }
-            
-            const respostaIA = partesBloco[2]?.trim() || partesBloco[1]?.trim()
-            if (respostaIA) {
-              mensagens.push({ speaker: 'Agente IA', texto: respostaIA })
-            }
-          } else {
-            const textoLimpo = bloco.trim()
-            if (textoLimpo) {
-              mensagens.push({ speaker: 'PACIENTE', texto: textoLimpo })
-            }
-          }
-        })
-        
-        if (mensagens.length === 0) {
-          const partes = resumoInteracoes.split(/\*\*(PACIENTE|EVELYN|AGENTE|AGENT|IA)\*\*:?\s*/gi)
-          
-          for (let i = 1; i < partes.length; i += 2) {
-            const speaker = partes[i - 1]?.toUpperCase() || ''
-            const texto = partes[i]?.trim() || ''
-            
-            if (texto) {
-              const isPatient = speaker.includes('PACIENTE')
-              mensagens.push({
-                speaker: isPatient ? 'PACIENTE' : 'Agente IA',
-                texto: texto
-              })
-            }
-          }
-        }
-        
-        if (mensagens.length === 0) {
-          return (
-            <div className="text-center py-8">
-              <p className="text-yellow-400 mb-4">⚠️ Não foi possível parsear a conversa</p>
-              <div className="bg-clinic-gray-800 p-4 rounded-lg text-left text-xs text-clinic-gray-300 max-h-40 overflow-y-auto">
-                <pre className="whitespace-pre-wrap">{resumoInteracoes}</pre>
-              </div>
-            </div>
-          )
-        }
-        
-        // Render WhatsApp Style
-        return (
-          <div className="space-y-4 p-2">
-            {mensagens.map((mensagem, index) => {
-              const isPatient = mensagem.speaker === 'PACIENTE'
-              
-              return (
-                <div 
-                  key={`msg-${index}`}
-                  className={`flex ${isPatient ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div 
-                    className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl shadow-lg ${
-                      isPatient 
-                        ? 'bg-cyan-600 text-white rounded-br-sm'
-                        : 'bg-purple-600 text-white rounded-bl-sm'
-                    }`}
-                  >
-                    <p className="text-xs font-bold mb-1 opacity-80">
-                      {isPatient ? '👤 Paciente' : '🤖 Agente IA'}
-                    </p>
-                    <p className="text-sm whitespace-pre-wrap">{mensagem.texto}</p>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        )
-      } catch (error) {
-        console.error('Erro ao parsear conversa:', error)
-        return (
-          <div className="text-center py-8 text-red-400">
-            Erro ao processar conversa
-          </div>
-        )
-      }
+  // ✅ Título da conversa (memoizado)
+  const conversaTitulo = useMemo(() => {
+    if (viewMode === 'diario') {
+      return selectedDate ? formatDate(selectedDate) : ''
     }
-  }, [])
-
-  // ✅ Render Resumo Semanal (formatado bonito)
-  const renderResumoSemanal = useCallback((resumo: ResumosSemanais) => {
-    if (!resumo.resumo_geral_semana || resumo.resumo_geral_semana.trim() === '') {
-      return (
-        <div className="text-center py-8">
-          <FileText className="h-12 w-12 mx-auto mb-4 opacity-30 text-clinic-gray-500" />
-          <p className="text-clinic-gray-400">Resumo semanal vazio ou sem conteúdo</p>
-        </div>
-      )
-    }
-
-    // Dividir o resumo em parágrafos
-    const paragrafos = resumo.resumo_geral_semana.split('\n').filter(p => p.trim())
-
-    return (
-      <div className="p-4 space-y-4">
-        {/* Header do Resumo */}
-        <div className="bg-purple-900/30 border border-purple-500/30 rounded-lg p-4">
-          <div className="flex items-center mb-2">
-            <CalendarDays className="h-5 w-5 mr-2 text-purple-400" />
-            <span className="text-purple-300 font-medium">Período da Semana</span>
-          </div>
-          <p className="text-clinic-white text-lg font-semibold">
-            {formatDate(resumo.data_inicio_semana)} — {formatDate(resumo.data_fim_semana)}
-          </p>
-          <p className="text-clinic-gray-400 text-sm mt-1">
-            Gerado em: {formatDate(resumo.data_geracao)}
-          </p>
-        </div>
-
-        {/* Conteúdo do Resumo */}
-        <div className="bg-clinic-gray-800 rounded-lg p-4">
-          <h4 className="text-clinic-cyan font-medium mb-3 flex items-center">
-            <FileText className="h-4 w-4 mr-2" />
-            Resumo Geral da Semana
-          </h4>
-          <div className="space-y-3 text-clinic-gray-200 text-sm leading-relaxed">
-            {paragrafos.map((paragrafo, index) => (
-              <p key={index} className="whitespace-pre-wrap">
-                {paragrafo}
-              </p>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }, [formatDate])
+    return ''
+  }, [viewMode, selectedDate, formatDate])
 
   // ============ LOADING STATES ============
   if (authLoading) {
@@ -345,8 +470,6 @@ export default function DashboardIAPage() {
     return null
   }
 
-  // ✅ REMOVIDO check de !initialized - o conteúdo renderiza e os hooks carregam dados independentemente
-
   return (
     <div className="min-h-screen bg-clinic-black">
       <div className="container mx-auto px-4 py-6">
@@ -354,7 +477,7 @@ export default function DashboardIAPage() {
           titulo="Dashboard IA - Paciente" 
           descricao="Acompanhe as interações dos pacientes com a Agente IA"
           icone={Bot}
-          showNovaClinicaModal={() => setShowNovaClinicaModal(true)}
+          showNovaClinicaModal={handleShowNovaClinica}
         />
 
         {/* Navegação entre dashboards */}
@@ -429,10 +552,7 @@ export default function DashboardIAPage() {
             {selectedPaciente && (resumosDiarios.length > 0 || resumosSemanais.length > 0) && (
               <div className="flex space-x-2 mb-4">
                 <button
-                  onClick={() => {
-                    setViewMode('diario')
-                    setSelectedResumoSemanal(null)
-                  }}
+                  onClick={handleSetViewModeDiario}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                     viewMode === 'diario'
                       ? 'bg-clinic-cyan text-clinic-black'
@@ -443,11 +563,7 @@ export default function DashboardIAPage() {
                   Diário ({resumosDiarios.length})
                 </button>
                 <button
-                  onClick={() => {
-                    setViewMode('semanal')
-                    setConversaDia(null)
-                    setSelectedDate('')
-                  }}
+                  onClick={handleSetViewModeSemanal}
                   className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                     viewMode === 'semanal'
                       ? 'bg-purple-600 text-white'
@@ -468,7 +584,7 @@ export default function DashboardIAPage() {
               </div>
             )}
 
-            {/* Timeline Diária */}
+            {/* Timeline Diária - MEMOIZADA */}
             {!resumosLoading && viewMode === 'diario' && resumosDiarios.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-clinic-white mb-3 flex items-center">
@@ -477,26 +593,19 @@ export default function DashboardIAPage() {
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {resumosDiarios.map((resumo) => (
-                    <div
+                    <TimelineDiarioItem
                       key={`timeline-${resumo.id_resumo_diario}-${resumo.data_resumo}`}
+                      resumo={resumo}
+                      isSelected={selectedDate === resumo.data_resumo}
+                      formatDate={formatDate}
                       onClick={() => handleSelectDate(resumo.data_resumo)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-center text-sm font-medium ${
-                        selectedDate === resumo.data_resumo
-                          ? 'bg-clinic-cyan text-clinic-black'
-                          : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
-                      }`}
-                    >
-                      <div className="font-medium">{formatDate(resumo.data_resumo)}</div>
-                      <div className="text-xs opacity-75 mt-1">
-                        {resumo.resumo_interacoes ? `${resumo.resumo_interacoes.length} chars` : 'Sem conversa'}
-                      </div>
-                    </div>
+                    />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* ✅ Timeline Semanal - AGORA CLICÁVEL */}
+            {/* Timeline Semanal - MEMOIZADA */}
             {!resumosLoading && viewMode === 'semanal' && resumosSemanais.length > 0 && (
               <div>
                 <h3 className="text-lg font-semibold text-clinic-white mb-3 flex items-center">
@@ -505,22 +614,13 @@ export default function DashboardIAPage() {
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {resumosSemanais.map((resumo: ResumosSemanais) => (
-                    <div
+                    <TimelineSemanalItem
                       key={`semanal-${resumo.id_resumo_sem}`}
+                      resumo={resumo}
+                      isSelected={selectedResumoSemanal?.id_resumo_sem === resumo.id_resumo_sem}
+                      formatDate={formatDate}
                       onClick={() => handleSelectResumoSemanal(resumo)}
-                      className={`p-3 rounded-lg cursor-pointer transition-all duration-200 text-sm ${
-                        selectedResumoSemanal?.id_resumo_sem === resumo.id_resumo_sem
-                          ? 'bg-purple-600 text-white'
-                          : 'bg-clinic-gray-800 text-clinic-gray-300 hover:bg-clinic-gray-700'
-                      }`}
-                    >
-                      <div className="font-medium">
-                        {formatDate(resumo.data_inicio_semana)} - {formatDate(resumo.data_fim_semana)}
-                      </div>
-                      <div className="text-xs opacity-75 mt-1 line-clamp-2">
-                        {resumo.resumo_geral_semana?.substring(0, 80) || 'Sem resumo'}...
-                      </div>
-                    </div>
+                    />
                   ))}
                 </div>
               </div>
@@ -542,7 +642,7 @@ export default function DashboardIAPage() {
                 {viewMode === 'diario' ? (
                   <>
                     <MessageCircle className="h-5 w-5 mr-2 text-cyan-400" />
-                    Conversa do dia {selectedDate ? formatDate(selectedDate) : ''}
+                    Conversa do dia {conversaTitulo}
                   </>
                 ) : (
                   <>
@@ -570,14 +670,14 @@ export default function DashboardIAPage() {
                 </div>
               )}
               
-              {/* ✅ MODO DIÁRIO - Conversa */}
+              {/* ✅ MODO DIÁRIO - Conversa (componente memoizado) */}
               {!loadingConversa && viewMode === 'diario' && conversaDia && (
-                renderConversa(conversaDia.resumo_interacoes)
+                <ConversaDisplay resumoInteracoes={conversaDia.resumo_interacoes} />
               )}
               
-              {/* ✅ MODO SEMANAL - Resumo */}
+              {/* ✅ MODO SEMANAL - Resumo (componente memoizado) */}
               {!loadingConversa && viewMode === 'semanal' && selectedResumoSemanal && (
-                renderResumoSemanal(selectedResumoSemanal)
+                <ResumoSemanalDisplay resumo={selectedResumoSemanal} formatDate={formatDate} />
               )}
               
               {/* Placeholder - Diário sem seleção */}
@@ -616,8 +716,8 @@ export default function DashboardIAPage() {
 
         <NovaClinicaModal
           isOpen={showNovaClinicaModal}
-          onClose={() => setShowNovaClinicaModal(false)}
-          onSuccess={() => setShowNovaClinicaModal(false)}
+          onClose={handleCloseNovaClinica}
+          onSuccess={handleCloseNovaClinica}
         />
       </div>
     </div>

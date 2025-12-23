@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { 
   Users, 
   UserPlus, 
@@ -48,6 +49,85 @@ const pacienteFormInitial: PacienteForm = {
   status_paciente: 'Ativo'
 }
 
+// ============ COMPONENTES MEMOIZADOS ============
+
+// ✅ Badge de Status memoizado
+const StatusBadge = React.memo(function StatusBadge({ status }: { status: string }) {
+  const classes = status === 'Ativo' 
+    ? 'bg-green-900/20 text-green-400' 
+    : 'bg-red-900/20 text-red-400'
+  
+  return (
+    <span className={`px-2 py-1 rounded text-xs font-medium ${classes}`}>
+      {status || 'Ativo'}
+    </span>
+  )
+})
+
+// ✅ Badge de Origem memoizado
+const OrigemBadge = React.memo(function OrigemBadge({ origem }: { origem: string | null | undefined }) {
+  const classes = origem === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
+                  origem === 'Google' ? 'bg-blue-900/20 text-blue-400' :
+                  'bg-green-900/20 text-green-400'
+  
+  return (
+    <span className={`px-2 py-1 rounded text-xs font-medium ${classes}`}>
+      {origem || 'Não informado'}
+    </span>
+  )
+})
+
+// ✅ Linha de paciente memoizada
+const PacienteRow = React.memo(function PacienteRow({
+  paciente,
+  onView,
+  onEdit,
+  onDelete
+}: {
+  paciente: Paciente
+  onView: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  return (
+    <tr className="border-b border-clinic-gray-700 hover:bg-clinic-gray-750">
+      <td className="py-3 px-4 text-clinic-white font-medium">{paciente.nome_completo}</td>
+      <td className="py-3 px-4 text-clinic-gray-300">{paciente.cpf}</td>
+      <td className="py-3 px-4 text-clinic-gray-300">{paciente.celular}</td>
+      <td className="py-3 px-4 text-clinic-gray-300">{paciente.email}</td>
+      <td className="py-3 px-4">
+        <StatusBadge status={paciente.status_paciente || 'Ativo'} />
+      </td>
+      <td className="py-3 px-4">
+        <OrigemBadge origem={paciente.origem_lead} />
+      </td>
+      <td className="py-3 px-4 text-clinic-gray-300">
+        {paciente.data_ultima_atualizacao ? 
+          new Date(paciente.data_ultima_atualizacao).toLocaleDateString('pt-BR') :
+          'Não informado'
+        }
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex justify-center space-x-2">
+          <Button size="sm" variant="secondary" onClick={onView} icon={Eye}>
+            Ver
+          </Button>
+          <Button size="sm" variant="secondary" onClick={onEdit} icon={Edit}>
+            Editar
+          </Button>
+          {paciente.status_paciente === 'Ativo' && (
+            <Button size="sm" variant="danger" onClick={onDelete} icon={Trash2}>
+              Inativar
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+})
+
+// ============ COMPONENTE PRINCIPAL ============
+
 export default function PacientesPage() {
   const router = useRouter()
   
@@ -83,6 +163,9 @@ export default function PacientesPage() {
     message: ''
   })
 
+  // ✅ Ref para virtualização
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+
   // Filtro em tempo real - Filtra enquanto digita
   const pacientes = useMemo(() => {
     if (!searchTerm.trim()) return pacientesOriginal
@@ -98,6 +181,14 @@ export default function PacientesPage() {
       paciente.endereco_completo?.toLowerCase().includes(termo)
     )
   }, [pacientesOriginal, searchTerm])
+
+  // ✅ Virtualização da tabela
+  const rowVirtualizer = useVirtualizer({
+    count: pacientes.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 56, // Altura estimada de cada linha
+    overscan: 10,
+  })
 
   // ============ CARREGAR DADOS ============
   const loadPacientes = useCallback(async () => {
@@ -124,7 +215,6 @@ export default function PacientesPage() {
 
   // ✅ CARREGAR DADOS QUANDO AUTENTICADO
   useEffect(() => {
-    // Só precisa de isAuthenticated - não depender de profile.id_clinica
     if (!authLoading && isAuthenticated && !dataLoaded) {
       console.log('🔑 Pacientes: Auth pronto, carregando dados...')
       loadAllData()
@@ -138,22 +228,34 @@ export default function PacientesPage() {
     }
   }, [authLoading, isAuthenticated, router])
 
-  const showFeedback = (type: 'success' | 'error', title: string, message: string) => {
+  // ✅ Feedback memoizado
+  const showFeedback = useCallback((type: 'success' | 'error', title: string, message: string) => {
     setFeedbackModal({ isOpen: true, type, title, message })
-  }
+  }, [])
 
-  // Callback para abrir modal nova clínica
-  const handleShowNovaClinicaModal = () => {
+  // ✅ Handlers memoizados
+  const handleShowNovaClinicaModal = useCallback(() => {
     setShowNovaClinicaModal(true)
-  }
+  }, [])
 
-  // Handler após criar clínica
-  const handleClinicaCriada = async () => {
+  const handleClinicaCriada = useCallback(async () => {
     setShowNovaClinicaModal(false)
-  }
+  }, [])
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value)
+  }, [])
+
+  const handleClearSearch = useCallback(() => {
+    setSearchTerm('')
+  }, [])
+
+  const handleCloseFeedback = useCallback(() => {
+    setFeedbackModal(prev => ({ ...prev, isOpen: false }))
+  }, [])
 
   // Mapeamento modal
-  const openModal = (type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
+  const openModal = useCallback((type: 'create' | 'edit' | 'view' | 'delete', paciente?: Paciente) => {
     setModalType(type)
     setSelectedPaciente(paciente || null)
     
@@ -174,17 +276,24 @@ export default function PacientesPage() {
     }
     
     setIsModalOpen(true)
-  }
+  }, [])
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setIsModalOpen(false)
     setSelectedPaciente(null)
     setPacienteForm(pacienteFormInitial)
     setSubmitting(false)
-  }
+  }, [])
+
+  // ✅ Form handlers memoizados
+  const handleFormChange = useCallback((field: keyof PacienteForm) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    setPacienteForm(prev => ({ ...prev, [field]: e.target.value }))
+  }, [])
 
   // CRIAR PACIENTE
-  const handleCreatePaciente = async () => {
+  const handleCreatePaciente = useCallback(async () => {
     if (!pacienteForm.nome_completo || !pacienteForm.cpf) {
       showFeedback('error', 'Erro de Validação', 'Nome completo e CPF são obrigatórios')
       return
@@ -206,10 +315,10 @@ export default function PacientesPage() {
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [pacienteForm, showFeedback, closeModal, loadPacientes])
 
   // EDITAR PACIENTE
-  const handleUpdatePaciente = async () => {
+  const handleUpdatePaciente = useCallback(async () => {
     if (!selectedPaciente) return
 
     if (!pacienteForm.nome_completo || !pacienteForm.cpf) {
@@ -230,10 +339,10 @@ export default function PacientesPage() {
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [selectedPaciente, pacienteForm, showFeedback, closeModal, loadPacientes])
 
   // Inativar paciente (soft delete)
-  const handleInactivatePaciente = async () => {
+  const handleInactivatePaciente = useCallback(async () => {
     if (!selectedPaciente) return
 
     try {
@@ -251,10 +360,10 @@ export default function PacientesPage() {
     } finally {
       setSubmitting(false)
     }
-  }
+  }, [selectedPaciente, showFeedback, closeModal, loadPacientes])
 
   // SUBMIT PRINCIPAL
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault()
     
     if (modalType === 'create') {
@@ -262,7 +371,14 @@ export default function PacientesPage() {
     } else if (modalType === 'edit') {
       handleUpdatePaciente()
     }
-  }
+  }, [modalType, handleCreatePaciente, handleUpdatePaciente])
+
+  // ✅ Callbacks para ações de linha (evita criar funções novas em cada render)
+  const createRowHandlers = useCallback((paciente: Paciente) => ({
+    onView: () => openModal('view', paciente),
+    onEdit: () => openModal('edit', paciente),
+    onDelete: () => openModal('delete', paciente)
+  }), [openModal])
 
   // ============ LOADING STATES ============
   if (authLoading) {
@@ -277,7 +393,7 @@ export default function PacientesPage() {
   }
 
   if (!isAuthenticated) {
-    return null // Será redirecionado pelo useEffect
+    return null
   }
 
   if (loading && !dataLoaded) {
@@ -312,13 +428,12 @@ export default function PacientesPage() {
                 type="text"
                 placeholder="Pesquisar por nome, CPF, email ou celular..."  
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
                 className="w-full bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg pl-10 pr-4 py-2.5 text-clinic-white placeholder-clinic-gray-500 focus:outline-none focus:border-clinic-cyan"
               />
-              {/* Botão limpar quando tem texto */}
               {searchTerm && (
                 <button
-                  onClick={() => setSearchTerm('')}
+                  onClick={handleClearSearch}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-clinic-gray-500 hover:text-clinic-white"
                 >
                   <X className="w-4 h-4" />
@@ -354,7 +469,7 @@ export default function PacientesPage() {
               </p>
               {searchTerm && (
                 <button
-                  onClick={() => setSearchTerm('')}
+                  onClick={handleClearSearch}
                   className="mt-2 text-clinic-cyan hover:underline text-sm"
                 >
                   Limpar busca
@@ -376,70 +491,87 @@ export default function PacientesPage() {
                     <th className="text-center py-3 px-4 text-clinic-gray-400 font-medium">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pacientes.map((paciente) => (
-                    <tr key={paciente.id_paciente} className="border-b border-clinic-gray-700 hover:bg-clinic-gray-750">
-                      <td className="py-3 px-4 text-clinic-white font-medium">{paciente.nome_completo}</td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.cpf}</td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.celular}</td>
-                      <td className="py-3 px-4 text-clinic-gray-300">{paciente.email}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          paciente.status_paciente === 'Ativo' ? 'bg-green-900/20 text-green-400' :
-                          'bg-red-900/20 text-red-400'
-                        }`}>
-                          {paciente.status_paciente || 'Ativo'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          paciente.origem_lead === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
-                          paciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
-                          'bg-green-900/20 text-green-400'
-                        }`}>
-                          {paciente.origem_lead || 'Não informado'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-clinic-gray-300">
-                        {paciente.data_ultima_atualizacao ? 
-                          new Date(paciente.data_ultima_atualizacao).toLocaleDateString('pt-BR') :
-                          'Não informado'
-                        }
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex justify-center space-x-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openModal('view', paciente)}
-                            icon={Eye}
-                          >
-                            Ver
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openModal('edit', paciente)}
-                            icon={Edit}
-                          >
-                            Editar
-                          </Button>
-                          {paciente.status_paciente === 'Ativo' && (
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => openModal('delete', paciente)}
-                              icon={Trash2}
-                            >
-                              Inativar
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              
+              {/* ✅ Container virtualizado para tbody */}
+              <div
+                ref={tableContainerRef}
+                className="max-h-[600px] overflow-y-auto"
+              >
+                <div
+                  style={{
+                    height: `${rowVirtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  <table className="w-full">
+                    <tbody>
+                      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                        const paciente = pacientes[virtualRow.index]
+                        const handlers = createRowHandlers(paciente)
+                        
+                        return (
+                          <tr
+                            key={paciente.id_paciente}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: `${virtualRow.size}px`,
+                              transform: `translateY(${virtualRow.start}px)`,
+                              display: 'table',
+                              tableLayout: 'fixed',
+                            }}
+                            className="border-b border-clinic-gray-700 hover:bg-clinic-gray-750"
+                          >
+                            <td className="py-3 px-4 text-clinic-white font-medium" style={{ width: '18%' }}>
+                              {paciente.nome_completo}
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-300" style={{ width: '12%' }}>
+                              {paciente.cpf}
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-300" style={{ width: '12%' }}>
+                              {paciente.celular}
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-300" style={{ width: '15%' }}>
+                              {paciente.email}
+                            </td>
+                            <td className="py-3 px-4" style={{ width: '8%' }}>
+                              <StatusBadge status={paciente.status_paciente || 'Ativo'} />
+                            </td>
+                            <td className="py-3 px-4" style={{ width: '10%' }}>
+                              <OrigemBadge origem={paciente.origem_lead} />
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-300" style={{ width: '10%' }}>
+                              {paciente.data_ultima_atualizacao ? 
+                                new Date(paciente.data_ultima_atualizacao).toLocaleDateString('pt-BR') :
+                                'Não informado'
+                              }
+                            </td>
+                            <td className="py-3 px-4" style={{ width: '15%' }}>
+                              <div className="flex justify-center space-x-2">
+                                <Button size="sm" variant="secondary" onClick={handlers.onView} icon={Eye}>
+                                  Ver
+                                </Button>
+                                <Button size="sm" variant="secondary" onClick={handlers.onEdit} icon={Edit}>
+                                  Editar
+                                </Button>
+                                {paciente.status_paciente === 'Ativo' && (
+                                  <Button size="sm" variant="danger" onClick={handlers.onDelete} icon={Trash2}>
+                                    Inativar
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </Card>
@@ -456,7 +588,7 @@ export default function PacientesPage() {
                 <Input
                   label="Nome Completo *"
                   value={pacienteForm.nome_completo}  
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, nome_completo: e.target.value }))}
+                  onChange={handleFormChange('nome_completo')}
                   placeholder="Digite o nome completo"
                   required
                 />
@@ -464,7 +596,7 @@ export default function PacientesPage() {
                 <Input
                   label="CPF *"
                   value={pacienteForm.cpf}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, cpf: e.target.value }))}
+                  onChange={handleFormChange('cpf')}
                   placeholder="000.000.000-00"
                   required
                 />
@@ -473,13 +605,13 @@ export default function PacientesPage() {
                   label="Data de Nascimento"
                   type="date"
                   value={pacienteForm.data_nascimento}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, data_nascimento: e.target.value }))}
+                  onChange={handleFormChange('data_nascimento')}
                 />
                 
                 <Select
                   label="Gênero"
                   value={pacienteForm.genero}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, genero: e.target.value }))}
+                  onChange={handleFormChange('genero')}
                   options={[
                     { value: '', label: 'Selecione...' },
                     { value: 'Masculino', label: 'Masculino' },
@@ -491,7 +623,7 @@ export default function PacientesPage() {
                 <Input
                   label="Celular"
                   value={pacienteForm.celular}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, celular: e.target.value }))}
+                  onChange={handleFormChange('celular')}
                   placeholder="(11) 99999-9999"
                 />
                 
@@ -499,7 +631,7 @@ export default function PacientesPage() {
                   label="Email"
                   type="email"
                   value={pacienteForm.email}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={handleFormChange('email')}
                   placeholder="email@exemplo.com"
                 />
               </div>
@@ -507,7 +639,7 @@ export default function PacientesPage() {
               <Input
                 label="Endereço Completo"
                 value={pacienteForm.endereco_completo}
-                onChange={(e) => setPacienteForm(prev => ({ ...prev, endereco_completo: e.target.value }))}
+                onChange={handleFormChange('endereco_completo')}
                 placeholder="Rua, número, bairro, cidade, CEP"
               />
               
@@ -515,7 +647,7 @@ export default function PacientesPage() {
                 <Select
                   label="Status do Paciente"
                   value={pacienteForm.status_paciente}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, status_paciente: e.target.value }))}
+                  onChange={handleFormChange('status_paciente')}
                   options={[
                     { value: 'Ativo', label: 'Ativo' },
                     { value: 'Inativo', label: 'Inativo' },
@@ -526,7 +658,7 @@ export default function PacientesPage() {
                 <Select
                   label="Origem do Lead"
                   value={pacienteForm.origem_lead}
-                  onChange={(e) => setPacienteForm(prev => ({ ...prev, origem_lead: e.target.value }))}
+                  onChange={handleFormChange('origem_lead')}
                   options={[
                     { value: '', label: 'Selecione a origem...' },
                     { value: 'Instagram', label: 'Instagram' },
@@ -628,24 +760,13 @@ export default function PacientesPage() {
                   <div>
                     <span className="text-clinic-gray-400">Status:</span>
                     <p className="text-clinic-white">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedPaciente.status_paciente === 'Ativo' ? 'bg-green-900/20 text-green-400' :
-                        'bg-red-900/20 text-red-400'
-                      }`}>
-                        {selectedPaciente.status_paciente || 'Ativo'}
-                      </span>
+                      <StatusBadge status={selectedPaciente.status_paciente || 'Ativo'} />
                     </p>
                   </div>
                   <div>
                     <span className="text-clinic-gray-400">Origem do Lead:</span>
                     <p className="text-clinic-white">
-                      <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedPaciente.origem_lead === 'Instagram' ? 'bg-pink-900/20 text-pink-400' :
-                        selectedPaciente.origem_lead === 'Google' ? 'bg-blue-900/20 text-blue-400' :
-                        'bg-green-900/20 text-green-400'
-                      }`}>
-                        {selectedPaciente.origem_lead || 'Não informado'}
-                      </span>
+                      <OrigemBadge origem={selectedPaciente.origem_lead} />
                     </p>
                   </div>
                   <div className="col-span-2">
@@ -711,7 +832,7 @@ export default function PacientesPage() {
         {/* MODAL DE FEEDBACK */}
         <Modal
           isOpen={feedbackModal.isOpen}
-          onClose={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+          onClose={handleCloseFeedback}
           title={feedbackModal.title}
         >
           <div className="text-center py-4">
@@ -726,7 +847,7 @@ export default function PacientesPage() {
             </div>
             <p className="text-clinic-gray-300">{feedbackModal.message}</p>
             <Button
-              onClick={() => setFeedbackModal(prev => ({ ...prev, isOpen: false }))}
+              onClick={handleCloseFeedback}
               className="mt-4"
             >
               OK

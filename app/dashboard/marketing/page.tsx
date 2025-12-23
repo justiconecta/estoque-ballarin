@@ -15,6 +15,7 @@ import { Button, Card, HeaderUniversal } from '@/components/ui'
 import { useData } from '@/contexts/DataContext'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
+// ============ INTERFACES ============
 interface ResumoIndicadoresMensal {
   id_resumo_mensal: number
   mes_ano: string
@@ -34,6 +35,7 @@ interface OrigemLeadStats {
   percentual: number
 }
 
+// ============ CONSTANTES (fora do componente - nunca recria) ============
 const MESES_NOMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -41,6 +43,306 @@ const MESES_NOMES = [
 
 const MESES_OPCOES = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 
+// ============ HELPERS (fora do componente) ============
+const formatMesNome = (mes: string) => MESES_NOMES[parseInt(mes) - 1] || mes
+
+const parseListaNumeros = (texto: string): string[] => {
+  if (!texto) return []
+  return texto
+    .split(/\d+\.\s*/)
+    .filter(item => item.trim())
+    .map(item => item.trim())
+}
+
+const getOrigemColor = (origem: string): string => {
+  switch (origem) {
+    case 'Instagram': return 'bg-pink-500'
+    case 'Google': return 'bg-blue-500'
+    case 'Indicação': return 'bg-green-500'
+    default: return 'bg-clinic-gray-400'
+  }
+}
+
+// ============ COMPONENTES MEMOIZADOS ============
+
+// ✅ MetricCard memoizado
+const MetricCard = React.memo(function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  iconBgClass,
+  iconClass
+}: {
+  label: string
+  value: string | number
+  icon: React.ElementType
+  iconBgClass: string
+  iconClass: string
+}) {
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-clinic-gray-400 text-sm">{label}</p>
+          <p className="text-3xl font-bold text-clinic-white mt-1">{value}</p>
+        </div>
+        <div className={`p-3 rounded-lg ${iconBgClass}`}>
+          <Icon className={`h-6 w-6 ${iconClass}`} />
+        </div>
+      </div>
+    </Card>
+  )
+})
+
+// ✅ MetricCardSmall memoizado (para Fatores Críticos)
+const MetricCardSmall = React.memo(function MetricCardSmall({
+  label,
+  value,
+  icon: Icon,
+  iconBgClass,
+  iconClass,
+  loading
+}: {
+  label: string
+  value: string
+  icon: React.ElementType
+  iconBgClass: string
+  iconClass: string
+  loading?: boolean
+}) {
+  return (
+    <Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-clinic-gray-400 text-sm">{label}</p>
+          <p className="text-lg font-bold text-clinic-white mt-1">
+            {loading ? '...' : value}
+          </p>
+        </div>
+        <div className={`p-3 rounded-lg ${iconBgClass}`}>
+          <Icon className={`h-6 w-6 ${iconClass}`} />
+        </div>
+      </div>
+    </Card>
+  )
+})
+
+// ✅ OrigemLeadRow memoizado
+const OrigemLeadRow = React.memo(function OrigemLeadRow({
+  stat
+}: {
+  stat: OrigemLeadStats
+}) {
+  const colorClass = useMemo(() => getOrigemColor(stat.origem), [stat.origem])
+  
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center space-x-3">
+        <div className={`w-3 h-3 rounded-full ${colorClass}`} />
+        <span className="text-clinic-white font-medium">{stat.origem}</span>
+      </div>
+      <div className="text-right">
+        <div className="text-clinic-white font-bold">{stat.total}</div>
+        <div className="text-clinic-gray-400 text-sm">{stat.percentual}%</div>
+      </div>
+    </div>
+  )
+})
+
+// ✅ ListaItem memoizado
+const ListaItem = React.memo(function ListaItem({
+  index,
+  texto,
+  colorClass
+}: {
+  index: number
+  texto: string
+  colorClass: string
+}) {
+  return (
+    <div className="flex items-start space-x-2">
+      <span className={`font-bold ${colorClass}`}>{index + 1}.</span>
+      <p className="text-clinic-white text-sm flex-1">{texto}</p>
+    </div>
+  )
+})
+
+// ✅ CardIndicador memoizado
+const CardIndicador = React.memo(function CardIndicador({
+  title,
+  items,
+  loading,
+  emptyIcon: EmptyIcon,
+  emptyMessage,
+  itemColorClass
+}: {
+  title: string
+  items: string[]
+  loading: boolean
+  emptyIcon: React.ElementType
+  emptyMessage: string
+  itemColorClass: string
+}) {
+  if (loading) {
+    return (
+      <Card title={title}>
+        <div className="text-center py-6">
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
+          <p className="text-clinic-gray-400">Carregando...</p>
+        </div>
+      </Card>
+    )
+  }
+
+  if (items.length === 0) {
+    return (
+      <Card title={title}>
+        <div className="text-center py-6">
+          <EmptyIcon className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
+          <p className="text-clinic-gray-400">{emptyMessage}</p>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title={title}>
+      <div className="space-y-2">
+        {items.slice(0, 5).map((item, index) => (
+          <ListaItem 
+            key={index} 
+            index={index} 
+            texto={item} 
+            colorClass={itemColorClass} 
+          />
+        ))}
+      </div>
+    </Card>
+  )
+})
+
+// ✅ CardOrigemLeads memoizado
+const CardOrigemLeads = React.memo(function CardOrigemLeads({
+  stats
+}: {
+  stats: OrigemLeadStats[]
+}) {
+  if (stats.length === 0) {
+    return (
+      <Card title="Origem de Leads">
+        <div className="text-center py-6">
+          <p className="text-clinic-gray-400">Nenhum dado de origem encontrado</p>
+        </div>
+      </Card>
+    )
+  }
+
+  return (
+    <Card title="Origem de Leads">
+      <div className="space-y-4">
+        {stats.map((stat, index) => (
+          <OrigemLeadRow key={index} stat={stat} />
+        ))}
+      </div>
+    </Card>
+  )
+})
+
+// ✅ FiltrosPeriodo memoizado
+const FiltrosPeriodo = React.memo(function FiltrosPeriodo({
+  mesSelecionado,
+  anoSelecionado,
+  anosDisponiveis,
+  onMesChange,
+  onAnoChange
+}: {
+  mesSelecionado: string
+  anoSelecionado: string
+  anosDisponiveis: string[]
+  onMesChange: (mes: string) => void
+  onAnoChange: (ano: string) => void
+}) {
+  const handleMesChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    onMesChange(e.target.value)
+  }, [onMesChange])
+
+  const handleAnoChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    onAnoChange(e.target.value)
+  }, [onAnoChange])
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-clinic-white">
+          Análise de Marketing
+        </h2>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <label className="text-clinic-gray-400 text-sm">Mês:</label>
+            <select
+              value={mesSelecionado}
+              onChange={handleMesChange}
+              className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[140px]"
+            >
+              {MESES_OPCOES.map(mes => (
+                <option key={mes} value={mes}>{formatMesNome(mes)}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <label className="text-clinic-gray-400 text-sm">Ano:</label>
+            <select
+              value={anoSelecionado}
+              onChange={handleAnoChange}
+              className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[100px]"
+            >
+              {anosDisponiveis.map(ano => (
+                <option key={ano} value={ano}>{ano}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ✅ NavTabs memoizado
+const NavTabs = React.memo(function NavTabs({
+  onNavigate
+}: {
+  onNavigate: (path: string) => void
+}) {
+  const handleTerapeutico = useCallback(() => onNavigate('/dashboard/terapeutico'), [onNavigate])
+  const handleVendas = useCallback(() => onNavigate('/dashboard/vendas'), [onNavigate])
+
+  return (
+    <div className="mb-8">
+      <div className="border-b border-clinic-gray-700">
+        <nav className="flex space-x-8">
+          <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
+            Marketing e Terapêutico
+          </button>
+          <button
+            onClick={handleTerapeutico}
+            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+          >
+            IA - Paciente
+          </button>
+          <button
+            onClick={handleVendas}
+            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+          >
+            Comercial
+          </button>
+        </nav>
+      </div>
+    </div>
+  )
+})
+
+// ============ COMPONENTE PRINCIPAL ============
 export default function DashboardMarketingTerapeuticoPage() {
   const router = useRouter()
   
@@ -68,6 +370,13 @@ export default function DashboardMarketingTerapeuticoPage() {
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
   const lastPeriodRef = useRef<string>('')
 
+  // ============ HANDLERS MEMOIZADOS ============
+  const handleOpenModal = useCallback(() => setShowNovaClinicaModal(true), [])
+  const handleCloseModal = useCallback(() => setShowNovaClinicaModal(false), [])
+  const handleMesChange = useCallback((mes: string) => setMesSelecionado(mes), [])
+  const handleAnoChange = useCallback((ano: string) => setAnoSelecionado(ano), [])
+  const handleNavigate = useCallback((path: string) => router.push(path), [router])
+
   // ✅ ESTATÍSTICAS DE ORIGEM (calculadas dos pacientes do cache)
   const origemLeadStats = useMemo((): OrigemLeadStats[] => {
     if (pacientes.length === 0) return []
@@ -88,6 +397,32 @@ export default function DashboardMarketingTerapeuticoPage() {
       }))
       .sort((a, b) => b.total - a.total)
   }, [pacientes])
+
+  // ✅ LISTAS PARSEADAS (memoizadas)
+  const fcsList = useMemo(() => 
+    parseListaNumeros(indicadoresMes?.fcs || ''), 
+    [indicadoresMes?.fcs]
+  )
+  
+  const melhoriasList = useMemo(() => 
+    parseListaNumeros(indicadoresMes?.melhorias || ''), 
+    [indicadoresMes?.melhorias]
+  )
+  
+  const supervaloList = useMemo(() => 
+    parseListaNumeros(indicadoresMes?.supervalorizado || ''), 
+    [indicadoresMes?.supervalorizado]
+  )
+  
+  const temasMarketingList = useMemo(() => 
+    parseListaNumeros(indicadoresMes?.temas_marketing || ''), 
+    [indicadoresMes?.temas_marketing]
+  )
+  
+  const oportunidadesList = useMemo(() => 
+    parseListaNumeros(indicadoresMes?.oportunidades_marketing || ''), 
+    [indicadoresMes?.oportunidades_marketing]
+  )
 
   // Carregar anos disponíveis
   useEffect(() => {
@@ -140,16 +475,6 @@ export default function DashboardMarketingTerapeuticoPage() {
     }
   }, [mesSelecionado, anoSelecionado, getResumoIndicadoresMensal])
 
-  const formatMesNome = (mes: string) => MESES_NOMES[parseInt(mes) - 1] || mes
-
-  const parseListaNumeros = useCallback((texto: string): string[] => {
-    if (!texto) return []
-    return texto
-      .split(/\d+\.\s*/)
-      .filter(item => item.trim())
-      .map(item => item.trim())
-  }, [])
-
   // ✅ Mostrar loading enquanto NÃO inicializou OU está carregando
   const loading = !initialized || dataLoading
 
@@ -172,264 +497,112 @@ export default function DashboardMarketingTerapeuticoPage() {
           titulo="Marketing e Terapêutico" 
           descricao="Análise de performance de marketing e interações IA-Paciente"
           icone={BarChart3}
-          showNovaClinicaModal={() => setShowNovaClinicaModal(true)}
+          showNovaClinicaModal={handleOpenModal}
         />
 
         {/* Navegação por Tabs */}
-        <div className="mb-8">
-          <div className="border-b border-clinic-gray-700">
-            <nav className="flex space-x-8">
-              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
-                Marketing e Terapêutico
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/terapeutico')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                IA - Paciente
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/vendas')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Comercial
-              </button>
-            </nav>
-          </div>
-        </div>
+        <NavTabs onNavigate={handleNavigate} />
 
         {/* Filtros Mês e Ano */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-clinic-white">
-              Análise de Marketing
-            </h2>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <label className="text-clinic-gray-400 text-sm">Mês:</label>
-                <select
-                  value={mesSelecionado}
-                  onChange={(e) => setMesSelecionado(e.target.value)}
-                  className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[140px]"
-                >
-                  {MESES_OPCOES.map(mes => (
-                    <option key={mes} value={mes}>{formatMesNome(mes)}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <label className="text-clinic-gray-400 text-sm">Ano:</label>
-                <select
-                  value={anoSelecionado}
-                  onChange={(e) => setAnoSelecionado(e.target.value)}
-                  className="px-4 py-2 bg-clinic-gray-800 border border-clinic-gray-600 rounded-lg text-clinic-white focus:border-clinic-cyan focus:outline-none min-w-[100px]"
-                >
-                  {anosDisponiveis.map(ano => (
-                    <option key={ano} value={ano}>{ano}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
+        <FiltrosPeriodo
+          mesSelecionado={mesSelecionado}
+          anoSelecionado={anoSelecionado}
+          anosDisponiveis={anosDisponiveis}
+          onMesChange={handleMesChange}
+          onAnoChange={handleAnoChange}
+        />
 
         {/* Cards de Métricas Principais */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Total de Pacientes</p>
-                <p className="text-3xl font-bold text-clinic-white mt-1">{pacientes.length}</p>
-              </div>
-              <div className="p-3 bg-clinic-cyan/20 rounded-lg">
-                <Users className="h-6 w-6 text-clinic-cyan" />
-              </div>
-            </div>
-          </Card>
+          <MetricCard
+            label="Total de Pacientes"
+            value={pacientes.length}
+            icon={Users}
+            iconBgClass="bg-clinic-cyan/20"
+            iconClass="text-clinic-cyan"
+          />
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Canais Ativos</p>
-                <p className="text-3xl font-bold text-clinic-white mt-1">{origemLeadStats.length}</p>
-              </div>
-              <div className="p-3 bg-blue-500/20 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-blue-400" />
-              </div>
-            </div>
-          </Card>
+          <MetricCard
+            label="Canais Ativos"
+            value={origemLeadStats.length}
+            icon={TrendingUp}
+            iconBgClass="bg-blue-500/20"
+            iconClass="text-blue-400"
+          />
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-clinic-gray-400 text-sm">Fatores Críticos</p>
-                <p className="text-lg font-bold text-clinic-white mt-1">
-                  {loadingIndicadores ? '...' : `${parseListaNumeros(indicadoresMes?.fcs || '').length} identificados`}
-                </p>
-              </div>
-              <div className="p-3 bg-green-500/20 rounded-lg">
-                <Target className="h-6 w-6 text-green-400" />
-              </div>
-            </div>
-          </Card>
+          <MetricCardSmall
+            label="Fatores Críticos"
+            value={`${fcsList.length} identificados`}
+            icon={Target}
+            iconBgClass="bg-green-500/20"
+            iconClass="text-green-400"
+            loading={loadingIndicadores}
+          />
         </div>
 
         {/* Grid de Conteúdo Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           
           {/* Origem de Leads */}
-          <Card title="Origem de Leads">
-            {origemLeadStats.length === 0 ? (
-              <div className="text-center py-6">
-                <p className="text-clinic-gray-400">Nenhum dado de origem encontrado</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {origemLeadStats.map((stat, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        stat.origem === 'Instagram' ? 'bg-pink-500' :
-                        stat.origem === 'Google' ? 'bg-blue-500' :
-                        stat.origem === 'Indicação' ? 'bg-green-500' :
-                        'bg-clinic-gray-400'
-                      }`} />
-                      <span className="text-clinic-white font-medium">{stat.origem}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-clinic-white font-bold">{stat.total}</div>
-                      <div className="text-clinic-gray-400 text-sm">{stat.percentual}%</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardOrigemLeads stats={origemLeadStats} />
 
           {/* FCS - Fatores Críticos de Sucesso */}
-          <Card title="Fatores Críticos de Sucesso">
-            {loadingIndicadores ? (
-              <div className="text-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
-                <p className="text-clinic-gray-400">Carregando...</p>
-              </div>
-            ) : !indicadoresMes?.fcs ? (
-              <div className="text-center py-6">
-                <Target className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                <p className="text-clinic-gray-400">Nenhum FCS disponível para este mês</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.fcs).slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-start space-x-2">
-                    <span className="text-green-400 font-bold">{index + 1}.</span>
-                    <p className="text-clinic-white text-sm flex-1">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardIndicador
+            title="Fatores Críticos de Sucesso"
+            items={fcsList}
+            loading={loadingIndicadores}
+            emptyIcon={Target}
+            emptyMessage="Nenhum FCS disponível para este mês"
+            itemColorClass="text-green-400"
+          />
 
           {/* Melhorias */}
-          <Card title="Melhorias Sugeridas">
-            {loadingIndicadores ? (
-              <div className="text-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
-              </div>
-            ) : !indicadoresMes?.melhorias ? (
-              <div className="text-center py-6">
-                <AlertCircle className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                <p className="text-clinic-gray-400">Nenhuma melhoria disponível para este mês</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.melhorias).slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-start space-x-2">
-                    <span className="text-yellow-400 font-bold">{index + 1}.</span>
-                    <p className="text-clinic-white text-sm flex-1">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardIndicador
+            title="Melhorias Sugeridas"
+            items={melhoriasList}
+            loading={loadingIndicadores}
+            emptyIcon={AlertCircle}
+            emptyMessage="Nenhuma melhoria disponível para este mês"
+            itemColorClass="text-yellow-400"
+          />
 
           {/* Supervalorizado */}
-          <Card title="Aspectos Supervalorizados">
-            {loadingIndicadores ? (
-              <div className="text-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
-              </div>
-            ) : !indicadoresMes?.supervalorizado ? (
-              <div className="text-center py-6">
-                <TrendingUp className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                <p className="text-clinic-gray-400">Nenhum dado disponível para este mês</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.supervalorizado).slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-start space-x-2">
-                    <span className="text-purple-400 font-bold">{index + 1}.</span>
-                    <p className="text-clinic-white text-sm flex-1">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardIndicador
+            title="Aspectos Supervalorizados"
+            items={supervaloList}
+            loading={loadingIndicadores}
+            emptyIcon={TrendingUp}
+            emptyMessage="Nenhum dado disponível para este mês"
+            itemColorClass="text-purple-400"
+          />
 
           {/* Temas Marketing */}
-          <Card title="Temas de Marketing">
-            {loadingIndicadores ? (
-              <div className="text-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
-              </div>
-            ) : !indicadoresMes?.temas_marketing ? (
-              <div className="text-center py-6">
-                <MessageSquare className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                <p className="text-clinic-gray-400">Nenhum tema disponível para este mês</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.temas_marketing).slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-start space-x-2">
-                    <span className="text-cyan-400 font-bold">{index + 1}.</span>
-                    <p className="text-clinic-white text-sm flex-1">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardIndicador
+            title="Temas de Marketing"
+            items={temasMarketingList}
+            loading={loadingIndicadores}
+            emptyIcon={MessageSquare}
+            emptyMessage="Nenhum tema disponível para este mês"
+            itemColorClass="text-cyan-400"
+          />
 
           {/* Oportunidades Marketing */}
-          <Card title="Oportunidades de Marketing">
-            {loadingIndicadores ? (
-              <div className="text-center py-6">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-clinic-cyan border-t-transparent mx-auto mb-2"></div>
-              </div>
-            ) : !indicadoresMes?.oportunidades_marketing ? (
-              <div className="text-center py-6">
-                <Lightbulb className="mx-auto h-12 w-12 text-clinic-gray-500 mb-4" />
-                <p className="text-clinic-gray-400">Nenhuma oportunidade disponível para este mês</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {parseListaNumeros(indicadoresMes.oportunidades_marketing).slice(0, 5).map((item, index) => (
-                  <div key={index} className="flex items-start space-x-2">
-                    <span className="text-orange-400 font-bold">{index + 1}.</span>
-                    <p className="text-clinic-white text-sm flex-1">{item}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
+          <CardIndicador
+            title="Oportunidades de Marketing"
+            items={oportunidadesList}
+            loading={loadingIndicadores}
+            emptyIcon={Lightbulb}
+            emptyMessage="Nenhuma oportunidade disponível para este mês"
+            itemColorClass="text-orange-400"
+          />
         </div>
 
       </div>
 
       <NovaClinicaModal
         isOpen={showNovaClinicaModal}
-        onClose={() => setShowNovaClinicaModal(false)}
-        onSuccess={() => setShowNovaClinicaModal(false)}
+        onClose={handleCloseModal}
+        onSuccess={handleCloseModal}
       />
     </div>
   )

@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { 
   Package, 
   TrendingUp, 
@@ -26,6 +27,107 @@ interface MovimentacaoForm {
   valorTotal?: string
   observacao?: string
 }
+
+// ============ COMPONENTES MEMOIZADOS ============
+
+// ✅ Componente memoizado para cada produto na lista
+const ProdutoCard = React.memo(function ProdutoCard({
+  produto,
+  isSelected,
+  status,
+  statusClasses,
+  formatDate,
+  onSelect
+}: {
+  produto: ProdutoComEstoque
+  isSelected: boolean
+  status: { status: string; cor: string; diasEstoque: number }
+  statusClasses: string
+  formatDate: (date: string) => string
+  onSelect: () => void
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
+        isSelected
+          ? 'border-clinic-cyan bg-clinic-cyan/10'
+          : 'border-clinic-gray-600 bg-clinic-gray-800 hover:border-clinic-cyan/50 hover:bg-clinic-gray-700'
+      }`}
+    >
+      <div className="flex justify-between items-start">
+        <div className="flex-1">
+          <h3 className="text-clinic-white font-medium">{produto.nome_produto}</h3>
+          <p className="text-clinic-gray-400 text-sm">{produto.fabricante}</p>
+          <p className="text-clinic-gray-400 text-sm">{produto.classe_terapeutica}</p>
+          <p className="text-clinic-gray-500 text-xs mt-1">
+            {produto.lotes.length} lote{produto.lotes.length !== 1 ? 's' : ''} disponível{produto.lotes.length !== 1 ? 'eis' : ''}
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-clinic-white text-xl font-bold">{produto.estoque_total}</div>
+          <div className="text-clinic-gray-400 text-sm">unidades</div>
+          <div className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${statusClasses}`}>
+            {status.status}
+            {status.diasEstoque < 999 && status.diasEstoque > 0 && (
+              <span className="ml-1 opacity-75">({status.diasEstoque}d)</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ✅ Componente memoizado para cada linha de movimentação
+const MovimentacaoRow = React.memo(function MovimentacaoRow({
+  mov,
+  formatDate
+}: {
+  mov: MovimentacaoDetalhada
+  formatDate: (date: string) => string
+}) {
+  return (
+    <tr className="border-b border-clinic-gray-800 hover:bg-clinic-gray-800/50">
+      <td className="py-3 px-4 text-clinic-white text-sm">
+        <div className="flex items-center">
+          <Calendar className="w-4 h-4 mr-2 text-clinic-gray-500" />
+          {formatDate(mov.data_movimentacao)}
+        </div>
+      </td>
+      <td className="py-3 px-4 text-clinic-white text-sm font-medium">
+        {mov.lote?.skus?.nome_produto || 'N/A'}
+      </td>
+      <td className="py-3 px-4">
+        <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+          mov.tipo_movimentacao === 'ENTRADA' 
+            ? 'bg-green-900/30 text-green-300' 
+            : 'bg-orange-900/30 text-orange-300'
+        }`}>
+          {mov.tipo_movimentacao}
+        </span>
+      </td>
+      <td className="py-3 px-4">
+        <span className={`font-medium ${
+          mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
+        }`}>
+          {mov.tipo_movimentacao === 'ENTRADA' ? '+' : '-'}{mov.quantidade}
+        </span>
+      </td>
+      <td className="py-3 px-4 text-clinic-gray-300">
+        <div className="flex items-center">
+          <User className="w-4 h-4 mr-2 text-clinic-gray-500" />
+          {mov.usuario}
+        </div>
+      </td>
+      <td className="py-3 px-4 text-clinic-gray-400 text-sm max-w-xs truncate">
+        {mov.observacao || '-'}
+      </td>
+    </tr>
+  )
+})
+
+// ============ COMPONENTE PRINCIPAL ============
 
 export default function EstoquePage() {
   const router = useRouter()
@@ -64,6 +166,10 @@ export default function EstoquePage() {
     message: ''
   })
 
+  // ✅ Refs para virtualização
+  const produtosContainerRef = useRef<HTMLDivElement>(null)
+  const movimentacoesContainerRef = useRef<HTMLDivElement>(null)
+
   const showModal = (type: 'success' | 'error', title: string, message: string) => {
     setModalState({ isOpen: true, type, title, message })
   }
@@ -78,7 +184,7 @@ export default function EstoquePage() {
   }
 
   // Formatar data sem problema de timezone
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     if (!dateString) return '-'
     const str = typeof dateString === 'string' ? dateString : String(dateString)
     if (str.includes('-') && str.length >= 10) {
@@ -86,7 +192,7 @@ export default function EstoquePage() {
       return `${day}/${month}/${year}`
     }
     return new Date(dateString).toLocaleDateString('pt-BR')
-  }
+  }, [])
 
   const convertDateToISO = (dateValue: string): string => {
     if (!dateValue) return ''
@@ -169,8 +275,6 @@ export default function EstoquePage() {
 
   // ✅ CARREGAR DADOS QUANDO AUTENTICADO
   useEffect(() => {
-    // Só precisa de isAuthenticated - não depender de profile.id_clinica
-    // O supabaseApi usa localStorage que já está populado após login
     if (!authLoading && isAuthenticated && !dataLoaded) {
       console.log('🔑 Estoque: Auth pronto, carregando dados...')
       loadAllData()
@@ -184,11 +288,53 @@ export default function EstoquePage() {
     }
   }, [authLoading, isAuthenticated, router])
 
-  // Calcular status inteligente baseado em velocidade de saída
-  const getStatusProduto = (produto: ProdutoComEstoque): { status: string; cor: string; diasEstoque: number } => {
+  // ✅ MEMOIZAR: Cálculo de status para todos os produtos (evita recálculo em cada render)
+  const produtosComStatus = useMemo(() => {
+    return produtos.map(produto => {
+      const mediaDiaria = mediaSaidaPorSku[produto.id_sku] || 0
+      
+      let status: { status: string; cor: string; diasEstoque: number }
+      
+      if (!mediaDiaria || mediaDiaria === 0) {
+        if (produto.estoque_total > 0) {
+          status = { status: 'Sem Saída', cor: 'gray', diasEstoque: 999 }
+        } else {
+          status = { status: 'Sem Estoque', cor: 'gray', diasEstoque: 0 }
+        }
+      } else {
+        const diasEstoque = Math.round(produto.estoque_total / mediaDiaria)
+        
+        if (diasEstoque < 4) {
+          status = { status: 'Crítico', cor: 'red', diasEstoque }
+        } else if (diasEstoque < 7) {
+          status = { status: 'Baixo', cor: 'yellow', diasEstoque }
+        } else if (diasEstoque <= 10) {
+          status = { status: 'OK', cor: 'green', diasEstoque }
+        } else {
+          status = { status: 'Alto', cor: 'blue', diasEstoque }
+        }
+      }
+      
+      return { produto, status }
+    })
+  }, [produtos, mediaSaidaPorSku])
+
+  // ✅ MEMOIZAR: Classes de cor para tags
+  const getStatusClasses = useCallback((status: { status: string; cor: string }) => {
+    const corMap: Record<string, string> = {
+      red: 'bg-red-900/30 text-red-300',
+      yellow: 'bg-yellow-900/30 text-yellow-300',
+      green: 'bg-green-900/30 text-green-300',
+      blue: 'bg-blue-900/30 text-blue-300',
+      gray: 'bg-gray-900/30 text-gray-400'
+    }
+    return corMap[status.cor] || corMap.gray
+  }, [])
+
+  // Calcular status inteligente baseado em velocidade de saída (para produto selecionado)
+  const getStatusProduto = useCallback((produto: ProdutoComEstoque): { status: string; cor: string; diasEstoque: number } => {
     const mediaDiaria = mediaSaidaPorSku[produto.id_sku] || 0
     
-    // Se não tem média de saída (produto sem movimentação)
     if (!mediaDiaria || mediaDiaria === 0) {
       if (produto.estoque_total > 0) {
         return { status: 'Sem Saída', cor: 'gray', diasEstoque: 999 }
@@ -198,11 +344,6 @@ export default function EstoquePage() {
 
     const diasEstoque = Math.round(produto.estoque_total / mediaDiaria)
 
-    // Lógica baseada no SQL:
-    // < 4 dias → CRÍTICO
-    // < 7 dias → BAIXO
-    // ≤ 10 dias → PADRÃO
-    // > 10 dias → ALTO
     if (diasEstoque < 4) {
       return { status: 'Crítico', cor: 'red', diasEstoque }
     }
@@ -213,21 +354,9 @@ export default function EstoquePage() {
       return { status: 'OK', cor: 'green', diasEstoque }
     }
     return { status: 'Alto', cor: 'blue', diasEstoque }
-  }
+  }, [mediaSaidaPorSku])
 
-  // Classes de cor para tags
-  const getStatusClasses = (status: { status: string; cor: string }) => {
-    const corMap: Record<string, string> = {
-      red: 'bg-red-900/30 text-red-300',
-      yellow: 'bg-yellow-900/30 text-yellow-300',
-      green: 'bg-green-900/30 text-green-300',
-      blue: 'bg-blue-900/30 text-blue-300',
-      gray: 'bg-gray-900/30 text-gray-400'
-    }
-    return corMap[status.cor] || corMap.gray
-  }
-
-  const handleProdutoSelect = (produto: ProdutoComEstoque) => {
+  const handleProdutoSelect = useCallback((produto: ProdutoComEstoque) => {
     setSelectedProduto(produto)
     setMovForm({
       tipo: 'SAIDA',
@@ -237,7 +366,7 @@ export default function EstoquePage() {
       valorTotal: '',
       observacao: ''
     })
-  }
+  }, [])
 
   const handleMovimentacao = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -342,6 +471,22 @@ export default function EstoquePage() {
       setLoading(false)
     }
   }
+
+  // ✅ VIRTUALIZAÇÃO: Lista de produtos
+  const produtosVirtualizer = useVirtualizer({
+    count: produtosComStatus.length,
+    getScrollElement: () => produtosContainerRef.current,
+    estimateSize: () => 120, // Altura estimada de cada card
+    overscan: 5, // Renderiza 5 itens extras acima/abaixo
+  })
+
+  // ✅ VIRTUALIZAÇÃO: Tabela de movimentações
+  const movimentacoesVirtualizer = useVirtualizer({
+    count: movimentacoes.length,
+    getScrollElement: () => movimentacoesContainerRef.current,
+    estimateSize: () => 52, // Altura estimada de cada linha
+    overscan: 10,
+  })
 
   // ============ LOADING STATES ============
   if (authLoading) {
@@ -565,7 +710,7 @@ export default function EstoquePage() {
             </Card>
           </div>
 
-          {/* DIREITA: Produtos em Estoque */}
+          {/* DIREITA: Produtos em Estoque - ✅ VIRTUALIZADO */}
           <div className="lg:min-h-[700px]">
             <Card title="Produtos em Estoque">
               {loading && !dataLoaded ? (
@@ -579,51 +724,53 @@ export default function EstoquePage() {
                   <p className="text-clinic-gray-400">Nenhum produto encontrado no estoque</p>
                 </div>
               ) : (
-                <div className="space-y-3 overflow-y-auto max-h-[740px]">
-                  {produtos.map((produto) => {
-                    const status = getStatusProduto(produto)
-                    
-                    return (
-                      <div
-                        key={produto.id_sku}
-                        onClick={() => handleProdutoSelect(produto)}
-                        className={`p-4 rounded-lg border transition-all duration-200 cursor-pointer ${
-                          selectedProduto?.id_sku === produto.id_sku
-                            ? 'border-clinic-cyan bg-clinic-cyan/10'
-                            : 'border-clinic-gray-600 bg-clinic-gray-800 hover:border-clinic-cyan/50 hover:bg-clinic-gray-700'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="text-clinic-white font-medium">{produto.nome_produto}</h3>
-                            <p className="text-clinic-gray-400 text-sm">{produto.fabricante}</p>
-                            <p className="text-clinic-gray-400 text-sm">{produto.classe_terapeutica}</p>
-                            <p className="text-clinic-gray-500 text-xs mt-1">
-                              {produto.lotes.length} lote{produto.lotes.length !== 1 ? 's' : ''} disponível{produto.lotes.length !== 1 ? 'eis' : ''}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-clinic-white text-xl font-bold">{produto.estoque_total}</div>
-                            <div className="text-clinic-gray-400 text-sm">unidades</div>
-                            {/* Tag inteligente com dias de estoque */}
-                            <div className={`inline-block px-2 py-1 rounded text-xs font-medium mt-1 ${getStatusClasses(status)}`}>
-                              {status.status}
-                              {status.diasEstoque < 999 && status.diasEstoque > 0 && (
-                                <span className="ml-1 opacity-75">({status.diasEstoque}d)</span>
-                              )}
-                            </div>
-                          </div>
+                <div 
+                  ref={produtosContainerRef}
+                  className="overflow-y-auto max-h-[740px]"
+                >
+                  {/* ✅ Container virtualizado */}
+                  <div
+                    style={{
+                      height: `${produtosVirtualizer.getTotalSize()}px`,
+                      width: '100%',
+                      position: 'relative',
+                    }}
+                  >
+                    {produtosVirtualizer.getVirtualItems().map((virtualItem) => {
+                      const { produto, status } = produtosComStatus[virtualItem.index]
+                      
+                      return (
+                        <div
+                          key={produto.id_sku}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: `${virtualItem.size}px`,
+                            transform: `translateY(${virtualItem.start}px)`,
+                            padding: '6px 0',
+                          }}
+                        >
+                          <ProdutoCard
+                            produto={produto}
+                            isSelected={selectedProduto?.id_sku === produto.id_sku}
+                            status={status}
+                            statusClasses={getStatusClasses(status)}
+                            formatDate={formatDate}
+                            onSelect={() => handleProdutoSelect(produto)}
+                          />
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </Card>
           </div>
         </div>
 
-        {/* Histórico de Movimentações */}
+        {/* Histórico de Movimentações - ✅ VIRTUALIZADO */}
         <Card title="Histórico de Movimentações">
           {movimentacoes.length === 0 ? (
             <div className="text-center py-12">
@@ -643,47 +790,80 @@ export default function EstoquePage() {
                     <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Observação</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {movimentacoes.map((mov) => (
-                    <tr key={mov.id_movimentacao} className="border-b border-clinic-gray-800 hover:bg-clinic-gray-800/50">
-                      <td className="py-3 px-4 text-clinic-white text-sm">
-                        <div className="flex items-center">
-                          <Calendar className="w-4 h-4 mr-2 text-clinic-gray-500" />
-                          {formatDate(mov.data_movimentacao)}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-clinic-white text-sm font-medium">
-                        {mov.lote?.skus?.nome_produto || 'N/A'}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                          mov.tipo_movimentacao === 'ENTRADA' 
-                            ? 'bg-green-900/30 text-green-300' 
-                            : 'bg-orange-900/30 text-orange-300'
-                        }`}>
-                          {mov.tipo_movimentacao}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`font-medium ${
-                          mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
-                        }`}>
-                          {mov.tipo_movimentacao === 'ENTRADA' ? '+' : '-'}{mov.quantidade}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-clinic-gray-300">
-                        <div className="flex items-center">
-                          <User className="w-4 h-4 mr-2 text-clinic-gray-500" />
-                          {mov.usuario}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-clinic-gray-400 text-sm max-w-xs truncate">
-                        {mov.observacao || '-'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
               </table>
+              {/* ✅ Container virtualizado para tbody */}
+              <div
+                ref={movimentacoesContainerRef}
+                className="max-h-[400px] overflow-y-auto"
+              >
+                <div
+                  style={{
+                    height: `${movimentacoesVirtualizer.getTotalSize()}px`,
+                    width: '100%',
+                    position: 'relative',
+                  }}
+                >
+                  <table className="w-full">
+                    <tbody>
+                      {movimentacoesVirtualizer.getVirtualItems().map((virtualItem) => {
+                        const mov = movimentacoes[virtualItem.index]
+                        
+                        return (
+                          <tr
+                            key={mov.id_movimentacao}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              height: `${virtualItem.size}px`,
+                              transform: `translateY(${virtualItem.start}px)`,
+                              display: 'table',
+                              tableLayout: 'fixed',
+                            }}
+                            className="border-b border-clinic-gray-800 hover:bg-clinic-gray-800/50"
+                          >
+                            <td className="py-3 px-4 text-clinic-white text-sm" style={{ width: '15%' }}>
+                              <div className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-2 text-clinic-gray-500" />
+                                {formatDate(mov.data_movimentacao)}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-clinic-white text-sm font-medium" style={{ width: '25%' }}>
+                              {mov.lote?.skus?.nome_produto || 'N/A'}
+                            </td>
+                            <td className="py-3 px-4" style={{ width: '12%' }}>
+                              <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                                mov.tipo_movimentacao === 'ENTRADA' 
+                                  ? 'bg-green-900/30 text-green-300' 
+                                  : 'bg-orange-900/30 text-orange-300'
+                              }`}>
+                                {mov.tipo_movimentacao}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4" style={{ width: '10%' }}>
+                              <span className={`font-medium ${
+                                mov.tipo_movimentacao === 'ENTRADA' ? 'text-green-400' : 'text-red-400'
+                              }`}>
+                                {mov.tipo_movimentacao === 'ENTRADA' ? '+' : '-'}{mov.quantidade}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-300" style={{ width: '15%' }}>
+                              <div className="flex items-center">
+                                <User className="w-4 h-4 mr-2 text-clinic-gray-500" />
+                                {mov.usuario}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-clinic-gray-400 text-sm truncate" style={{ width: '23%' }}>
+                              {mov.observacao || '-'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </Card>

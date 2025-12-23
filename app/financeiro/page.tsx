@@ -506,17 +506,10 @@ export default function FinanceiroPage() {
     // 4.1 Custo dos Insumos (CMV)
     const custoInsumos = vendas.reduce((sum, v) => sum + (v.custo_total || 0), 0)
 
-    // 4.2 Repasse Profissionais (comissionados)
-    let repasseProfissionais = 0
-    vendas.forEach(v => {
-      if (v.id_usuario_responsavel) {
-        const prof = profissionais.find(p => p.id === v.id_usuario_responsavel)
-        if (prof && prof.perfil === 'comissionado' && prof.percentual_profissional) {
-          const valorVenda = v.preco_final || v.preco_total || 0
-          repasseProfissionais += valorVenda * (prof.percentual_profissional / 100)
-        }
-      }
-    })
+    // 4.2 Repasse Profissionais (comissionados) - ✅ Pegar da tabela despesas (categoria='Comissões')
+const repasseProfissionais = despesas
+  .filter(d => d.categoria === 'Comissões' && d.tipo === 'Custo Variável')
+  .reduce((sum, d) => sum + d.valor_mensal, 0)
 
     const totalCustosVariaveis = custoInsumos + repasseProfissionais
 

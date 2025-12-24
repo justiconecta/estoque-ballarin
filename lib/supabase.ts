@@ -1151,6 +1151,46 @@ export const supabaseApi = {
     }
   },
 
+  // ✅ UPSERT CATEGORIA ALERTA NO RESUMO MENSAL
+  async upsertCategoriaAlerta(ano: number, mes: number, categoriaAlerta: string) {
+    try {
+      const clinicId = getCurrentClinicId()
+      if (!clinicId) return null
+
+      const mesAno = `${ano}-${String(mes).padStart(2, '0')}`
+      
+      // Verificar se já existe registro para esta clínica/mês
+      const { data: existente } = await supabase
+        .from('resumo_indicadores_mensal')
+        .select('id_resumo_mensal')
+        .eq('id_clinica', clinicId)
+        .eq('mes_ano', mesAno)
+        .single()
+
+      if (existente) {
+        // UPDATE
+        const { error } = await supabase
+          .from('resumo_indicadores_mensal')
+          .update({ categoria_alerta: categoriaAlerta, data_geracao: new Date().toISOString() })
+          .eq('id_resumo_mensal', existente.id_resumo_mensal)
+        
+        if (!error) console.log(`✅ Categoria alerta ATUALIZADA: ${mesAno} → ${categoriaAlerta}`)
+        return !error
+      } else {
+        // INSERT
+        const { error } = await supabase
+          .from('resumo_indicadores_mensal')
+          .insert({ mes_ano: mesAno, id_clinica: clinicId, categoria_alerta: categoriaAlerta })
+        
+        if (!error) console.log(`✅ Categoria alerta CRIADA: ${mesAno} → ${categoriaAlerta}`)
+        return !error
+      }
+    } catch (error) {
+      console.error('💥 ERRO upsertCategoriaAlerta:', error)
+      return false
+    }
+  },
+
   // BUSCAR PACIENTES PARA DASHBOARD IA
   async searchPacientes(searchTerm: string) {
     try {

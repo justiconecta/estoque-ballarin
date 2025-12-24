@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangle } from 'lucide-react'
 import { HeaderUniversal } from '@/components/ui'
@@ -10,6 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, ComposedChart, Area, Line 
 } from 'recharts'
+import { supabaseApi } from '@/lib/supabase'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
 // ============ CONSTANTES ============
@@ -270,7 +271,7 @@ export default function DashboardVendasPage() {
   }, [vendasPorCategoria])
 
   // ============ CATEGORIA DEFASADA ============
-  const categoriaDefasada = useMemo(() => {
+  const categoriaDefasada = useMemo(() => { 
     const { toxina, preenchedor, biotech } = vendasPorCategoria
     const toxinaAjustada = Math.round(toxina / 2)
     if (toxinaAjustada === 0 && preenchedor === 0 && biotech === 0) {
@@ -327,6 +328,13 @@ export default function DashboardVendasPage() {
     }
     return { categoria: CATEGORIES[first].nome, color: CATEGORIES[first].color, indices: [first] }
   }, [vendasPorCategoria])
+
+  // ✅ SALVAR CATEGORIA DEFASADA NO BANCO (mês atual)
+  useEffect(() => {
+    if (categoriaDefasada.categoria !== 'Sem definição') {
+      supabaseApi.upsertCategoriaAlerta(anoSelecionado, mesSelecionado, categoriaDefasada.categoria)
+    }
+  }, [categoriaDefasada.categoria, anoSelecionado, mesSelecionado])
 
   // ✅ MEMOIZADO: Títulos
   const tituloPeriodo = useMemo(() => `${MESES[mesSelecionado - 1]} ${anoSelecionado}`, [mesSelecionado, anoSelecionado])

@@ -48,9 +48,20 @@ function calcularDiasUteis(ano: number, mes: number): number {
 
 function calcularDiaUtilAtual(ano: number, mes: number): number {
   const hoje = new Date()
-  if (hoje.getFullYear() !== ano || hoje.getMonth() + 1 !== mes) {
-    return hoje > new Date(ano, mes, 0) ? calcularDiasUteis(ano, mes) : 0
+  const primeiroDiaMes = new Date(ano, mes - 1, 1)
+  const ultimoDiaMes = new Date(ano, mes, 0)
+  
+  // Mês futuro (não começou ainda)
+  if (hoje < primeiroDiaMes) {
+    return 0
   }
+  
+  // Mês passado (já terminou) - retorna total de dias úteis
+  if (hoje > ultimoDiaMes) {
+    return calcularDiasUteis(ano, mes)
+  }
+  
+  // Mês atual - conta dias úteis até hoje
   let diaUtilAtual = 0
   for (let dia = 1; dia <= hoje.getDate(); dia++) {
     if (isBusinessDay(ano, mes, dia)) diaUtilAtual++

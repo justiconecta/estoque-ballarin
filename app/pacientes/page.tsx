@@ -478,20 +478,21 @@ export default function PacientesPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-clinic-gray-700">
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Nome</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">CPF</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Celular</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Email</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Origem</th>
-                    <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium">Cadastro</th>
-                    <th className="text-center py-3 px-4 text-clinic-gray-400 font-medium">Ações</th>
-                  </tr>
-                </thead>
-              </table>
+              <table className="w-full" style={{ tableLayout: 'fixed' }}>
+  <thead>
+    <tr className="border-b border-clinic-gray-700">
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '18%' }}>Nome</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '12%' }}>CPF</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '12%' }}>Celular</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '15%' }}>Email</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '8%' }}>Status</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '10%' }}>Origem</th>
+      <th className="text-left py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '10%' }}>Cadastro</th>
+      <th className="text-center py-3 px-4 text-clinic-gray-400 font-medium" style={{ width: '15%' }}>Ações</th>
+    </tr>
+  </thead>
+</table>
+
               
               {/* ✅ Container virtualizado para tbody */}
               <div

@@ -779,18 +779,18 @@ export default function EstoquePage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-clinic-gray-700">
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Data</th>
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Produto</th>
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Tipo</th>
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Qtd</th>
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Usuário</th>
-                    <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold">Observação</th>
-                  </tr>
-                </thead>
-              </table>
+              <table className="w-full" style={{ tableLayout: 'fixed' }}>
+  <thead>
+    <tr className="border-b border-clinic-gray-700">
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '15%' }}>Data</th>
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '25%' }}>Produto</th>
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '12%' }}>Tipo</th>
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '10%' }}>Qtd</th>
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '15%' }}>Usuário</th>
+      <th className="py-3 px-4 text-left text-clinic-cyan text-sm font-semibold" style={{ width: '23%' }}>Observação</th>
+    </tr>
+  </thead>
+</table>
               {/* ✅ Container virtualizado para tbody */}
               <div
                 ref={movimentacoesContainerRef}

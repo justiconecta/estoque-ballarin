@@ -46,29 +46,6 @@ function calcularDiasUteis(ano: number, mes: number): number {
   return diasUteis
 }
 
-function calcularDiaUtilAtual(ano: number, mes: number): number {
-  const hoje = new Date()
-  const primeiroDiaMes = new Date(ano, mes - 1, 1)
-  const ultimoDiaMes = new Date(ano, mes, 0)
-  
-  // Mês futuro (não começou ainda)
-  if (hoje < primeiroDiaMes) {
-    return 0
-  }
-  
-  // Mês passado (já terminou) - retorna total de dias úteis
-  if (hoje > ultimoDiaMes) {
-    return calcularDiasUteis(ano, mes)
-  }
-  
-  // Mês atual - conta dias úteis até hoje
-  let diaUtilAtual = 0
-  for (let dia = 1; dia <= hoje.getDate(); dia++) {
-    if (isBusinessDay(ano, mes, dia)) diaUtilAtual++
-  }
-  return diaUtilAtual
-}
-
 // ============ KPI CARD - MEMOIZADO ============
 const KpiCard = React.memo(function KpiCard({ 
   label, value, subtitle, variant = 'default', progress, borderColor
@@ -218,7 +195,45 @@ export default function DashboardVendasPage() {
   // ============ CÁLCULOS DO GRÁFICO - MEMOIZADOS ============
   const diasNoMes = useMemo(() => new Date(anoSelecionado, mesSelecionado, 0).getDate(), [anoSelecionado, mesSelecionado])
   const diasUteisTotais = useMemo(() => calcularDiasUteis(anoSelecionado, mesSelecionado), [anoSelecionado, mesSelecionado])
-  const diaUtilAtual = useMemo(() => calcularDiaUtilAtual(anoSelecionado, mesSelecionado), [anoSelecionado, mesSelecionado])
+
+  // ✅ CORRIGIDO: Detecta se é mês atual e calcula o dia limite para exibição
+  const { isMesAtual, diaLimite } = useMemo(() => {
+    const hoje = new Date()
+    const mesAtual = hoje.getFullYear() === anoSelecionado && hoje.getMonth() + 1 === mesSelecionado
+    
+    if (mesAtual) {
+      // Mês atual: usa o dia de hoje (vendas de hoje aparecem)
+      return { isMesAtual: true, diaLimite: hoje.getDate() }
+    }
+    
+    // Mês passado ou futuro: usa o último dia com vendas registradas
+    const diasComVenda = Object.keys(vendasPorDia)
+      .map(d => parseInt(d))
+      .filter(dia => vendasPorDia[dia] > 0)
+    
+    if (diasComVenda.length > 0) {
+      return { isMesAtual: false, diaLimite: Math.max(...diasComVenda) }
+    }
+    
+    // Sem vendas: usa último dia do mês para mês passado, 0 para futuro
+    const ultimoDiaMes = new Date(anoSelecionado, mesSelecionado, 0)
+    if (hoje > ultimoDiaMes) {
+      return { isMesAtual: false, diaLimite: diasNoMes }
+    }
+    
+    return { isMesAtual: false, diaLimite: 0 }
+  }, [anoSelecionado, mesSelecionado, vendasPorDia, diasNoMes])
+
+  // ✅ CORRIGIDO: Calcula dias úteis até o dia limite
+  const diaUtilAtual = useMemo(() => {
+    if (diaLimite === 0) return 0
+    
+    let diasUteis = 0
+    for (let dia = 1; dia <= diaLimite; dia++) {
+      if (isBusinessDay(anoSelecionado, mesSelecionado, dia)) diasUteis++
+    }
+    return diasUteis
+  }, [anoSelecionado, mesSelecionado, diaLimite])
 
   const metaMensal = dreCalculado?.faturamentoNecessario || 0
   
@@ -238,8 +253,6 @@ export default function DashboardVendasPage() {
     let acumuladoReal = 0
     let acumuladoMeta = 0
     const metaDiaria = diasUteisTotais > 0 ? metaMensal / diasUteisTotais : 0
-    const hoje = new Date()
-    const diaAtual = hoje.getFullYear() === anoSelecionado && hoje.getMonth() + 1 === mesSelecionado ? hoje.getDate() : diasNoMes
 
     for (let dia = 1; dia <= diasNoMes; dia++) {
       const isBizDay = isBusinessDay(anoSelecionado, mesSelecionado, dia)
@@ -251,19 +264,19 @@ export default function DashboardVendasPage() {
         ? Math.max(0, metaMensal - acumuladoReal) / diasUteisRestantes : 0
 
       if (isBizDay) acumuladoMeta += metaDiaria
-      if (dia <= diaAtual) acumuladoReal += vendaDia
+      if (dia <= diaLimite) acumuladoReal += vendaDia
 
       data.push({
         dia,
-        vendaRealizada: dia <= diaAtual ? vendaDia : null,
+        vendaRealizada: dia <= diaLimite ? vendaDia : null,
         metaDinamica: isBizDay ? metaDinamica : 0,
-        acumuladoReal: dia <= diaAtual ? acumuladoReal : null,
+        acumuladoReal: dia <= diaLimite ? acumuladoReal : null,
         acumuladoMeta: Math.min(acumuladoMeta, metaMensal),
         isBizDay
       })
     }
     return data
-  }, [vendasPorDia, diasNoMes, diasUteisTotais, metaMensal, anoSelecionado, mesSelecionado])
+  }, [vendasPorDia, diasNoMes, diasUteisTotais, metaMensal, anoSelecionado, mesSelecionado, diaLimite])
 
   // ============ MIX RATIO ============
   const mixRatio = useMemo(() => {

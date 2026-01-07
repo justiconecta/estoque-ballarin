@@ -290,7 +290,10 @@ export default function EstoquePage() {
 
   // ✅ MEMOIZAR: Cálculo de status para todos os produtos (evita recálculo em cada render)
   const produtosComStatus = useMemo(() => {
-    return produtos.map(produto => {
+  return produtos
+    .filter(produto => produto.estoque_total > 0)
+    .sort((a, b) => b.estoque_total - a.estoque_total)
+    .map(produto => {
       const mediaDiaria = mediaSaidaPorSku[produto.id_sku] || 0
       
       let status: { status: string; cor: string; diasEstoque: number }

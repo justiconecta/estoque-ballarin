@@ -1447,7 +1447,9 @@ export default function FinanceiroPage() {
     const totalServicosVendidos = vendas.reduce((sum, v) => sum + (v.servicos?.length || 0), 0)
     const horasOcupadas = totalServicosVendidos * parametros.duracao_media_servico_horas
 
-    const custoHora = horasProdutivasPotenciais > 0 ? despesasFixasPeriodo / horasProdutivasPotenciais : 0
+    const custoHora = horasProdutivasPotenciais > 0 
+  ? Math.round((despesasFixasPeriodo / horasProdutivasPotenciais) * 100) / 100 
+  : 0
     const taxaOcupacao = horasDasSalas > 0 ? (horasDaEquipe / horasDasSalas) * 100 : 0
 
     return {

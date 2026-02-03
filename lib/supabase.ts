@@ -1773,7 +1773,8 @@ export const supabaseApi = {
     }
   },
 
-  // ✅ FUNÇÃO: Calcular média de saída por SKU (últimos 30 dias)
+  // ✅ FIX: Calcular média de saída por SKU (últimos 30 dias)
+  // CORRIGIDO: Agora divide por DIAS COM MOVIMENTO, não 30 fixo
   async getMediaSaidaPorSku(): Promise<Record<number, number>> {
     try {
       const clinicId = getCurrentClinicId()
@@ -1782,14 +1783,15 @@ export const supabaseApi = {
       const dataLimite = new Date()
       dataLimite.setDate(dataLimite.getDate() - 30)
 
+      // ✅ FIX: Agora busca também data_movimentacao para contar dias únicos
       const { data: movimentacoes, error } = await supabase
         .from('movimentacoes_estoque')
-        .select('id_lote, quantidade, tipo_movimentacao')
+        .select('id_lote, quantidade, tipo_movimentacao, data_movimentacao')
         .eq('id_clinica', clinicId)
         .eq('tipo_movimentacao', 'SAIDA')
         .gte('data_movimentacao', dataLimite.toISOString())
 
-      if (error || !movimentacoes) return {}
+      if (error || !movimentacoes || movimentacoes.length === 0) return {}
 
       // Buscar lotes para mapear para SKU
       const loteIds = Array.from(new Set(movimentacoes.map(m => m.id_lote).filter(Boolean)))
@@ -1804,19 +1806,37 @@ export const supabaseApi = {
 
       const loteToSku = new Map(lotes.map(l => [l.id_lote, l.id_sku]))
 
-      // Agrupar saídas por SKU
+      // ✅ FIX: Agrupar saídas E dias únicos por SKU
       const saidasPorSku: Record<number, number> = {}
+      const diasPorSku: Record<number, Set<string>> = {}
+
       movimentacoes.forEach(m => {
         const idSku = loteToSku.get(m.id_lote)
         if (idSku) {
+          // Somar quantidade
           saidasPorSku[idSku] = (saidasPorSku[idSku] || 0) + m.quantidade
+          
+          // Contar dia único (extrair YYYY-MM-DD da data)
+          const dataStr = m.data_movimentacao 
+            ? new Date(m.data_movimentacao).toISOString().substring(0, 10)
+            : ''
+          if (dataStr) {
+            if (!diasPorSku[idSku]) {
+              diasPorSku[idSku] = new Set()
+            }
+            diasPorSku[idSku].add(dataStr)
+          }
         }
       })
 
-      // Calcular média diária (total / 30 dias)
+      // ✅ FIX: Calcular média diária = total / dias com movimento
       const mediaPorSku: Record<number, number> = {}
       Object.entries(saidasPorSku).forEach(([idSku, total]) => {
-        mediaPorSku[Number(idSku)] = total / 30
+        const skuId = Number(idSku)
+        const diasComMovimento = diasPorSku[skuId]?.size || 1 // Evita divisão por zero
+        mediaPorSku[skuId] = total / diasComMovimento
+        
+        console.log(`📊 SKU ${skuId}: ${total} saídas em ${diasComMovimento} dias = ${mediaPorSku[skuId].toFixed(2)}/dia`)
       })
 
       return mediaPorSku
@@ -1838,14 +1858,14 @@ export const supabaseApi = {
 
     const diasEstoque = Math.round(estoqueAtual / mediaSaidaDiaria)
 
-    // Lógica baseada em dias de estoque
-    if (diasEstoque < 4) {
+    // Lógica baseada em dias de estoque (conforme documento)
+    if (diasEstoque <= 3) {
       return { status: 'Crítico', cor: 'red', diasEstoque }
     }
-    if (diasEstoque < 7) {
+    if (diasEstoque <= 5) {
       return { status: 'Baixo', cor: 'yellow', diasEstoque }
     }
-    if (diasEstoque <= 14) {
+    if (diasEstoque <= 15) {
       return { status: 'OK', cor: 'green', diasEstoque }
     }
     return { status: 'Alto', cor: 'blue', diasEstoque }

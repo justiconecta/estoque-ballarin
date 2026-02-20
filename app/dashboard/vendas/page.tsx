@@ -427,6 +427,9 @@ export default function DashboardVendasPage() {
               <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
                 Comercial
               </button>
+              <button onClick={() => router.push('/dashboard/rankings')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
+                Rankings
+              </button>
             </nav>
           </div>
         </div>

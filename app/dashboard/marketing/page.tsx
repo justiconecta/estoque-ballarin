@@ -316,6 +316,7 @@ const NavTabs = React.memo(function NavTabs({
 }) {
   const handleTerapeutico = useCallback(() => onNavigate('/dashboard/terapeutico'), [onNavigate])
   const handleVendas = useCallback(() => onNavigate('/dashboard/vendas'), [onNavigate])
+  const handleRankings = useCallback(() => onNavigate('/dashboard/rankings'), [onNavigate])
 
   return (
     <div className="mb-8">
@@ -335,6 +336,12 @@ const NavTabs = React.memo(function NavTabs({
             className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
           >
             Comercial
+          </button>
+          <button
+            onClick={handleRankings}
+            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
+          >
+            Rankings
           </button>
         </nav>
       </div>

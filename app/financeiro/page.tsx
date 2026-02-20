@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
-import { DollarSign, Plus, Save, X } from 'lucide-react'
+import { DollarSign, Plus, Save, X, Search, Calendar } from 'lucide-react'
 import { HeaderUniversal, Button } from '@/components/ui'
 import { supabaseApi } from '@/lib/supabase'
 import { useData, useVendas } from '@/contexts/DataContext'
@@ -593,31 +593,115 @@ const MetaRow = React.memo(function MetaRow({ meta }: { meta: any }) {
 // ============ ABAS MEMOIZADAS ============
 
 // ✅ AbaVendas memoizada
-const AbaVendas = React.memo(function AbaVendas({ 
-  vendas, 
-  tituloPeriodo, 
-  onNovaVenda 
-}: { 
+const AbaVendas = React.memo(function AbaVendas({
+  vendas,
+  onNovaVenda
+}: {
   vendas: any[]
-  tituloPeriodo: string
   onNovaVenda: () => void
 }) {
+  const [buscaPaciente, setBuscaPaciente] = useState('')
+  const [filtroData, setFiltroData] = useState('')
+
+  // Filtrar vendas por paciente e data
+  const vendasFiltradas = useMemo(() => {
+    let resultado = vendas
+
+    if (buscaPaciente.trim()) {
+      const termo = buscaPaciente.toLowerCase().trim()
+      resultado = resultado.filter((v: any) =>
+        (v.pacientes?.nome_completo || '').toLowerCase().includes(termo)
+      )
+    }
+
+    if (filtroData) {
+      resultado = resultado.filter((v: any) => v.data_venda === filtroData)
+    }
+
+    return resultado
+  }, [vendas, buscaPaciente, filtroData])
+
   const metricas = useMemo(() => ({
-    total: vendas.length,
-    receitaBruta: vendas.reduce((s, v) => s + (v.preco_total || 0), 0),
-    descontos: vendas.reduce((s, v) => s + (v.desconto_valor || 0), 0),
-    receitaLiquida: vendas.reduce((s, v) => s + (v.preco_final || 0), 0),
-    ticketMedio: vendas.length > 0 ? vendas.reduce((s, v) => s + (v.preco_final || 0), 0) / vendas.length : 0
-  }), [vendas])
+    total: vendasFiltradas.length,
+    receitaBruta: vendasFiltradas.reduce((s: number, v: any) => s + (v.preco_total || 0), 0),
+    descontos: vendasFiltradas.reduce((s: number, v: any) => s + (v.desconto_valor || 0), 0),
+    receitaLiquida: vendasFiltradas.reduce((s: number, v: any) => s + (v.preco_final || 0), 0),
+    ticketMedio: vendasFiltradas.length > 0 ? vendasFiltradas.reduce((s: number, v: any) => s + (v.preco_final || 0), 0) / vendasFiltradas.length : 0
+  }), [vendasFiltradas])
 
   return (
     <div className="bg-white dark:bg-slate-800/50 backdrop-blur-sm rounded-xl border border-gray-200 dark:border-slate-700 p-6 shadow-sm">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-cyan-400">Vendas - {tituloPeriodo}</h2>
+      {/* Header com busca e filtros */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row gap-3 flex-1">
+          {/* Busca por paciente */}
+          <div className="relative flex-1 min-w-[240px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar por paciente..."
+              value={buscaPaciente}
+              onChange={(e) => setBuscaPaciente(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all"
+            />
+            {buscaPaciente && (
+              <button
+                onClick={() => setBuscaPaciente('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Filtro por data */}
+          <div className="relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <input
+              type="date"
+              value={filtroData}
+              onChange={(e) => setFiltroData(e.target.value)}
+              className="pl-10 pr-4 py-2.5 bg-slate-900/50 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all [color-scheme:dark]"
+            />
+            {filtroData && (
+              <button
+                onClick={() => setFiltroData('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        </div>
+
         <Button onClick={onNovaVenda}>
           <Plus className="w-4 h-4 mr-2" /> Nova Venda
         </Button>
       </div>
+
+      {/* Indicador de filtro ativo */}
+      {(buscaPaciente || filtroData) && (
+        <div className="flex items-center gap-2 mb-4 text-xs text-slate-400">
+          <span>Filtros ativos:</span>
+          {buscaPaciente && (
+            <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+              Paciente: &quot;{buscaPaciente}&quot;
+            </span>
+          )}
+          {filtroData && (
+            <span className="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded-full">
+              Data: {new Date(filtroData + 'T12:00:00').toLocaleDateString('pt-BR')}
+            </span>
+          )}
+          <button
+            onClick={() => { setBuscaPaciente(''); setFiltroData('') }}
+            className="text-slate-500 hover:text-white underline ml-1"
+          >
+            Limpar filtros
+          </button>
+        </div>
+      )}
+
       <div className="overflow-visible">
         <table className="w-full text-sm">
           <thead>
@@ -635,20 +719,23 @@ const AbaVendas = React.memo(function AbaVendas({
             </tr>
           </thead>
           <tbody>
-            {vendas.length === 0 ? (
+            {vendasFiltradas.length === 0 ? (
               <tr>
                 <td colSpan={10} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
-                  Nenhuma venda encontrada no período selecionado
+                  {buscaPaciente || filtroData
+                    ? 'Nenhuma venda encontrada com os filtros aplicados'
+                    : 'Nenhuma venda encontrada no período selecionado'
+                  }
                 </td>
               </tr>
             ) : (
-              vendas.map((venda: any) => <VendaRow key={venda.id} venda={venda} />)
+              vendasFiltradas.map((venda: any) => <VendaRow key={venda.id} venda={venda} />)
             )}
           </tbody>
         </table>
       </div>
 
-      {vendas.length > 0 && (
+      {vendasFiltradas.length > 0 && (
         <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-4">
           <FinanceCard title="Total de Vendas" value={metricas.total} variant="cyan" />
           <FinanceCard title="Receita Bruta" value={formatCurrency(metricas.receitaBruta)} variant="green" />
@@ -1618,7 +1705,7 @@ export default function FinanceiroPage() {
   // ============ LOADING STATE ============
   if (loading && !servicos.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900 flex items-center justify-center">
+      <div className="min-h-screen bg-clinic-black flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-cyan-500 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-600 dark:text-slate-400">Carregando dashboard financeiro...</p>
@@ -1628,7 +1715,7 @@ export default function FinanceiroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-slate-800 dark:to-gray-900">
+    <div className="min-h-screen bg-clinic-black text-white">
       <div className="container mx-auto px-4 py-6">
         <HeaderUniversal
           titulo="Dashboard Financeiro"
@@ -1664,7 +1751,6 @@ export default function FinanceiroPage() {
           {abaAtiva === 'vendas' && (
             <AbaVendas
               vendas={vendas}
-              tituloPeriodo={tituloPeriodo}
               onNovaVenda={handleOpenNovaVenda}
             />
           )}

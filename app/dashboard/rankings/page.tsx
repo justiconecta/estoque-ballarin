@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Trophy, Users, Package, DollarSign, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
-import { HeaderUniversal } from '@/components/ui'
+import { HeaderUniversal, DashboardTabs } from '@/components/ui'
+import { getClasseBadge } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { useData, useVendas } from '@/contexts/DataContext'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
@@ -68,15 +69,6 @@ const getMedalClass = (index: number) => {
   return 'bg-slate-700 text-slate-400'
 }
 
-const getClasseBadge = (classe: string) => {
-  switch (classe) {
-    case 'Toxina Botulinica': return 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-    case 'Preenchedor': return 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-    case 'Bioestimulador': return 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
-    case 'Bioregenerador': return 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-    default: return 'bg-slate-600 text-slate-200'
-  }
-}
 
 // ============ COMPONENTE PRINCIPAL ============
 export default function DashboardRankingsPage() {
@@ -239,25 +231,7 @@ export default function DashboardRankingsPage() {
           showNovaClinicaModal={handleShowNovaClinica}
         />
 
-        {/* Navegação por Tabs do Dashboard */}
-        <div className="mb-8">
-          <div className="border-b border-clinic-gray-700">
-            <nav className="flex space-x-8">
-              <button onClick={() => router.push('/dashboard/marketing')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                Marketing e Terapêutico
-              </button>
-              <button onClick={() => router.push('/dashboard/terapeutico')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                IA - Paciente
-              </button>
-              <button onClick={() => router.push('/dashboard/vendas')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                Comercial
-              </button>
-              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
-                Rankings
-              </button>
-            </nav>
-          </div>
-        </div>
+        <DashboardTabs activeTab="rankings" />
 
         {/* Filtros de Período */}
         <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 rounded-2xl p-6 border border-slate-700/30 mb-6">

@@ -510,6 +510,44 @@ export interface Database {
           id_clinica?: number
         }
       }
+
+      // Configuração de Retornos
+      config_retornos: {
+        Row: ConfigRetorno
+        Insert: Omit<ConfigRetorno, 'id' | 'criado_em' | 'atualizado_em'> & {
+          id?: number
+          ativo?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: Partial<Omit<ConfigRetorno, 'id'>>
+      }
+
+      // Controle de Retornos
+      controle_retornos: {
+        Row: ControleRetorno
+        Insert: Omit<ControleRetorno, 'id' | 'criado_em' | 'atualizado_em' | 'id_venda_retorno' | 'data_retorno_efetivo' | 'observacoes'> & {
+          id?: number
+          criado_em?: string
+          atualizado_em?: string
+          id_venda_retorno?: number | null
+          data_retorno_efetivo?: string | null
+          observacoes?: string | null
+        }
+        Update: Partial<Omit<ControleRetorno, 'id' | 'id_clinica'>>
+      }
+
+      // Procedimentos Pendentes / Upsell
+      procedimentos_pendentes: {
+        Row: ProcedimentoPendente
+        Insert: Omit<ProcedimentoPendente, 'id' | 'criado_em' | 'atualizado_em'> & {
+          id?: number
+          sugerido_em?: string
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: Partial<Omit<ProcedimentoPendente, 'id' | 'id_clinica'>>
+      }
     }
   }
 }
@@ -696,7 +734,94 @@ export type TipoDespesa = 'Despesa Fixa' | 'Custo Fixo' | 'Despesa Variável' | 
 
 export const TIPOS_DESPESA: TipoDespesa[] = [
   'Despesa Fixa',
-  'Custo Fixo', 
+  'Custo Fixo',
   'Despesa Variável',
   'Custo Variável'
 ]
+
+// ============ RETORNOS — INTERFACES ============
+
+export type StatusRetorno = 'pendente' | 'contactado' | 'confirmado' | 'atrasado' | 'cancelado'
+export type StatusProcedimentoPendente = 'pendente' | 'contactado' | 'agendado' | 'realizado' | 'cancelado'
+
+export interface ConfigRetorno {
+  id: number
+  id_clinica: number
+  classe_terapeutica: string
+  meses_retorno: number
+  prioridade: number
+  dias_antecedencia_contato: number
+  ativo: boolean
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface ControleRetorno {
+  id: number
+  id_clinica: number
+  id_paciente: number
+  id_venda_origem: number
+  id_sku: number
+  classe_terapeutica: string
+  data_procedimento: string
+  data_retorno_prevista: string
+  data_contato_sugerida: string
+  prioridade: number
+  status: StatusRetorno
+  id_venda_retorno: number | null
+  data_retorno_efetivo: string | null
+  observacoes: string | null
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface ProcedimentoPendente {
+  id: number
+  id_clinica: number
+  id_paciente: number
+  procedimento_sugerido: string
+  motivo: string | null
+  id_sku_sugerido: number | null
+  sugerido_em: string
+  sugerido_por: number | null
+  status: StatusProcedimentoPendente
+  data_contato: string | null
+  observacoes: string | null
+  criado_em: string
+  atualizado_em: string
+}
+
+export interface RetornoDashboard {
+  id_paciente: number
+  nome: string
+  celular: string | null
+  email: string | null
+  data_retorno_mais_proxima: string | null
+  data_contato_mais_proxima: string | null
+  produto_retorno_proximo: string | null
+  classe_retorno_proximo: string | null
+  prioridade_retorno_proximo: number | null
+  todos_retornos: Array<{
+    id: number
+    produto: string
+    classe: string
+    data_retorno: string
+    data_contato: string
+    status: string
+    data_procedimento: string
+  }> | null
+  qtd_retornos_pendentes: number
+  qtd_atrasados: number
+  qtd_pendentes: number
+  qtd_confirmados: number
+  qtd_upsell: number
+  upsell_lista: Array<{
+    procedimento: string
+    motivo: string
+    sugerido_em: string
+  }> | null
+  ultima_compra: string | null
+  valor_total: number | null
+  status_consolidado: string
+  dias_para_retorno: number | null
+}

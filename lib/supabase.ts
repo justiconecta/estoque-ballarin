@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { Database, TipoDespesa } from '@/types/database'
+import { Database, TipoDespesa, RetornoDashboard, ConfigRetorno, ProcedimentoPendente } from '@/types/database'
 
 // Configuração Supabase
 const SUPABASE_URL = 'https://jlprybnxjqzaqzsxxnuh.supabase.co'
@@ -2034,6 +2034,156 @@ export const supabaseApi = {
     } catch (error) {
       console.error('💥 ERRO criarDespesaComissao:', error)
       return null
+    }
+  },
+
+  // ============ RETORNOS ============
+
+  async getRetornos(idClinica?: number): Promise<RetornoDashboard[]> {
+    const clinicId = idClinica || getCurrentClinicId()
+    if (!clinicId) return []
+
+    try {
+      const { data, error } = await supabase.rpc('fn_dashboard_retornos', {
+        p_id_clinica: clinicId
+      })
+
+      if (error) {
+        console.error('❌ Erro ao buscar retornos:', error)
+        return []
+      }
+
+      return (data as RetornoDashboard[]) || []
+    } catch (error) {
+      console.error('💥 ERRO getRetornos:', error)
+      return []
+    }
+  },
+
+  async getConfigRetornos(): Promise<ConfigRetorno[]> {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return []
+
+    try {
+      const { data, error } = await supabase
+        .from('config_retornos')
+        .select('*')
+        .eq('id_clinica', clinicId)
+        .eq('ativo', true)
+        .order('prioridade', { ascending: true })
+
+      if (error) throw error
+      return (data as ConfigRetorno[]) || []
+    } catch (error) {
+      console.error('❌ Erro ao buscar config retornos:', error)
+      return []
+    }
+  },
+
+  async getProcedimentosPaciente(idPaciente: number): Promise<any[]> {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) return []
+
+    try {
+      const { data, error } = await supabase
+        .from('vw_procedimentos_paciente')
+        .select('*')
+        .eq('id_paciente', idPaciente)
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('❌ Erro ao buscar procedimentos do paciente:', error)
+      return []
+    }
+  },
+
+  async confirmarRetornoManual(id: number, observacao: string, dataEfetiva: string) {
+    try {
+      const { error } = await supabase
+        .from('controle_retornos')
+        .update({
+          status: 'confirmado',
+          data_retorno_efetivo: dataEfetiva,
+          observacoes: observacao
+        })
+        .eq('id', id)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('❌ Erro ao confirmar retorno:', error)
+      throw error
+    }
+  },
+
+  async atualizarStatusRetorno(id: number, status: string, observacao?: string) {
+    try {
+      const updates: Record<string, any> = { status }
+
+      if (observacao) {
+        const { data: current } = await supabase
+          .from('controle_retornos')
+          .select('observacoes')
+          .eq('id', id)
+          .single()
+
+        const existing = current?.observacoes || ''
+        updates.observacoes = existing
+          ? `${existing}\n[${new Date().toISOString().split('T')[0]}] ${observacao}`
+          : `[${new Date().toISOString().split('T')[0]}] ${observacao}`
+      }
+
+      const { error } = await supabase
+        .from('controle_retornos')
+        .update(updates)
+        .eq('id', id)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status retorno:', error)
+      throw error
+    }
+  },
+
+  async criarProcedimentoPendente(data: {
+    id_paciente: number
+    procedimento_sugerido: string
+    motivo?: string
+    id_sku_sugerido?: number
+  }) {
+    const clinicId = getCurrentClinicId()
+    if (!clinicId) throw new Error('Clínica não definida')
+
+    try {
+      const { error } = await supabase
+        .from('procedimentos_pendentes')
+        .insert({
+          id_clinica: clinicId,
+          id_paciente: data.id_paciente,
+          procedimento_sugerido: data.procedimento_sugerido,
+          motivo: data.motivo || null,
+          id_sku_sugerido: data.id_sku_sugerido || null,
+          status: 'pendente'
+        })
+
+      if (error) throw error
+    } catch (error) {
+      console.error('❌ Erro ao criar procedimento pendente:', error)
+      throw error
+    }
+  },
+
+  async atualizarProcedimentoPendente(id: number, updates: Record<string, any>) {
+    try {
+      const { error } = await supabase
+        .from('procedimentos_pendentes')
+        .update(updates)
+        .eq('id', id)
+
+      if (error) throw error
+    } catch (error) {
+      console.error('❌ Erro ao atualizar procedimento pendente:', error)
+      throw error
     }
   }
 }

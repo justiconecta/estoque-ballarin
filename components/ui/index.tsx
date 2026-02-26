@@ -233,3 +233,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
 
 // Export do HeaderUniversal
 export { HeaderUniversal } from './HeaderUniversal'
+
+// Export do DashboardTabs
+export { default as DashboardTabs } from './DashboardTabs'
+export type { DashboardTab } from './DashboardTabs'

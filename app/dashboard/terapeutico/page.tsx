@@ -10,7 +10,7 @@ import {
   CalendarDays,
   FileText
 } from 'lucide-react'
-import { Card, HeaderUniversal } from '@/components/ui'
+import { Card, HeaderUniversal, DashboardTabs } from '@/components/ui'
 import { useData, useResumosPaciente } from '@/contexts/DataContext'
 import { useAuth } from '@/contexts/AuthContext'
 import BuscaPacienteDropdown from '@/components/BuscaPacienteDropdown'
@@ -483,34 +483,7 @@ export default function DashboardIAPage() {
           showNovaClinicaModal={handleShowNovaClinica}
         />
 
-        {/* Navegação entre dashboards */}
-        <div className="mb-6">
-          <div className="bg-clinic-gray-800 rounded-lg p-1 inline-flex">
-            <nav className="flex space-x-1">
-              <button
-                onClick={() => router.push('/dashboard/marketing')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Marketing e Terapêutico
-              </button>
-              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
-                IA - Paciente
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/vendas')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Comercial
-              </button>
-              <button
-                onClick={() => router.push('/dashboard/rankings')}
-                className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-              >
-                Rankings
-              </button>
-            </nav>
-          </div>
-        </div>
+        <DashboardTabs activeTab="terapeutico" />
 
         {/* Conteúdo Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

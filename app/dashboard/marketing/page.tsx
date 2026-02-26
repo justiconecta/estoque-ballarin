@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+
 import { 
   BarChart3,
   Users,
@@ -11,7 +11,7 @@ import {
   Target,
   MessageSquare
 } from 'lucide-react'
-import { Button, Card, HeaderUniversal } from '@/components/ui'
+import { Button, Card, HeaderUniversal, DashboardTabs } from '@/components/ui'
 import { useData } from '@/contexts/DataContext'
 import NovaClinicaModal from '@/components/NovaClinicaModal'
 
@@ -308,50 +308,10 @@ const FiltrosPeriodo = React.memo(function FiltrosPeriodo({
   )
 })
 
-// ✅ NavTabs memoizado
-const NavTabs = React.memo(function NavTabs({
-  onNavigate
-}: {
-  onNavigate: (path: string) => void
-}) {
-  const handleTerapeutico = useCallback(() => onNavigate('/dashboard/terapeutico'), [onNavigate])
-  const handleVendas = useCallback(() => onNavigate('/dashboard/vendas'), [onNavigate])
-  const handleRankings = useCallback(() => onNavigate('/dashboard/rankings'), [onNavigate])
-
-  return (
-    <div className="mb-8">
-      <div className="border-b border-clinic-gray-700">
-        <nav className="flex space-x-8">
-          <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
-            Marketing e Terapêutico
-          </button>
-          <button
-            onClick={handleTerapeutico}
-            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-          >
-            IA - Paciente
-          </button>
-          <button
-            onClick={handleVendas}
-            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-          >
-            Comercial
-          </button>
-          <button
-            onClick={handleRankings}
-            className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200"
-          >
-            Rankings
-          </button>
-        </nav>
-      </div>
-    </div>
-  )
-})
 
 // ============ COMPONENTE PRINCIPAL ============
 export default function DashboardMarketingTerapeuticoPage() {
-  const router = useRouter()
+
   
   // ✅ DADOS DO CACHE GLOBAL
   const { 
@@ -382,7 +342,7 @@ export default function DashboardMarketingTerapeuticoPage() {
   const handleCloseModal = useCallback(() => setShowNovaClinicaModal(false), [])
   const handleMesChange = useCallback((mes: string) => setMesSelecionado(mes), [])
   const handleAnoChange = useCallback((ano: string) => setAnoSelecionado(ano), [])
-  const handleNavigate = useCallback((path: string) => router.push(path), [router])
+
 
   // ✅ ESTATÍSTICAS DE ORIGEM (calculadas dos pacientes do cache)
   const origemLeadStats = useMemo((): OrigemLeadStats[] => {
@@ -507,8 +467,7 @@ export default function DashboardMarketingTerapeuticoPage() {
           showNovaClinicaModal={handleOpenModal}
         />
 
-        {/* Navegação por Tabs */}
-        <NavTabs onNavigate={handleNavigate} />
+        <DashboardTabs activeTab="marketing" />
 
         {/* Filtros Mês e Ano */}
         <FiltrosPeriodo

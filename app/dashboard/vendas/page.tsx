@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { TrendingUp, Target, DollarSign, Calendar, BarChart3, Info, AlertTriangle } from 'lucide-react'
-import { HeaderUniversal } from '@/components/ui'
+import { HeaderUniversal, DashboardTabs } from '@/components/ui'
 import { useAuth } from '@/contexts/AuthContext'
 import { useData, useVendas, useVendasPorDia, useVendasPorCategoria } from '@/contexts/DataContext'
 import { 
@@ -414,25 +414,7 @@ export default function DashboardVendasPage() {
           showNovaClinicaModal={handleShowNovaClinica}
         />
 
-        {/* Navegação por Tabs */}
-        <div className="mb-8">
-          <div className="border-b border-clinic-gray-700">
-            <nav className="flex space-x-8">
-              <button onClick={() => router.push('/dashboard/marketing')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                Marketing e Terapêutico
-              </button>
-              <button onClick={() => router.push('/dashboard/terapeutico')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                IA - Paciente
-              </button>
-              <button className="py-3 px-4 border-b-2 font-medium text-sm transition-all duration-200 border-clinic-cyan text-clinic-cyan">
-                Comercial
-              </button>
-              <button onClick={() => router.push('/dashboard/rankings')} className="py-3 px-4 border-b-2 border-transparent text-clinic-gray-400 hover:text-clinic-gray-300 hover:border-clinic-gray-300 font-medium text-sm transition-all duration-200">
-                Rankings
-              </button>
-            </nav>
-          </div>
-        </div>
+        <DashboardTabs activeTab="vendas" />
 
         {/* Filtros */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">

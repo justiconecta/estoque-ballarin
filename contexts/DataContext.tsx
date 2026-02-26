@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react'
 import { supabaseApi } from '@/lib/supabase'
+import type { RetornoDashboard } from '@/types/database'
 
 // ============ TIPOS ============
 interface DataContextType {
@@ -857,4 +858,77 @@ export function useResumosPaciente(cpf: string | null) {
   }, [cpf, getResumosDiariosPaciente, getResumosSemanaisPaciente])
 
   return { resumosDiarios, resumosSemanais, loading }
+}
+
+// ============ HOOK PARA RETORNOS ============
+export function useRetornos(filtroStatus?: string) {
+  const [retornos, setRetornos] = useState<RetornoDashboard[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const lastFetchedTimestampRef = useRef<number>(0)
+  const isMountedRef = useRef(true)
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const cacheRef = useRef<{ data: RetornoDashboard[], timestamp: number } | null>(null)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+    }
+  }, [])
+
+  const fetchRetornos = useCallback(async (force = false) => {
+    if (!isMountedRef.current) return
+
+    const clinicId = typeof window !== 'undefined' ? localStorage.getItem('clinic_id') : null
+    if (!clinicId) return
+
+    const now = Date.now()
+    const CACHE_TTL = 5 * 60 * 1000
+
+    if (!force && cacheRef.current && (now - cacheRef.current.timestamp) < CACHE_TTL) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const data = await supabaseApi.getRetornos(parseInt(clinicId))
+      if (isMountedRef.current) {
+        setRetornos(data)
+        cacheRef.current = { data, timestamp: now }
+        lastFetchedTimestampRef.current = now
+      }
+    } catch (error) {
+      console.error('❌ useRetornos:', error)
+    } finally {
+      if (isMountedRef.current) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+    debounceTimerRef.current = setTimeout(() => fetchRetornos(), 300)
+
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+    refreshIntervalRef.current = setInterval(() => fetchRetornos(), 60 * 1000)
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
+    }
+  }, [fetchRetornos])
+
+  const reload = useCallback(() => {
+    cacheRef.current = null
+    lastFetchedTimestampRef.current = 0
+    fetchRetornos(true)
+  }, [fetchRetornos])
+
+  const retornosFiltrados = filtroStatus
+    ? retornos.filter(r => r.status_consolidado === filtroStatus)
+    : retornos
+
+  return { retornos: retornosFiltrados, loading, reload }
 }

@@ -638,6 +638,7 @@ export interface Venda {
   preco_final: number
   criado_em: string
   items: Array<{ id: number; qtd: number }> | null  // ✅ Campo JSONB
+  data_ultima_parcela: string | null
 }
 
 export interface VendaInsumo {

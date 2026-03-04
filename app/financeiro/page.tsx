@@ -327,6 +327,9 @@ const VendaRow = React.memo(function VendaRow({ venda }: { venda: any }) {
       <td className="px-4 py-3 text-center text-gray-900 dark:text-white">
         {venda.metodo_pagamento === 'Crédito' && venda.parcelas ? `${venda.parcelas}x` : '-'}
       </td>
+      <td className="px-4 py-3 text-center text-gray-900 dark:text-white">
+        {venda.data_ultima_parcela ? formatDateBR(venda.data_ultima_parcela) : '—'}
+      </td>
     </tr>
   )
 })
@@ -716,12 +719,13 @@ const AbaVendas = React.memo(function AbaVendas({
               <th className="px-4 py-3 text-right text-cyan-700 dark:text-cyan-400">Margem %</th>
               <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Pagamento</th>
               <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Parcelas</th>
+              <th className="px-4 py-3 text-center text-cyan-700 dark:text-cyan-400">Data Última Parcela</th>
             </tr>
           </thead>
           <tbody>
             {vendasFiltradas.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
+                <td colSpan={11} className="px-4 py-8 text-center text-gray-500 dark:text-slate-500">
                   {buscaPaciente || filtroData
                     ? 'Nenhuma venda encontrada com os filtros aplicados'
                     : 'Nenhuma venda encontrada no período selecionado'
